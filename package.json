@@ -1,0 +1,38 @@
+{
+  "name": "sfscreen",
+  "productName": "SFScreen",
+  "version": "0.0.1",
+  "description": "Prova de conceito de compartilhamento de tela P2P direto.",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "lint": "eslint --config eslint.config.mjs . --max-warnings=0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "make": "electron-forge make"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-squirrel": "7.11.2",
+    "@electron-forge/plugin-vite": "7.11.2",
+    "@types/node": "22.19.15",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.1.0",
+    "electron": "43.4.1",
+    "eslint": "9.39.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.4",
+    "globals": "16.5.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.67.0",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  },
+  "dependencies": {
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  }
+}
