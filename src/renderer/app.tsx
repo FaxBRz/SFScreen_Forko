@@ -1098,32 +1098,28 @@ export const App = (): ReactElement => {
 
   useEffect(() => {
     const handleFsChange = (): void => {
-      setIsFullscreen(!!document.fullscreenElement);
+      setIsFullscreen(Boolean(document.fullscreenElement));
     };
     document.addEventListener("fullscreenchange", handleFsChange);
     return () => document.removeEventListener("fullscreenchange", handleFsChange);
   }, []);
 
-  const requestFullscreen = async (): Promise<void> => {
+  const requestFullscreen = useCallback(async (): Promise<void> => {
     try {
       if (isFullscreen) {
         setIsFullscreen(false);
         if (document.fullscreenElement) {
           await document.exitFullscreen().catch(() => undefined);
         }
-        await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
+        await window.sfscreen?.toggleFullscreen?.().catch(() => undefined);
       } else {
         setIsFullscreen(true);
-        if (stageRef.current?.requestFullscreen) {
-          await stageRef.current.requestFullscreen().catch(() => undefined);
-        }
-        await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
+        await window.sfscreen?.toggleFullscreen?.().catch(() => undefined);
       }
     } catch {
-      await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
       setIsFullscreen((v) => !v);
     }
-  };
+  }, [isFullscreen]);
 
   const exitFullscreen = useCallback(async (): Promise<void> => {
     try {
@@ -1131,10 +1127,10 @@ export const App = (): ReactElement => {
         await document.exitFullscreen().catch(() => undefined);
       }
       if (isFullscreen) {
-        await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
+        await window.sfscreen?.toggleFullscreen?.().catch(() => undefined);
       }
     } catch {
-      await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
+      await window.sfscreen?.toggleFullscreen?.().catch(() => undefined);
     }
     setIsFullscreen(false);
   }, [isFullscreen]);
@@ -1142,7 +1138,7 @@ export const App = (): ReactElement => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
-        if (isFullscreen || document.fullscreenElement) {
+        if (isFullscreen || Boolean(document.fullscreenElement)) {
           e.preventDefault();
           void exitFullscreen();
         } else if (streamMenuOpen) {
@@ -1150,11 +1146,16 @@ export const App = (): ReactElement => {
         } else if (settingsOpen) {
           setSettingsOpen(false);
         }
+      } else if (e.key === "F11") {
+        e.preventDefault();
+        void requestFullscreen();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen, streamMenuOpen, settingsOpen, exitFullscreen]);
+  }, [isFullscreen, streamMenuOpen, settingsOpen, exitFullscreen, requestFullscreen]);
+
+
 
 
   useEffect(() => {
@@ -1662,11 +1663,12 @@ export const App = (): ReactElement => {
                     className="stage-layout-mode-btn is-active"
                     type="button"
                     onClick={() => setLayoutMode("focus")}
-                    title="Alternar para Modo Foco (Tela Cheia)"
+                    title="Alternar para Modo Foco"
                   >
                     <FocusViewIcon />
                     <span>Modo Foco</span>
                   </button>
+
                 </div>
 
                 {/* Tile 1: Local Stream */}
@@ -2460,8 +2462,9 @@ export const App = (): ReactElement => {
                 }}
               >
                 <FullscreenIcon />
-                <span>Tela cheia</span>
+                <span>{isFullscreen ? "Sair da tela cheia" : "Tela cheia"}</span>
               </button>
+
 
               <div className="context-menu-divider" />
 
@@ -2653,8 +2656,9 @@ export const App = (): ReactElement => {
                 }}
               >
                 <FullscreenIcon />
-                <span>Tela cheia</span>
+                <span>{isFullscreen ? "Sair da tela cheia" : "Tela cheia"}</span>
               </button>
+
 
               <div className="context-menu-divider" />
 
