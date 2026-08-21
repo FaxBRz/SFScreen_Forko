@@ -56,6 +56,7 @@ export class WebRtcSession {
   private channel?: RTCDataChannel;
   private videoSender?: RTCRtpSender;
   private audioSender?: RTCRtpSender;
+  private videoPlaceholder?: { stream: MediaStream; track: MediaStreamTrack };
   private readonly remoteTracks = new Map<string, MediaStreamTrack>();
   private readonly candidates: CandidateData[] = [];
   private confirmed = false;
@@ -73,10 +74,10 @@ export class WebRtcSession {
   ): Promise<SessionDescription> {
     const peer = this.createPeer(stunServerIp);
     this.attachChannel(peer.createDataChannel('sfscreen-diagnostics', { ordered: true }));
-    const videoTransceiver = peer.addTransceiver(initialVideoTrack ?? 'video', { direction: 'sendonly' });
+    const videoTransceiver = peer.addTransceiver(initialVideoTrack ?? 'video', { direction: 'sendrecv' });
     preferVp8(videoTransceiver);
     this.videoSender = videoTransceiver.sender;
-    this.audioSender = peer.addTransceiver(initialAudioTrack ?? 'audio', { direction: 'sendonly' }).sender;
+    this.audioSender = peer.addTransceiver(initialAudioTrack ?? 'audio', { direction: 'sendrecv' }).sender;
     const offer = await peer.createOffer();
     if (!offer.sdp) throw new Error('A oferta WebRTC não contém SDP.');
     await peer.setLocalDescription(offer);
@@ -87,6 +88,21 @@ export class WebRtcSession {
   async createAnswer(offer: SessionDescription, selfIps: readonly string[], stunServerIp: string): Promise<{ answer: SessionDescription; securityCode: string }> {
     const peer = this.createPeer(stunServerIp);
     await this.applyDescription(offer);
+
+    const videoTransceiver = peer.getTransceivers().find((transceiver) => transceiver.receiver.track.kind === 'video');
+    if (videoTransceiver) {
+      videoTransceiver.direction = 'sendrecv';
+      preferVp8(videoTransceiver);
+      this.videoSender = videoTransceiver.sender;
+      await this.videoSender.replaceTrack(this.ensureVideoPlaceholder());
+    }
+
+    const audioTransceiver = peer.getTransceivers().find((transceiver) => transceiver.receiver.track.kind === 'audio');
+    if (audioTransceiver) {
+      audioTransceiver.direction = 'sendrecv';
+      this.audioSender = audioTransceiver.sender;
+    }
+
     const answer = await peer.createAnswer();
     if (!answer.sdp) throw new Error('A resposta WebRTC não contém SDP.');
     await peer.setLocalDescription(answer);
@@ -124,6 +140,12 @@ export class WebRtcSession {
       parameters.encodings[0].maxBitrate = 5_000_000;
       await this.videoSender.setParameters(parameters);
     }
+  }
+
+  async parkVideoTrack(): Promise<void> {
+    if (!this.videoSender) return;
+    const placeholder = this.ensureVideoPlaceholder();
+    if (this.videoSender.track !== placeholder) await this.videoSender.replaceTrack(placeholder);
   }
 
   async removeVideoTrack(): Promise<void> {
@@ -172,6 +194,8 @@ export class WebRtcSession {
     this.peer = undefined;
     this.videoSender = undefined;
     this.audioSender = undefined;
+    this.videoPlaceholder?.stream.getTracks().forEach((track) => track.stop());
+    this.videoPlaceholder = undefined;
     this.remoteTracks.forEach((track) => track.stop());
     this.remoteTracks.clear();
     this.candidates.length = 0;
@@ -193,6 +217,21 @@ export class WebRtcSession {
     };
     this.peer = peer;
     return peer;
+  }
+
+  private ensureVideoPlaceholder(): MediaStreamTrack {
+    if (this.videoPlaceholder?.track.readyState === 'live') return this.videoPlaceholder.track;
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 9;
+    const context = canvas.getContext('2d');
+    context?.fillRect(0, 0, canvas.width, canvas.height);
+    const stream = canvas.captureStream(1);
+    const track = stream.getVideoTracks()[0];
+    if (!track) throw new Error('Não foi possível criar a faixa de espera do WebRTC.');
+    track.enabled = false;
+    this.videoPlaceholder = { stream, track };
+    return track;
   }
 
   private attachChannel(channel: RTCDataChannel): void {
