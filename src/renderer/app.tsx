@@ -131,6 +131,12 @@ const SendIcon = (): ReactElement => (
     <line x1="22" x2="11" y1="2" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
   </svg>
 );
+const TrashIcon = (): ReactElement => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" />
+  </svg>
+);
+
 const MonitorIcon = (): ReactElement => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <rect width="20" height="14" x="2" y="3" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" />
@@ -797,6 +803,94 @@ const playStreamStopSound = (): void => {
   }
 };
 
+/* ─── Discord-style User Join Sound ─── */
+const playUserJoinSound = (): void => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
+    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
+    const now = audioContextInstance.currentTime;
+    const notes = [
+      { freq: 440.00, start: 0.00, dur: 0.12, gain: 0.12 }, // A4
+      { freq: 587.33, start: 0.09, dur: 0.28, gain: 0.15 }, // D5
+    ];
+    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
+      if (!audioContextInstance) return;
+      const osc = audioContextInstance.createOscillator();
+      const gainNode = audioContextInstance.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now + start);
+      gainNode.gain.setValueAtTime(0, now + start);
+      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.015);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      osc.connect(gainNode);
+      gainNode.connect(audioContextInstance.destination);
+      osc.start(now + start);
+      osc.stop(now + start + dur);
+    });
+  } catch {
+    // Ignored in restricted environments
+  }
+};
+
+/* ─── Discord-style User Leave Sound ─── */
+const playUserLeaveSound = (): void => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
+    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
+    const now = audioContextInstance.currentTime;
+    const notes = [
+      { freq: 587.33, start: 0.00, dur: 0.10, gain: 0.13 }, // D5
+      { freq: 440.00, start: 0.08, dur: 0.24, gain: 0.10 }, // A4
+    ];
+    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
+      if (!audioContextInstance) return;
+      const osc = audioContextInstance.createOscillator();
+      const gainNode = audioContextInstance.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now + start);
+      gainNode.gain.setValueAtTime(0, now + start);
+      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.015);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      osc.connect(gainNode);
+      gainNode.connect(audioContextInstance.destination);
+      osc.start(now + start);
+      osc.stop(now + start + dur);
+    });
+  } catch {
+    // Ignored in restricted environments
+  }
+};
+
+/* ─── Discord-style Chat Message Sound ─── */
+const playChatMessageSound = (): void => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
+    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
+    const now = audioContextInstance.currentTime;
+    const osc = audioContextInstance.createOscillator();
+    const gainNode = audioContextInstance.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
+    gainNode.gain.setValueAtTime(0, now);
+    gainNode.gain.linearRampToValueAtTime(0.12, now + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    osc.connect(gainNode);
+    gainNode.connect(audioContextInstance.destination);
+    osc.start(now);
+    osc.stop(now + 0.16);
+  } catch {
+    // Ignored in restricted environments
+  }
+};
+
+
 
 /* ─── Main Application Component ─── */
 export const App = (): ReactElement => {
@@ -886,6 +980,45 @@ export const App = (): ReactElement => {
     };
   }, []);
 
+  const prevConnectedRef = useRef(isConnected);
+  const prevChatCountRef = useRef(0);
+  const isInitialMountRef = useRef(true);
+  const [lastReadTimestamp, setLastReadTimestamp] = useState(0);
+
+  const unreadChatCount = state.chatPanelOpen
+    ? 0
+    : state.chatMessages.filter((m) => m.timestamp > lastReadTimestamp).length;
+
+  useEffect(() => {
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      prevConnectedRef.current = isConnected;
+      return;
+    }
+
+    if (!prevConnectedRef.current && isConnected) {
+      playUserJoinSound();
+    } else if (prevConnectedRef.current && !isConnected) {
+      playUserLeaveSound();
+    }
+    prevConnectedRef.current = isConnected;
+  }, [isConnected]);
+
+  useEffect(() => {
+    if (prevChatCountRef.current > 0 && state.chatMessages.length > prevChatCountRef.current) {
+      playChatMessageSound();
+    }
+    prevChatCountRef.current = state.chatMessages.length;
+  }, [state.chatMessages.length]);
+
+
+  const handleToggleChat = (): void => {
+    if (!state.chatPanelOpen) {
+      setLastReadTimestamp(Date.now());
+    }
+    session.toggleChatPanel();
+  };
+
   useEffect(() => {
     if (!prevLocalSharingRef.current && localSharing) {
       playStreamStartSound();
@@ -926,11 +1059,6 @@ export const App = (): ReactElement => {
   const otherSharing = focusedIsLocal ? (remoteSharing && watchingRemote) : localSharing;
   const showPip = otherSharing && !isGridActive; // Render PiP preview in focus mode
 
-
-
-
-
-
   const showControls = useCallback((): void => {
     setControlsVisible(true);
     if (hideControlsTimerRef.current) window.clearTimeout(hideControlsTimerRef.current);
@@ -956,14 +1084,11 @@ export const App = (): ReactElement => {
     }
   };
 
-
   const handleStageMouseLeave = (): void => {
     if (isAutoHideActive && !streamMenuOpen) {
       setControlsVisible(false);
     }
   };
-
-
 
   useEffect(() => {
     return () => {
@@ -981,38 +1106,38 @@ export const App = (): ReactElement => {
 
   const requestFullscreen = async (): Promise<void> => {
     try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
+      if (isFullscreen) {
         setIsFullscreen(false);
-      } else if (stageRef.current) {
-        if (stageRef.current.requestFullscreen) {
-          await stageRef.current.requestFullscreen();
-        } else {
-          await window.sfscreen.toggleFullscreen?.();
+        if (document.fullscreenElement) {
+          await document.exitFullscreen().catch(() => undefined);
         }
-        setIsFullscreen(true);
+        await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
       } else {
-        await window.sfscreen.toggleFullscreen?.();
-        setIsFullscreen((v) => !v);
+        setIsFullscreen(true);
+        if (stageRef.current?.requestFullscreen) {
+          await stageRef.current.requestFullscreen().catch(() => undefined);
+        }
+        await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
       }
     } catch {
-      await window.sfscreen.toggleFullscreen?.();
+      await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
       setIsFullscreen((v) => !v);
     }
   };
 
-  const exitFullscreen = async (): Promise<void> => {
+  const exitFullscreen = useCallback(async (): Promise<void> => {
     try {
       if (document.fullscreenElement) {
-        await document.exitFullscreen();
-      } else {
-        await window.sfscreen.toggleFullscreen?.();
+        await document.exitFullscreen().catch(() => undefined);
+      }
+      if (isFullscreen) {
+        await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
       }
     } catch {
-      await window.sfscreen.toggleFullscreen?.();
+      await window.sfscreen.toggleFullscreen?.().catch(() => undefined);
     }
     setIsFullscreen(false);
-  };
+  }, [isFullscreen]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
@@ -1029,7 +1154,8 @@ export const App = (): ReactElement => {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen, streamMenuOpen, settingsOpen]);
+  }, [isFullscreen, streamMenuOpen, settingsOpen, exitFullscreen]);
+
 
   useEffect(() => {
     if (state.chatPanelOpen) {
@@ -1561,8 +1687,9 @@ export const App = (): ReactElement => {
                 >
                   <div className="grid-tile-header">
                     <span className="presenter-tag"><ScreenCastIcon /> {state.localUserName} (Você)</span>
-                    <span className="resolution-tag">1080p · 60 FPS</span>
+                    <span className="resolution-tag">{session.resolution} · {session.fps} FPS</span>
                   </div>
+
                   <div className="grid-tile-video-wrapper">
                     {!isWindowFocused ? (
                       <div className="grid-tile-paused-state">
@@ -1644,8 +1771,9 @@ export const App = (): ReactElement => {
 
                 <div className={`stage-top-pill stage-fade-element ${controlsVisible || streamMenuOpen ? "is-visible" : ""}`}>
                   <span className="presenter-tag"><ScreenCastIcon /> {presenterName} está apresentando</span>
-                  <span className="resolution-tag">1080p · 60 FPS</span>
+                  <span className="resolution-tag">{focusedIsLocal ? `${session.resolution} · ${session.fps} FPS` : "1080p · 60 FPS"}</span>
                 </div>
+
 
                 <div className={`stage-top-right-pill stage-fade-element ${controlsVisible || streamMenuOpen ? "is-visible" : ""}`}>
                   <div
@@ -2117,15 +2245,15 @@ export const App = (): ReactElement => {
                 </button>
               )}
 
-              <button className={`dock-icon-btn ${state.chatPanelOpen ? "is-active" : ""}`} type="button" title="Chat" onClick={() => session.toggleChatPanel()}>
+              <button className={`dock-icon-btn ${state.chatPanelOpen ? "is-active" : ""}`} type="button" title="Chat" onClick={handleToggleChat}>
                 <MessageSquareIcon />
-                {state.chatMessages.length > 0 && <span className="dock-badge">{state.chatMessages.length}</span>}
+                {unreadChatCount > 0 && !state.chatPanelOpen && <span className="dock-badge">{unreadChatCount}</span>}
               </button>
+
 
               <button className="dock-icon-btn" type="button" title="Configurações" onClick={() => setSettingsOpen(true)}>
                 <GearIcon />
               </button>
-
 
               <button className="dock-action-btn is-hangup" type="button" title="Sair da chamada" onClick={() => void session.close()}>
                 <PhoneOffIcon />
@@ -2166,6 +2294,15 @@ export const App = (): ReactElement => {
                     <div className="chat-meta">
                       <strong>{msg.senderName}</strong>
                       <small>{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
+                      <button
+                        className="chat-msg-delete-btn"
+                        type="button"
+                        title="Excluir mensagem"
+                        aria-label="Excluir mensagem"
+                        onClick={() => session.deleteChatMessage(msg.id)}
+                      >
+                        <TrashIcon />
+                      </button>
                     </div>
                     <p className="chat-text">{msg.text}</p>
                   </div>
@@ -2173,6 +2310,7 @@ export const App = (): ReactElement => {
               ))}
               <div ref={chatMessagesEndRef} />
             </div>
+
 
             <form className="chat-input-box" onSubmit={handleSendChat}>
               <input

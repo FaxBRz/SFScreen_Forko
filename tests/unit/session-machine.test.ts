@@ -58,6 +58,10 @@ describe('session machine', () => {
 
     const toggledModal = sessionReducer(toggledChat, { type: 'toggle-session-modal', open: true });
     expect(toggledModal.sessionModalOpen).toBe(true);
+
+    const deletedChat = sessionReducer(withChat, { type: 'delete-chat-message', id: 'msg-1' });
+    expect(deletedChat.chatMessages).toHaveLength(0);
   });
 });
+
 

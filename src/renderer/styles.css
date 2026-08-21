@@ -1799,7 +1799,7 @@ button:disabled {
 .chat-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   margin-bottom: 2px;
 }
 
@@ -1813,13 +1813,46 @@ button:disabled {
   color: #6d7380;
 }
 
+.chat-msg-delete-btn {
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 4px;
+  color: #808694;
+  margin-left: auto;
+  cursor: pointer;
+  background: transparent;
+  transition: all 0.12s ease;
+}
+
+.chat-message-item:hover .chat-msg-delete-btn {
+  opacity: 1;
+}
+
+.chat-msg-delete-btn:hover {
+  background: rgba(218, 55, 60, 0.18);
+  color: #ff7b7f;
+}
+
+.chat-msg-delete-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
 .chat-text {
   margin: 0;
   font-size: 0.76rem;
   color: #dbdee1;
   word-break: break-word;
   line-height: 1.35;
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
+
 
 .chat-input-box {
   padding: 10px;
@@ -1913,9 +1946,11 @@ button:disabled {
 .discord-app-layout.is-app-fullscreen {
   width: 100vw !important;
   height: 100vh !important;
+  grid-template-rows: 0 1fr 0 !important;
   overflow: hidden !important;
   background: #000000 !important;
 }
+
 
 .discord-app-layout.is-app-fullscreen .discord-topbar {
   display: none !important;

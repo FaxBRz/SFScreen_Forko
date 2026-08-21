@@ -21,6 +21,7 @@ describe('media control protocol', () => {
     const chat = {
       protocolVersion: sessionProtocolVersion,
       type: 'chat-message' as const,
+      messageId: undefined,
       message: {
         id: 'msg-1',
         senderName: 'Rafael',
@@ -29,7 +30,16 @@ describe('media control protocol', () => {
       },
     };
     expect(parseControlMessage(serializeControlMessage(chat))).toEqual(chat);
+
+    const del = {
+      protocolVersion: sessionProtocolVersion,
+      type: 'delete-chat-message' as const,
+      messageId: 'msg-1',
+    };
+    expect(parseControlMessage(serializeControlMessage(del))).toEqual(del);
   });
+
+
 
   it('rejects malformed and older protocol messages', () => {
     expect(parseControlMessage('{')).toBeUndefined();

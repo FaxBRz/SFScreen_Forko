@@ -14,9 +14,21 @@ const errorMessage = (error: SessionError | Error | unknown): string => {
 
 const stopTracks = (stream: MediaStream | undefined): void => stream?.getTracks().forEach((track) => track.stop());
 
-const captureDisplayStream = (includeSystemAudio: boolean): Promise<MediaStream> => {
+const resDimensionMap: Record<StreamResolution, { width: number; height: number }> = {
+  '720p': { width: 1280, height: 720 },
+  '1080p': { width: 1920, height: 1080 },
+  '1440p': { width: 2560, height: 1440 },
+};
+
+const captureDisplayStream = (includeSystemAudio: boolean, resolution: StreamResolution = '1080p', fps: StreamFps = 60): Promise<MediaStream> => {
   const audio = includeSystemAudio ? ({ restrictOwnAudio: true } as MediaTrackConstraints) : false;
-  const request = navigator.mediaDevices.getDisplayMedia({ audio, video: true });
+  const dim = resDimensionMap[resolution] || resDimensionMap['1080p'];
+  const video: MediaTrackConstraints = {
+    width: { ideal: dim.width, max: dim.width },
+    height: { ideal: dim.height, max: dim.height },
+    frameRate: { ideal: fps, max: fps },
+  };
+  const request = navigator.mediaDevices.getDisplayMedia({ audio, video });
   return new Promise<MediaStream>((resolve, reject) => {
     const timeout = window.setTimeout(() => {
       request.then(stopTracks).catch(() => undefined);
@@ -31,6 +43,7 @@ const captureDisplayStream = (includeSystemAudio: boolean): Promise<MediaStream>
     });
   });
 };
+
 
 const captureErrorMessage = (error: unknown, state: import('../../shared/screen-source').CaptureAuthorizationState): string => {
   if (state === 'selected') return 'O Electron recusou a captura antes de consultar o autorizador do monitor.';
@@ -222,6 +235,7 @@ export interface SessionModel {
   copyCode: () => Promise<boolean>;
   exportDiagnostics: () => Promise<boolean>;
   sendChatMessage: (text: string) => void;
+  deleteChatMessage: (id: string) => void;
   setUserName: (name: string) => void;
   toggleSessionModal: (open?: boolean) => void;
   toggleChatPanel: (open?: boolean) => void;
@@ -234,9 +248,12 @@ export const useSession = (): SessionModel => {
   const [joinCode, setJoinCodeState] = useState('');
   const [sources, setSources] = useState<ScreenSource[]>([]);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
-  const [resolution, setResolution] = useState<StreamResolution>('1080p');
-  const [fps, setFps] = useState<StreamFps>(60);
+  const [resolution, setResolutionState] = useState<StreamResolution>('1080p');
+  const [fps, setFpsState] = useState<StreamFps>(60);
+  const resolutionRef = useRef<StreamResolution>('1080p');
+  const fpsRef = useRef<StreamFps>(60);
   const [localStream, setLocalStream] = useState<MediaStream | undefined>(undefined);
+
 
   const [remoteStream, setRemoteStream] = useState<MediaStream | undefined>(undefined);
   const [remoteMediaPhase, setRemoteMediaPhase] = useState<MediaPhase>('stopped');
@@ -361,7 +378,12 @@ export const useSession = (): SessionModel => {
           dispatch({ type: 'add-chat-message', message: message.message });
           return;
         }
+        if (message.type === 'delete-chat-message') {
+          dispatch({ type: 'delete-chat-message', id: message.messageId });
+          return;
+        }
         if (message.type === 'audio-state') {
+
           setRemoteAudioPhase(message.state);
           setRemoteAudioError(message.state === 'failed' ? 'O áudio remoto não ficou disponível.' : undefined);
           return;
@@ -462,7 +484,7 @@ export const useSession = (): SessionModel => {
         if (!result.ok) throw new Error(result.error.message);
       }
 
-      captured = await captureDisplayStream(includeSystemAudio);
+      captured = await captureDisplayStream(includeSystemAudio, resolutionRef.current, fpsRef.current);
       const videoTrack = captured.getVideoTracks()[0];
       if (!videoTrack) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
       videoTrack.contentHint = 'detail';
@@ -470,8 +492,14 @@ export const useSession = (): SessionModel => {
       videoTrack.onended = () => { if (localStreamRef.current === captured) void stopSharing(); };
 
       if (isConnected && controller) {
-        await controller.replaceVideoTrack(videoTrack);
+        const resBitrateMap: Record<StreamResolution, number> = {
+          '720p': 3_000_000,
+          '1080p': 6_000_000,
+          '1440p': 12_000_000,
+        };
+        await controller.replaceVideoTrack(videoTrack, resBitrateMap[resolutionRef.current], fpsRef.current);
       }
+
 
       if (includeSystemAudio) {
         const audioTrack = captured.getAudioTracks()[0];
@@ -748,6 +776,55 @@ recordDiagnostic('audio-unavailable');
     return result.ok && result.value;
   }, [state.route]);
 
+  const setResolution = useCallback((newResolution: StreamResolution): void => {
+    resolutionRef.current = newResolution;
+    setResolutionState(newResolution);
+    const stream = localStreamRef.current;
+    if (stream) {
+      const videoTrack = stream.getVideoTracks().find((t) => t.readyState === 'live');
+      if (videoTrack && videoTrack.applyConstraints) {
+        const dim = resDimensionMap[newResolution];
+        void videoTrack.applyConstraints({
+          width: { ideal: dim.width, max: dim.width },
+          height: { ideal: dim.height, max: dim.height },
+        }).catch(() => undefined);
+      }
+    }
+    const resBitrateMap: Record<StreamResolution, number> = {
+      '720p': 3_000_000,
+      '1080p': 6_000_000,
+      '1440p': 12_000_000,
+    };
+    void controllerRef.current?.updateVideoParameters(resBitrateMap[newResolution], fpsRef.current);
+  }, []);
+
+  const setFps = useCallback((newFps: StreamFps): void => {
+    fpsRef.current = newFps;
+    setFpsState(newFps);
+    const stream = localStreamRef.current;
+    if (stream) {
+      const videoTrack = stream.getVideoTracks().find((t) => t.readyState === 'live');
+      if (videoTrack && videoTrack.applyConstraints) {
+        void videoTrack.applyConstraints({
+          frameRate: { ideal: newFps, max: newFps },
+        }).catch(() => undefined);
+      }
+    }
+    const resBitrateMap: Record<StreamResolution, number> = {
+      '720p': 3_000_000,
+      '1080p': 6_000_000,
+      '1440p': 12_000_000,
+    };
+    void controllerRef.current?.updateVideoParameters(resBitrateMap[resolutionRef.current], newFps);
+  }, []);
+
+  const deleteChatMessage = useCallback((id: string): void => {
+    dispatch({ type: 'delete-chat-message', id });
+    if (state.phase === 'connected') {
+      controllerRef.current?.sendDeleteChatMessage(id);
+    }
+  }, [state.phase]);
+
   const sendChatMessage = useCallback((text: string): void => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -845,11 +922,10 @@ recordDiagnostic('audio-unavailable');
     copyCode,
     exportDiagnostics,
     sendChatMessage,
+    deleteChatMessage,
     setUserName,
     toggleSessionModal,
     toggleChatPanel,
     simulatePeer,
   };
 };
-
-

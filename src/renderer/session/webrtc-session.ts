@@ -131,6 +131,10 @@ export class WebRtcSession {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'chat-message', message });
   }
 
+  sendDeleteChatMessage(messageId: string): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'delete-chat-message', messageId });
+  }
+
   sendVideoState(state: VideoState): void {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'video-state', state });
   }
@@ -139,16 +143,37 @@ export class WebRtcSession {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'audio-state', state });
   }
 
-  async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
+  async updateVideoParameters(maxBitrateBps?: number, maxFramerate?: number): Promise<void> {
+    if (!this.videoSender) return;
+    try {
+      const parameters = this.videoSender.getParameters();
+      if (!parameters.encodings || parameters.encodings.length === 0) {
+        parameters.encodings = [{}];
+      }
+      if (maxBitrateBps !== undefined) parameters.encodings[0].maxBitrate = maxBitrateBps;
+      if (maxFramerate !== undefined) parameters.encodings[0].maxFramerate = maxFramerate;
+      await this.videoSender.setParameters(parameters);
+    } catch {
+      // Ignored if browser/peer doesn't support changing parameters on live track
+    }
+  }
+
+  async replaceVideoTrack(track: MediaStreamTrack, maxBitrate = 6_000_000, maxFramerate?: number): Promise<void> {
     if (!this.videoSender) throw new Error('O canal de vídeo não foi negociado.');
     track.contentHint = 'detail';
     if (this.videoSender.track !== track) await this.videoSender.replaceTrack(track);
-    const parameters = this.videoSender.getParameters();
-    if (parameters.encodings[0]) {
-      parameters.encodings[0].maxBitrate = 5_000_000;
-      await this.videoSender.setParameters(parameters);
+    try {
+      const parameters = this.videoSender.getParameters();
+      if (parameters.encodings && parameters.encodings[0]) {
+        parameters.encodings[0].maxBitrate = maxBitrate;
+        if (maxFramerate) parameters.encodings[0].maxFramerate = maxFramerate;
+        await this.videoSender.setParameters(parameters);
+      }
+    } catch {
+      // Ignored
     }
   }
+
 
   async parkVideoTrack(): Promise<void> {
     if (!this.videoSender) return;

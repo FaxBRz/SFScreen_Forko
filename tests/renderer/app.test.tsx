@@ -45,9 +45,11 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
 
   setUserName: vi.fn(),
   sendChatMessage: vi.fn(),
+  deleteChatMessage: vi.fn(),
   toggleSessionModal: vi.fn(),
   toggleChatPanel: vi.fn(),
   simulatePeer: vi.fn(),
+
 });
 
 
@@ -187,6 +189,36 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
     expect(current.sendChatMessage).toHaveBeenCalledWith('Olá!');
   });
+
+  it('allows deleting a message from the chat drawer', () => {
+    const current = model(readyState({
+      chatPanelOpen: true,
+      chatMessages: [
+        { id: 'msg-123', senderName: 'Você', text: 'Mensagem para apagar', timestamp: Date.now() },
+      ],
+    }));
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    const deleteBtn = screen.getByRole('button', { name: /excluir mensagem/i });
+    fireEvent.click(deleteBtn);
+    expect(current.deleteChatMessage).toHaveBeenCalledWith('msg-123');
+  });
+
+  it('does not display unread badge when chat is opened', () => {
+    const current = model(readyState({
+      chatPanelOpen: true,
+      chatMessages: [
+        { id: 'msg-1', senderName: 'Alex', text: 'Oi', timestamp: Date.now() },
+      ],
+    }));
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // When chatPanelOpen is true, badge should NOT be displayed
+    expect(screen.queryByText('1', { selector: '.dock-badge' })).toBeNull();
+  });
+
 
   it('opens and navigates settings tabs', () => {
     const current = model();

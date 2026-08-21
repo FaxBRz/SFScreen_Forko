@@ -14,6 +14,7 @@ export type SessionControlMessage =
   | { protocolVersion: typeof sessionProtocolVersion; type: 'security-confirmed' }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'user-profile'; userName: string }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'chat-message'; message: ChatMessagePayload }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'delete-chat-message'; messageId: string }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'video-state'; state: VideoState }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'audio-state'; state: AudioState };
 
@@ -29,6 +30,9 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
     if (control.type === 'security-confirmed') return { protocolVersion: sessionProtocolVersion, type: 'security-confirmed' };
     if (control.type === 'user-profile' && typeof control.userName === 'string' && control.userName.trim().length > 0 && control.userName.length <= 64) {
       return { protocolVersion: sessionProtocolVersion, type: 'user-profile', userName: control.userName.trim() };
+    }
+    if (control.type === 'delete-chat-message' && typeof control.messageId === 'string' && control.messageId.length > 0 && control.messageId.length <= 128) {
+      return { protocolVersion: sessionProtocolVersion, type: 'delete-chat-message', messageId: control.messageId };
     }
     if (control.type === 'chat-message' && typeof control.message === 'object' && control.message !== null) {
       const msg = control.message as Record<string, unknown>;
@@ -57,3 +61,4 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
   }
   return undefined;
 };
+

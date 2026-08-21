@@ -51,9 +51,11 @@ export type SessionAction =
   | { type: 'set-local-user-name'; userName: string }
   | { type: 'set-remote-user-name'; name?: string; userName?: string }
   | { type: 'add-chat-message'; message: ChatMessagePayload }
+  | { type: 'delete-chat-message'; id: string }
   | { type: 'toggle-session-modal'; open?: boolean }
   | { type: 'toggle-chat-panel'; open?: boolean }
   | { type: 'tick'; now: number };
+
 
 
 const emptyStatus: TailscaleStatus = { state: 'offline', peers: [] };
@@ -198,7 +200,10 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
       return { ...state, remoteUserName: (action.userName ?? action.name) || 'Outra pessoa' };
     case 'add-chat-message':
       return { ...state, chatMessages: [...state.chatMessages, action.message] };
+    case 'delete-chat-message':
+      return { ...state, chatMessages: state.chatMessages.filter((m) => m.id !== action.id) };
     case 'toggle-session-modal':
+
       return { ...state, sessionModalOpen: action.open ?? !state.sessionModalOpen };
     case 'toggle-chat-panel':
       return { ...state, chatPanelOpen: action.open ?? !state.chatPanelOpen };
