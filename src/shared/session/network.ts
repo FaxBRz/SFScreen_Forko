@@ -12,3 +12,8 @@ export const isTailscaleIp = (value: string): boolean => {
 export const candidateAddress = (candidate: string): string | undefined => candidate.trim().split(/\s+/)[4];
 
 export const filterTailscaleCandidates = (candidates: CandidateData[], selfIp: string): CandidateData[] => candidates.filter((candidate) => candidateAddress(candidate.candidate) === selfIp);
+
+export const tailscaleHttpUrl = (ip: string, port: number, pathname: string): string => {
+  const host = ip.includes(':') ? `[${ip}]` : ip;
+  return `http://${host}:${port}${pathname}`;
+};

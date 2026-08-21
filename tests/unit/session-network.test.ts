@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { candidateAddress, filterTailscaleCandidates, isTailscaleIp } from '../../src/shared/session/network';
+import { candidateAddress, filterTailscaleCandidates, isTailscaleIp, tailscaleHttpUrl } from '../../src/shared/session/network';
 
 describe('Tailscale network validation', () => {
   it('accepts Tailscale IPv4 and IPv6 ranges only', () => {
@@ -17,5 +17,10 @@ describe('Tailscale network validation', () => {
     ];
     expect(candidateAddress(candidates[0]!.candidate)).toBe('100.90.1.2');
     expect(filterTailscaleCandidates(candidates, '100.90.1.2')).toEqual([candidates[0]]);
+  });
+
+  it('formats IPv4 and IPv6 Tailscale URLs safely', () => {
+    expect(tailscaleHttpUrl('100.90.1.2', 43917, '/v1/session/lookup')).toBe('http://100.90.1.2:43917/v1/session/lookup');
+    expect(tailscaleHttpUrl('fd7a:115c:a1e0::1', 43917, '/v1/session/lookup')).toBe('http://[fd7a:115c:a1e0::1]:43917/v1/session/lookup');
   });
 });

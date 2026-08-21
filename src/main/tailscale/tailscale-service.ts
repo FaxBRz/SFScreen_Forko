@@ -13,6 +13,7 @@ export interface RawPeer {
   Online?: boolean;
   CurAddr?: string;
   Relay?: string;
+  PeerRelay?: string;
 }
 
 export interface RawStatus {
@@ -36,6 +37,7 @@ const findExecutable = async (): Promise<string | undefined> => {
 };
 
 const routeFor = (peer: RawPeer): TailscaleRoute => {
+  if (peer.PeerRelay) return 'peer-relay';
   if (peer.Relay) return 'relay';
   if (peer.CurAddr) return 'direct';
   return 'unknown';
@@ -55,20 +57,27 @@ const peerFrom = (peer: RawPeer): TailscalePeer | undefined => {
 
 export class TailscaleService {
   private executable?: string;
+  private cached?: { status: TailscaleStatus; expiresAt: number };
 
-  async getStatus(): Promise<TailscaleStatus> {
+  async getStatus(force = false): Promise<TailscaleStatus> {
+    if (!force && this.cached && this.cached.expiresAt > Date.now()) return this.cached.status;
     this.executable ??= await findExecutable();
-    if (!this.executable) return { state: 'not-installed', peers: [], message: 'Instale o Tailscale para continuar.' };
+    if (!this.executable) return this.remember({ state: 'not-installed', peers: [], message: 'Instale o Tailscale para continuar.' });
 
     let parsed: RawStatus;
     try {
       const { stdout } = await execFileAsync(this.executable, ['status', '--json'], { windowsHide: true, timeout: 5_000, maxBuffer: 1024 * 1024 });
       parsed = JSON.parse(stdout) as RawStatus;
     } catch {
-      return { state: 'offline', peers: [], message: 'Não foi possível consultar o estado do Tailscale.' };
+      return this.remember({ state: 'offline', peers: [], message: 'Não foi possível consultar o estado do Tailscale.' });
     }
 
-    return parseTailscaleStatus(parsed);
+    return this.remember(parseTailscaleStatus(parsed));
+  }
+
+  private remember(status: TailscaleStatus): TailscaleStatus {
+    this.cached = { status, expiresAt: Date.now() + 3_000 };
+    return status;
   }
 }
 

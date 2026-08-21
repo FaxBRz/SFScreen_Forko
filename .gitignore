@@ -4,3 +4,5 @@ out/
 make/
 dist/
 *.log
+test-results/
+playwright-report/

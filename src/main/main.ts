@@ -1,14 +1,14 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, session } from 'electron';
 import path from 'node:path';
-import { ipcChannels } from '../shared/ipc';
-import { webrtcUdpPortRange, type SessionDescription } from '../shared/session/types';
+import { webrtcUdpPortRange } from '../shared/session/types';
 import type { ScreenSource } from '../shared/screen-source';
+import { registerSessionIpc } from './session-ipc';
 import { SessionServer } from './tailscale/session-server';
 import { TailscaleService } from './tailscale/tailscale-service';
 
 let mainWindow: BrowserWindow | null = null;
 const tailscale = new TailscaleService();
-const sessionServer = new SessionServer();
+const sessionServer = new SessionServer(() => tailscale.getStatus(true));
 
 const getScreenSources = async (): Promise<ScreenSource[]> => {
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 320, height: 180 } });
@@ -36,15 +36,7 @@ const createWindow = (): void => {
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
-  ipcMain.handle(ipcChannels.listScreenSources, getScreenSources);
-  ipcMain.handle(ipcChannels.getTailscaleStatus, () => tailscale.getStatus());
-  ipcMain.handle(ipcChannels.hostSession, async (event, offer: SessionDescription) => {
-    const status = await tailscale.getStatus();
-    return sessionServer.host(offer, status, (answer) => event.sender.send(ipcChannels.sessionAnswer, answer));
-  });
-  ipcMain.handle(ipcChannels.findSession, async (_event, code: string) => sessionServer.find(code, await tailscale.getStatus()));
-  ipcMain.handle(ipcChannels.submitAnswer, (_event, hostIp: string, code: string, answer: SessionDescription) => sessionServer.submitAnswer(hostIp, code, answer));
-  ipcMain.handle(ipcChannels.stopHostedSession, () => sessionServer.stop());
+  registerSessionIpc({ ipcMain, tailscale, sessionServer, getScreenSources });
   createWindow();
 });
 

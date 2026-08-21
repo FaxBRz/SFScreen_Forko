@@ -2,6 +2,7 @@ export const signalingPort = 43917;
 export const webrtcUdpPortRange = { min: 43920, max: 44019 } as const;
 export const sessionLifetimeMs = 10 * 60 * 1000;
 export const maxSignalBytes = 256 * 1024;
+export const sessionProtocolVersion = 1 as const;
 
 export type TailscaleState = 'not-installed' | 'not-authenticated' | 'offline' | 'no-peers' | 'ready' | 'policy-blocked';
 export type TailscaleRoute = 'direct' | 'relay' | 'peer-relay' | 'unknown';
@@ -29,6 +30,7 @@ export interface CandidateData {
 }
 
 export interface SessionDescription {
+  protocolVersion: typeof sessionProtocolVersion;
   type: 'offer' | 'answer';
   sdp: string;
   candidates: CandidateData[];
@@ -53,11 +55,33 @@ export interface SessionAnswerEvent {
   peerIp: string;
 }
 
+export type SessionErrorCode =
+  | 'tailscale-unavailable'
+  | 'policy-blocked'
+  | 'session-not-found'
+  | 'session-expired'
+  | 'invalid-request'
+  | 'invalid-response'
+  | 'timeout'
+  | 'webrtc-failed'
+  | 'session-busy'
+  | 'unknown';
+
+export interface SessionError {
+  code: SessionErrorCode;
+  message: string;
+  retryable: boolean;
+}
+
+export type SessionResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: SessionError };
+
 export interface SFScreenApi {
   getTailscaleStatus: () => Promise<TailscaleStatus>;
-  hostSession: (offer: SessionDescription) => Promise<HostedSession>;
-  findSession: (code: string) => Promise<DiscoveredSession>;
-  submitAnswer: (hostIp: string, code: string, answer: SessionDescription) => Promise<void>;
-  stopHostedSession: () => Promise<void>;
+  hostSession: (offer: SessionDescription) => Promise<SessionResult<HostedSession>>;
+  findSession: (code: string) => Promise<SessionResult<DiscoveredSession>>;
+  submitAnswer: (hostIp: string, code: string, answer: SessionDescription) => Promise<SessionResult<void>>;
+  stopHostedSession: () => Promise<SessionResult<void>>;
   onSessionAnswer: (listener: (event: SessionAnswerEvent) => void) => () => void;
 }
