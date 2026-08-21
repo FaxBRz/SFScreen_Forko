@@ -13,6 +13,20 @@ const errorMessage = (error: SessionError | Error | unknown): string => {
 
 const stopTracks = (stream: MediaStream | undefined): void => stream?.getTracks().forEach((track) => track.stop());
 
+const captureErrorMessage = (error: unknown, state: import('../../shared/screen-source').CaptureAuthorizationState): string => {
+  if (state === 'selected') return 'O Electron recusou a captura antes de consultar o autorizador do monitor.';
+  if (state === 'request-received') return 'O Electron recebeu o pedido de captura, mas não concluiu a validação da fonte. Escolha o monitor novamente e tente.';
+  if (state === 'authorized') return 'O Electron autorizou o monitor, mas não iniciou a stream de captura. Reinicie o app e tente novamente.';
+  if (state === 'rejected-frame') return 'A captura foi recusada porque a solicitação não veio da janela principal esperada.';
+  if (state === 'rejected-origin') return 'A captura foi recusada porque a origem da solicitação não corresponde ao app.';
+  if (state === 'rejected-gesture') return 'A captura foi recusada porque o Electron não identificou um clique válido. Tente novamente pelo botão.';
+  if (state === 'rejected-video') return 'A captura foi recusada porque a solicitação não incluía vídeo.';
+  if (state === 'rejected-selection') return 'A autorização do monitor expirou antes da captura. Escolha o monitor novamente.';
+  if (state === 'rejected-audio') return 'A solicitação de áudio não corresponde ao monitor selecionado.';
+  if (state === 'source-unavailable') return 'O monitor selecionado não está mais disponível.';
+  return errorMessage(error);
+};
+
 export interface SessionModel {
   state: SessionUiState;
   joinCode: string;
@@ -184,7 +198,20 @@ export const useSession = (): SessionModel => {
     let captured: MediaStream | undefined;
     try {
       // This deliberately precedes every await: getDisplayMedia needs the click's transient user activation.
-      captured = await navigator.mediaDevices.getDisplayMedia({ audio: state.includeSystemAudio, video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { max: 30 } } });
+      const request = navigator.mediaDevices.getDisplayMedia({ audio: state.includeSystemAudio, video: true });
+      captured = await new Promise<MediaStream>((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+          request.then(stopTracks).catch(() => undefined);
+          reject(new Error('A captura não foi iniciada em 10 segundos.'));
+        }, 10_000);
+        request.then((stream) => {
+          window.clearTimeout(timeout);
+          resolve(stream);
+        }, (error: unknown) => {
+          window.clearTimeout(timeout);
+          reject(error);
+        });
+      });
       const track = captured.getVideoTracks()[0];
       if (!track) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
       track.contentHint = 'detail';
@@ -221,8 +248,9 @@ export const useSession = (): SessionModel => {
       stopTracks(captured);
       controller.sendVideoState('failed');
       controller.sendAudioState('failed');
+      const authorizationState = await window.sfscreen.getCaptureAuthorizationState().catch(() => 'idle' as const);
       await clearSource();
-      dispatch({ type: 'media', phase: 'failed', error: errorMessage(caught) });
+      dispatch({ type: 'media', phase: 'failed', error: captureErrorMessage(caught, authorizationState) });
     }
   }, [clearSource, recordDiagnostic, state.includeSystemAudio, state.phase, state.selectedSource, stopAudio, stopSharing]);
 
@@ -286,7 +314,7 @@ export const useSession = (): SessionModel => {
       const status = await requireReady();
       if (!status?.selfIp) return;
       const controller = createController();
-      const offer = await controller.createOffer(status.selfIp, crypto.randomUUID(), crypto.randomUUID());
+      const offer = await controller.createOffer(status.selfIps ?? [status.selfIp], status.selfIp, crypto.randomUUID(), crypto.randomUUID());
       const result = await window.sfscreen.hostSession(offer);
       if (!result.ok) return dispatch({ type: 'failed', message: result.error.message });
       dispatch({ type: 'hosted', hosted: result.value });
@@ -311,7 +339,7 @@ export const useSession = (): SessionModel => {
       remoteIpRef.current = found.value.hostIp;
       dispatch({ type: 'begin', role: 'viewer', phase: 'negotiating', message: 'Sessão encontrada. Criando conexão segura…' });
       const controller = createController();
-      const { answer, securityCode } = await controller.createAnswer(found.value.offer, status.selfIp);
+      const { answer, securityCode } = await controller.createAnswer(found.value.offer, status.selfIps ?? [status.selfIp], found.value.hostIp);
       dispatch({ type: 'verifying', securityCode, message: 'Resposta enviada. Aguarde o canal seguro e compare o código.' });
       const submitted = await window.sfscreen.submitAnswer(found.value.hostIp, code, answer);
       if (!submitted.ok) dispatch({ type: 'failed', message: submitted.error.message });
@@ -341,7 +369,7 @@ export const useSession = (): SessionModel => {
     const controllerMetrics = await controllerRef.current?.getMetrics().catch(() => undefined);
     if (controllerMetrics) metricsRef.current = controllerMetrics;
     const route = ['direct', 'relay', 'peer-relay', 'unknown'].includes(state.route) ? state.route as DiagnosticsReport['route'] : 'unknown';
-    const report: DiagnosticsReport = { formatVersion: diagnosticsFormatVersion, appVersion: '0.1.2', exportedAt: new Date().toISOString(), route, events: diagnosticEventsRef.current, metrics: metricsRef.current };
+    const report: DiagnosticsReport = { formatVersion: diagnosticsFormatVersion, appVersion: '0.1.3', exportedAt: new Date().toISOString(), route, events: diagnosticEventsRef.current, metrics: metricsRef.current };
     const result = await window.sfscreen.exportDiagnostics(report);
     return result.ok && result.value;
   }, [state.route]);

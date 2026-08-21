@@ -13,6 +13,7 @@ O SFScreen não protege contra malware, gravação local, alguém com acesso ao 
 - Captura exige frame principal, origem esperada, gesto do usuário, fonte enumerada e autorização de uso único. Áudio só usa `loopback` quando selecionado explicitamente.
 - Sinalização fica no IP Tailscale, aceita peers online da tailnet, limita tamanho/tentativas, expira em dez minutos e usa código de uso único com comparação constante.
 - Protocolo V3 rejeita clientes anteriores; ICE anuncia somente o IP Tailscale.
+- Chromium mDNS é desativado para tornar o IP do adaptador Tailscale identificável. O SFScreen continua descartando todos os candidatos que não correspondem exatamente ao IP Tailscale local antes de qualquer sinalização; endereços de LAN não são enviados ao peer.
 - CSP de produção permite conexões somente à própria origem; desenvolvimento adiciona somente o HMR localhost.
 - Diagnósticos usam formato permitido e não aceitam código, IP, SDP, candidato, fingerprint, nomes ou conteúdo de mídia.
 

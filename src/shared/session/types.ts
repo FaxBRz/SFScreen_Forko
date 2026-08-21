@@ -1,5 +1,6 @@
 export const signalingPort = 43917;
-export const webrtcUdpPortRange = { min: 43920, max: 44019 } as const;
+export const embeddedStunPort = 43920;
+export const webrtcUdpPortRange = { min: 43921, max: 44019 } as const;
 export const sessionLifetimeMs = 10 * 60 * 1000;
 export const maxSignalBytes = 256 * 1024;
 export const sessionProtocolVersion = 3 as const;
@@ -18,6 +19,7 @@ export interface TailscalePeer {
 export interface TailscaleStatus {
   state: TailscaleState;
   selfIp?: string;
+  selfIps?: string[];
   peers: TailscalePeer[];
   message?: string;
 }
@@ -85,6 +87,7 @@ export interface SFScreenApi {
   listScreenSources: () => Promise<SessionResult<import('../screen-source').ScreenSource[]>>;
   selectScreenSource: (selection: import('../screen-source').ScreenSelection) => Promise<SessionResult<void>>;
   clearScreenSource: () => Promise<SessionResult<void>>;
+  getCaptureAuthorizationState: () => Promise<import('../screen-source').CaptureAuthorizationState>;
   exportDiagnostics: (report: import('../diagnostics').DiagnosticsReport) => Promise<SessionResult<boolean>>;
   hostSession: (offer: SessionDescription) => Promise<SessionResult<HostedSession>>;
   findSession: (code: string) => Promise<SessionResult<DiscoveredSession>>;

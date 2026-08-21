@@ -12,12 +12,14 @@ describe('screen capture authorization', () => {
   it('authorizes the selected monitor once and only for the expected frame', async () => {
     const service = new ScreenCaptureService(vi.fn(async () => [source]) as never);
     await service.selectSource(9, { sourceId: source.id, includeSystemAudio: false });
+    expect(service.getAuthorizationState(9)).toBe('selected');
     const first = vi.fn();
     await service.handleDisplayRequest(request(), first, frame as never, 9);
     expect(first).toHaveBeenCalledWith({ video: source });
+    expect(service.getAuthorizationState(9)).toBe('authorized');
     const second = vi.fn();
     await service.handleDisplayRequest(request(), second, frame as never, 9);
-    expect(second).toHaveBeenCalledWith({});
+    expect(second).not.toHaveBeenCalled();
   });
 
   it('rejects audio, a missing selection, and a request from another frame', async () => {
@@ -25,10 +27,12 @@ describe('screen capture authorization', () => {
     await service.selectSource(9, { sourceId: source.id, includeSystemAudio: false });
     const deniedAudio = vi.fn();
     await service.handleDisplayRequest(request({ audioRequested: true }), deniedAudio, frame as never, 9);
-    expect(deniedAudio).toHaveBeenCalledWith({});
+    expect(deniedAudio).not.toHaveBeenCalled();
+    expect(service.getAuthorizationState(9)).toBe('rejected-audio');
     const deniedFrame = vi.fn();
     await service.handleDisplayRequest(request({ frame: {} }), deniedFrame, frame as never, 9);
-    expect(deniedFrame).toHaveBeenCalledWith({});
+    expect(deniedFrame).not.toHaveBeenCalled();
+    expect(service.getAuthorizationState(9)).toBe('rejected-frame');
   });
 
   it('grants Windows loopback only when it was explicitly selected', async () => {
@@ -39,11 +43,11 @@ describe('screen capture authorization', () => {
     expect(granted).toHaveBeenCalledWith({ video: source, audio: 'loopback' });
   });
 
-  it('rejects a request from another origin', async () => {
+  it('authorizes the selected source from the expected frame despite Electron origin serialization', async () => {
     const service = new ScreenCaptureService(vi.fn(async () => [source]) as never);
     await service.selectSource(9, { sourceId: source.id, includeSystemAudio: false });
-    const denied = vi.fn();
-    await service.handleDisplayRequest(request({ securityOrigin: 'https://example.test' }), denied, frame as never, 9);
-    expect(denied).toHaveBeenCalledWith({});
+    const granted = vi.fn();
+    await service.handleDisplayRequest(request({ securityOrigin: 'https://example.test' }), granted, frame as never, 9);
+    expect(granted).toHaveBeenCalledWith({ video: source });
   });
 });

@@ -6,12 +6,14 @@ import { ipcChannels } from '../shared/ipc';
 import { ScreenCaptureService } from './capture/screen-capture-service';
 import { DiagnosticsService } from './diagnostics-service';
 import { SessionServer } from './tailscale/session-server';
+import { TailscaleStunServer } from './tailscale/stun-server';
 import { TailscaleService } from './tailscale/tailscale-service';
 
 interface SessionIpcDependencies {
   ipcMain: IpcMain;
   tailscale: TailscaleService;
   sessionServer: SessionServer;
+  stunServer: TailscaleStunServer;
   screenCapture: ScreenCaptureService;
   diagnostics: DiagnosticsService;
   isAuthorizedSender: (sender: WebContents) => boolean;
@@ -19,7 +21,7 @@ interface SessionIpcDependencies {
 
 const invalid = <T>(message: string) => failure<T>('invalid-request', message);
 
-export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, screenCapture, diagnostics, isAuthorizedSender }: SessionIpcDependencies): void => {
+export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, stunServer, screenCapture, diagnostics, isAuthorizedSender }: SessionIpcDependencies): void => {
   const authorized = (sender: WebContents): boolean => !sender.isDestroyed() && isAuthorizedSender(sender);
   const unauthorized = <T>() => failure<T>('invalid-request', 'A origem desta solicitação não é autorizada.');
   ipcMain.handle(ipcChannels.listScreenSources, (event) => authorized(event.sender) ? toSessionResult(() => screenCapture.listSources()) : unauthorized());
@@ -37,12 +39,23 @@ export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, screenCa
     screenCapture.clearSource(event.sender.id);
     return undefined;
   }));
+  ipcMain.handle(ipcChannels.getCaptureAuthorizationState, (event) => authorized(event.sender) ? screenCapture.getAuthorizationState(event.sender.id) : 'idle');
   ipcMain.handle(ipcChannels.exportDiagnostics, (event, report: unknown) => !authorized(event.sender) ? unauthorized() : toSessionResult(() => diagnostics.export(event.sender.id, report as import('../shared/diagnostics').DiagnosticsReport)));
-  ipcMain.handle(ipcChannels.getTailscaleStatus, (event): Promise<TailscaleStatus> => authorized(event.sender) ? tailscale.getStatus(true) : Promise.resolve({ state: 'offline', peers: [], message: 'A origem desta solicitação não é autorizada.' }));
+  const readyStatus = async (): Promise<TailscaleStatus> => {
+    const status = await tailscale.getStatus(true);
+    if (status.state !== 'ready') return status;
+    try {
+      await stunServer.ensure(status);
+      return status;
+    } catch {
+      return { ...status, state: 'policy-blocked', message: 'Não foi possível reservar a porta UDP de descoberta no adaptador Tailscale.' };
+    }
+  };
+  ipcMain.handle(ipcChannels.getTailscaleStatus, (event): Promise<TailscaleStatus> => authorized(event.sender) ? readyStatus() : Promise.resolve({ state: 'offline', peers: [], message: 'A origem desta solicitação não é autorizada.' }));
   ipcMain.handle(ipcChannels.hostSession, (event, offer: unknown) => {
     if (!authorized(event.sender)) return unauthorized();
     if (!isSessionDescription(offer, 'offer')) return invalid('A oferta WebRTC é inválida ou incompatível.');
-    return toSessionResult(async () => sessionServer.host(offer as SessionDescription, await tailscale.getStatus(true), (answer) => {
+    return toSessionResult(async () => sessionServer.host(offer as SessionDescription, await readyStatus(), (answer) => {
       if (!event.sender.isDestroyed()) event.sender.send(ipcChannels.sessionAnswer, answer);
     }));
   });

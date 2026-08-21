@@ -5,10 +5,10 @@ describe('Tailscale status parser', () => {
   it('reports ready peers and their route', () => {
     const status = parseTailscaleStatus({
       BackendState: 'Running',
-      Self: { TailscaleIPs: ['100.90.1.2'] },
+      Self: { TailscaleIPs: ['100.90.1.2', 'fd7a:115c:a1e0::1'] },
       Peer: { peer: { ID: 'peer', DNSName: 'viewer.tailnet.ts.net.', TailscaleIPs: ['100.90.1.3'], Online: true, CurAddr: '203.0.113.2:41641' } },
     });
-    expect(status).toMatchObject({ state: 'ready', selfIp: '100.90.1.2', peers: [{ id: 'peer', route: 'direct' }] });
+    expect(status).toMatchObject({ state: 'ready', selfIp: '100.90.1.2', selfIps: ['100.90.1.2', 'fd7a:115c:a1e0::1'], peers: [{ id: 'peer', route: 'direct' }] });
   });
 
   it('reports unauthenticated and no-peer states', () => {

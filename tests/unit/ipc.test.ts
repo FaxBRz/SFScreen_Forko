@@ -7,6 +7,7 @@ describe('IPC channels', () => {
       listScreenSources: 'screen:list-sources',
       selectScreenSource: 'screen:select-source',
       clearScreenSource: 'screen:clear-source',
+      getCaptureAuthorizationState: 'screen:get-authorization-state',
       exportDiagnostics: 'diagnostics:export',
       getTailscaleStatus: 'tailscale:get-status',
       hostSession: 'session:host',

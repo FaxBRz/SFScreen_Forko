@@ -5,13 +5,19 @@ import { ScreenCaptureService } from './capture/screen-capture-service';
 import { DiagnosticsService } from './diagnostics-service';
 import { registerSessionIpc } from './session-ipc';
 import { SessionServer } from './tailscale/session-server';
+import { TailscaleStunServer } from './tailscale/stun-server';
 import { TailscaleService } from './tailscale/tailscale-service';
 
 let mainWindow: BrowserWindow | null = null;
 const tailscale = new TailscaleService();
 const sessionServer = new SessionServer(() => tailscale.getStatus(true));
+const stunServer = new TailscaleStunServer(() => tailscale.getStatus());
 const screenCapture = new ScreenCaptureService();
 const diagnostics = new DiagnosticsService();
+
+// The app signals only the Tailscale host candidate. Chromium otherwise hides it behind mDNS,
+// preventing the allowlist below from identifying the Tailscale adapter at all.
+app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 
 const createWindow = (): void => {
   mainWindow = new BrowserWindow({
@@ -39,15 +45,22 @@ const createWindow = (): void => {
 };
 
 app.whenReady().then(() => {
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
-  session.defaultSession.setPermissionCheckHandler(() => false);
+  const canRequestDisplayCapture = (webContents: Electron.WebContents | null): boolean => mainWindow !== null
+    && !mainWindow.isDestroyed()
+    && webContents === mainWindow.webContents
+    && screenCapture.hasSelection(webContents.id);
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback((permission === 'display-capture' || permission === 'media') && canRequestDisplayCapture(webContents));
+  });
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => permission === 'media' && canRequestDisplayCapture(webContents));
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    void screenCapture.handleDisplayRequest(request, callback, mainWindow?.webContents.mainFrame, mainWindow?.webContents.id);
+    void screenCapture.handleDisplayRequest(request, callback, mainWindow?.webContents.mainFrame, mainWindow?.webContents.id).catch(() => undefined);
   });
   registerSessionIpc({
     ipcMain,
     tailscale,
     sessionServer,
+    stunServer,
     screenCapture,
     diagnostics,
     isAuthorizedSender: (sender) => mainWindow !== null && !mainWindow.isDestroyed() && sender === mainWindow.webContents,
@@ -55,5 +68,5 @@ app.whenReady().then(() => {
   createWindow();
 });
 
-app.on('before-quit', () => { void sessionServer.stop(); });
+app.on('before-quit', () => { void Promise.all([sessionServer.stop(), stunServer.stop()]); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

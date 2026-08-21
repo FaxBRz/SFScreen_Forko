@@ -83,10 +83,11 @@ export class TailscaleService {
 
 export const parseTailscaleStatus = (parsed: RawStatus): TailscaleStatus => {
   if (parsed.BackendState !== 'Running') return { state: 'not-authenticated', peers: [], message: 'Entre na sua tailnet pelo aplicativo Tailscale.' };
-  const selfIp = parsed.Self?.TailscaleIPs?.find(isTailscaleIp);
+  const selfIps = parsed.Self?.TailscaleIPs?.filter(isTailscaleIp) ?? [];
+  const selfIp = selfIps.find((ip) => !ip.includes(':')) ?? selfIps[0];
   if (!selfIp) return { state: 'offline', peers: [], message: 'O Tailscale não possui um IP ativo neste computador.' };
   const peers = Object.values(parsed.Peer ?? {}).map(peerFrom).filter((peer): peer is TailscalePeer => peer !== undefined);
   const onlinePeers = peers.filter((peer) => peer.online);
-  if (onlinePeers.length === 0) return { state: 'no-peers', selfIp, peers, message: 'Nenhum outro computador da tailnet está online.' };
-  return { state: 'ready', selfIp, peers: onlinePeers };
+  if (onlinePeers.length === 0) return { state: 'no-peers', selfIp, selfIps, peers, message: 'Nenhum outro computador da tailnet está online.' };
+  return { state: 'ready', selfIp, selfIps, peers: onlinePeers };
 };

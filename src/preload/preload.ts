@@ -7,6 +7,7 @@ const api: SFScreenApi = {
   listScreenSources: () => ipcRenderer.invoke(ipcChannels.listScreenSources),
   selectScreenSource: (selection) => ipcRenderer.invoke(ipcChannels.selectScreenSource, selection),
   clearScreenSource: () => ipcRenderer.invoke(ipcChannels.clearScreenSource),
+  getCaptureAuthorizationState: () => ipcRenderer.invoke(ipcChannels.getCaptureAuthorizationState),
   exportDiagnostics: (report) => ipcRenderer.invoke(ipcChannels.exportDiagnostics, report),
   hostSession: (offer) => ipcRenderer.invoke(ipcChannels.hostSession, offer),
   findSession: (code) => ipcRenderer.invoke(ipcChannels.findSession, code),

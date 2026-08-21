@@ -1,5 +1,5 @@
 import { serializeControlMessage, parseControlMessage, type AudioState, type SessionControlMessage, type VideoState } from '../../shared/session/media-control';
-import { filterTailscaleCandidates } from '../../shared/session/network';
+import { filterTailscaleCandidates, tailscaleStunUrl } from '../../shared/session/network';
 import { sessionLifetimeMs, sessionProtocolVersion, type CandidateData, type SessionDescription } from '../../shared/session/types';
 import type { WebRtcMetrics } from '../../shared/diagnostics';
 
@@ -51,8 +51,8 @@ export class WebRtcSession {
 
   constructor(private readonly events: WebRtcSessionEvents) {}
 
-  async createOffer(selfIp: string, sessionId: string, nonce: string): Promise<SessionDescription> {
-    const peer = this.createPeer();
+  async createOffer(selfIps: readonly string[], stunServerIp: string, sessionId: string, nonce: string): Promise<SessionDescription> {
+    const peer = this.createPeer(stunServerIp);
     this.attachChannel(peer.createDataChannel('sfscreen-diagnostics', { ordered: true }));
     this.videoSender = peer.addTransceiver('video', { direction: 'sendonly' }).sender;
     this.audioSender = peer.addTransceiver('audio', { direction: 'sendonly' }).sender;
@@ -60,17 +60,17 @@ export class WebRtcSession {
     if (!offer.sdp) throw new Error('A oferta WebRTC não contém SDP.');
     await peer.setLocalDescription(offer);
     await waitForIce(peer);
-    return this.description('offer', offer.sdp, selfIp, sessionId, nonce);
+    return this.description('offer', offer.sdp, selfIps, sessionId, nonce);
   }
 
-  async createAnswer(offer: SessionDescription, selfIp: string): Promise<{ answer: SessionDescription; securityCode: string }> {
-    const peer = this.createPeer();
+  async createAnswer(offer: SessionDescription, selfIps: readonly string[], stunServerIp: string): Promise<{ answer: SessionDescription; securityCode: string }> {
+    const peer = this.createPeer(stunServerIp);
     await this.applyDescription(offer);
     const answer = await peer.createAnswer();
     if (!answer.sdp) throw new Error('A resposta WebRTC não contém SDP.');
     await peer.setLocalDescription(answer);
     await waitForIce(peer);
-    const description = this.description('answer', answer.sdp, selfIp, offer.sessionId, offer.nonce);
+    const description = this.description('answer', answer.sdp, selfIps, offer.sessionId, offer.nonce);
     return { answer: description, securityCode: await securityCodeFor(description.sessionId, description.nonce, offer.fingerprint, description.fingerprint) };
   }
 
@@ -151,9 +151,9 @@ export class WebRtcSession {
     this.previousOutbound = undefined;
   }
 
-  private createPeer(): RTCPeerConnection {
+  private createPeer(stunServerIp: string): RTCPeerConnection {
     this.close();
-    const peer = new RTCPeerConnection({ iceServers: [], iceTransportPolicy: 'all', bundlePolicy: 'max-bundle' });
+    const peer = new RTCPeerConnection({ iceServers: [{ urls: tailscaleStunUrl(stunServerIp) }], iceTransportPolicy: 'all', bundlePolicy: 'max-bundle' });
     peer.onicecandidate = (event) => { if (event.candidate) this.candidates.push(candidateData(event.candidate)); };
     peer.onconnectionstatechange = () => this.events.onConnectionState(peer.connectionState);
     peer.ondatachannel = (event) => this.attachChannel(event.channel);
@@ -184,9 +184,14 @@ export class WebRtcSession {
     for (const candidate of description.candidates) await this.peer.addIceCandidate(candidate);
   }
 
-  private description(type: 'offer' | 'answer', sdp: string, selfIp: string, sessionId: string, nonce: string): SessionDescription {
-    const candidates = filterTailscaleCandidates(this.candidates, selfIp);
-    if (candidates.length === 0) throw new Error('O Chromium não expôs um candidato ICE do adaptador Tailscale.');
+  private description(type: 'offer' | 'answer', sdp: string, selfIps: readonly string[], sessionId: string, nonce: string): SessionDescription {
+    const candidates = filterTailscaleCandidates(this.candidates, selfIps);
+    if (candidates.length === 0) {
+      const gathered = this.candidates.length;
+      throw new Error(gathered === 0
+        ? 'O Chromium não produziu candidatos ICE locais. Verifique se o adaptador Tailscale está ativo e tente novamente.'
+        : `O Chromium reuniu ${gathered} candidato(s) ICE, mas nenhum pertence aos adaptadores Tailscale locais.`);
+    }
     return { protocolVersion: sessionProtocolVersion, type, sdp, candidates, fingerprint: fingerprint(sdp), sessionId, nonce, expiresAt: new Date(Date.now() + sessionLifetimeMs).toISOString() };
   }
 }
