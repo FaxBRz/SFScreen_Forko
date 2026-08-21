@@ -4,6 +4,7 @@ import { App } from './app';
 import { installFilteredSystemAudio } from './filtered-system-audio';
 import { installWindowControls } from './window-controls';
 import './styles.css';
+import './lobby-layout.css';
 import './call-layout-fixes.css';
 
 installWindowControls();
