@@ -34,4 +34,20 @@ describe('session server integration', () => {
     servers.push(server);
     await expect(server.find('222-222-2', loopbackStatus)).rejects.toMatchObject({ sessionError: { code: 'invalid-response' } });
   });
+
+  it('uses protocol V2 for both signaling envelopes', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const server = new SessionServer(async () => loopbackStatus, {
+      fetch: async (_input, init) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(undefined, { status: bodies.length === 1 ? 404 : 204 });
+      },
+      isAllowedIp: () => true,
+    });
+    servers.push(server);
+    await expect(server.find('222-222-2', loopbackStatus)).rejects.toMatchObject({ sessionError: { code: 'session-not-found' } });
+    await server.submitAnswer('127.0.0.1', '222-222-2', answer);
+    expect(bodies).toHaveLength(2);
+    expect(bodies.every((body) => body.protocolVersion === sessionProtocolVersion)).toBe(true);
+  });
 });

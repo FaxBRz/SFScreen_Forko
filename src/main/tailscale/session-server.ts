@@ -4,7 +4,7 @@ import { fault } from '../../shared/session/errors';
 import { formatGeneratedSessionCode, normalizeSessionCode } from '../../shared/session/code';
 import { isTailscaleIp, tailscaleHttpUrl } from '../../shared/session/network';
 import { isSessionCode, isSessionDescription } from '../../shared/session/protocol';
-import { maxSignalBytes, sessionLifetimeMs, signalingPort, type DiscoveredSession, type HostedSession, type SessionAnswerEvent, type SessionDescription, type TailscaleStatus } from '../../shared/session/types';
+import { maxSignalBytes, sessionLifetimeMs, sessionProtocolVersion, signalingPort, type DiscoveredSession, type HostedSession, type SessionAnswerEvent, type SessionDescription, type TailscaleStatus } from '../../shared/session/types';
 import { RateLimiter } from './rate-limiter';
 
 interface ActiveSession {
@@ -153,7 +153,7 @@ export class SessionServer {
       return response(target, 400, { error: 'Invalid request' });
     }
     if (!body) return response(target, 400, { error: 'Invalid request' });
-    if (body.protocolVersion !== 1) return response(target, 426, { error: 'Protocol version mismatch' });
+    if (body.protocolVersion !== sessionProtocolVersion) return response(target, 426, { error: 'Protocol version mismatch' });
     if (!isSessionCode(body.code) || !sameCode(body.code, active.code)) return response(target, 404, { error: 'Not found' });
     if (request.url === '/v1/session/lookup') return response(target, 200, { offer: active.offer });
     if (request.url !== '/v1/session/answer' || body.sessionId !== active.offer.sessionId || !isSessionDescription(body.answer, 'answer') || Date.parse(body.answer.expiresAt) <= this.now()) return response(target, 400, { error: 'Invalid request' });
@@ -174,7 +174,7 @@ export class SessionServer {
       try {
         const result = await this.request(tailscaleHttpUrl(peer.ip, this.port, '/v1/session/lookup'), {
           method: 'POST',
-          body: JSON.stringify({ protocolVersion: 1, code }),
+          body: JSON.stringify({ protocolVersion: sessionProtocolVersion, code }),
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
         });
@@ -207,7 +207,7 @@ export class SessionServer {
     try {
       const result = await this.request(tailscaleHttpUrl(hostIp, this.port, '/v1/session/answer'), {
         method: 'POST',
-        body: JSON.stringify({ protocolVersion: 1, code, sessionId: answer.sessionId, answer }),
+        body: JSON.stringify({ protocolVersion: sessionProtocolVersion, code, sessionId: answer.sessionId, answer }),
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
       });
