@@ -102,7 +102,11 @@ export interface SFScreenApi {
   stopHostedSession: () => Promise<SessionResult<void>>;
   onSessionAnswer: (listener: (event: SessionAnswerEvent) => void) => () => void;
   toggleFullscreen: () => Promise<boolean>;
+  minimizeWindow: () => Promise<void>;
+  maximizeWindow: () => Promise<boolean>;
+  closeWindow: () => Promise<void>;
   startFilteredSystemAudio: () => Promise<SessionResult<FilteredAudioStart>>;
   stopFilteredSystemAudio: (captureId?: string) => Promise<SessionResult<void>>;
   onFilteredAudioChunk: (listener: (chunk: ArrayBuffer) => void) => () => void;
 }
+

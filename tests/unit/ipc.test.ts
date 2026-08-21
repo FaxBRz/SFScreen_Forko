@@ -15,6 +15,15 @@ describe('IPC channels', () => {
       submitAnswer: 'session:submit-answer',
       stopHostedSession: 'session:stop-hosted',
       sessionAnswer: 'session:answer',
+      toggleFullscreen: 'window:toggle-fullscreen',
+      minimizeWindow: 'window:minimize',
+      maximizeWindow: 'window:maximize',
+      closeWindow: 'window:close',
+      startFilteredSystemAudio: 'audio:start-filtered-system',
+      stopFilteredSystemAudio: 'audio:stop-filtered-system',
+      filteredAudioChunk: 'audio:filtered-chunk',
     });
   });
 });
+
+

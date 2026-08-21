@@ -19,7 +19,11 @@ const api: SFScreenApi = {
     return () => ipcRenderer.removeListener(ipcChannels.sessionAnswer, callback);
   },
   toggleFullscreen: () => ipcRenderer.invoke(ipcChannels.toggleFullscreen),
+  minimizeWindow: () => ipcRenderer.invoke(ipcChannels.minimizeWindow),
+  maximizeWindow: () => ipcRenderer.invoke(ipcChannels.maximizeWindow),
+  closeWindow: () => ipcRenderer.invoke(ipcChannels.closeWindow),
   startFilteredSystemAudio: () => ipcRenderer.invoke(ipcChannels.startFilteredSystemAudio),
+
   stopFilteredSystemAudio: (captureId) => ipcRenderer.invoke(ipcChannels.stopFilteredSystemAudio, captureId),
   onFilteredAudioChunk: (listener) => {
     const callback = (_event: Electron.IpcRendererEvent, chunk: Uint8Array): void => {

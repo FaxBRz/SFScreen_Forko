@@ -26,13 +26,17 @@ app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 
 const createWindow = (): void => {
   mainWindow = new BrowserWindow({
-    width: 1120,
+    width: 1180,
     height: 760,
     minWidth: 880,
     minHeight: 600,
     show: false,
+    frame: false,
+    titleBarStyle: 'hidden',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false },
   });
+
+
   mainWindow.setMenuBarVisibility(false);
   mainWindow.webContents.setWebRTCIPHandlingPolicy('default');
   mainWindow.webContents.setWebRTCUDPPortRange(webrtcUdpPortRange);

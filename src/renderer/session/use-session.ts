@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { formatSessionCode, normalizeSessionCode } from '../../shared/session/code';
 import { diagnosticsFormatVersion, type DiagnosticEvent, type DiagnosticsReport, type WebRtcMetrics } from '../../shared/diagnostics';
 import type { ScreenSelection, ScreenSource } from '../../shared/screen-source';
+import type { ChatMessagePayload } from '../../shared/session/media-control';
 import type { SessionError, TailscaleStatus } from '../../shared/session/types';
 import { initialSessionState, sessionReducer, type AudioPhase, type MediaPhase, type SessionUiState } from './session-machine';
 import { WebRtcSession } from './webrtc-session';
@@ -45,18 +46,168 @@ const captureErrorMessage = (error: unknown, state: import('../../shared/screen-
   return errorMessage(error);
 };
 
+const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void } => {
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1280;
+  canvas.height = 720;
+  const ctx = canvas.getContext('2d');
+
+  let animationFrame: number | null = null;
+  let t = 0;
+
+  const renderFrame = () => {
+    if (!ctx) return;
+    t += 0.03;
+
+    const grad = ctx.createLinearGradient(0, 0, 1280, 720);
+    grad.addColorStop(0, '#0c0e14');
+    grad.addColorStop(0.5, '#161926');
+    grad.addColorStop(1, '#0c0e14');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1280, 720);
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < 1280; x += 40) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 720);
+      ctx.stroke();
+    }
+    for (let y = 0; y < 720; y += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(1280, y);
+      ctx.stroke();
+    }
+
+    const centerX = 640 + Math.sin(t * 0.8) * 80;
+    const centerY = 320 + Math.cos(t * 0.9) * 40;
+
+    for (let i = 4; i >= 1; i--) {
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 70 + i * 25 + Math.sin(t * 2 + i) * 10, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(35, 165, 90, ${0.03 * i})`;
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 55, 0, Math.PI * 2);
+    ctx.fillStyle = '#23a55a';
+    ctx.fill();
+    ctx.strokeStyle = '#57f287';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.fillStyle = '#07130a';
+    ctx.font = 'bold 22px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('LIVE', centerX, centerY);
+
+    ctx.beginPath();
+    ctx.moveTo(0, 520);
+    for (let x = 0; x < 1280; x += 10) {
+      const y = 520 + Math.sin(x * 0.01 + t * 3) * 25 + Math.cos(x * 0.02 + t * 2) * 15;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(1280, 720);
+    ctx.lineTo(0, 720);
+    ctx.closePath();
+    const waveGrad = ctx.createLinearGradient(0, 500, 0, 720);
+    waveGrad.addColorStop(0, 'rgba(88, 101, 242, 0.25)');
+    waveGrad.addColorStop(1, 'rgba(35, 165, 90, 0.05)');
+    ctx.fillStyle = waveGrad;
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fillRect(40, 40, 1200, 70);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.strokeRect(40, 40, 1200, 70);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('📺 Transmissão Remota Simulada · SFScreen', 65, 82);
+
+    ctx.fillStyle = '#23a55a';
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    const now = new Date();
+    const timeStr = `${now.toLocaleTimeString('pt-BR')}.${String(Math.floor(now.getMilliseconds() / 10)).padStart(2, '0')}`;
+    ctx.fillText(`60 FPS · 1080p · ${timeStr}`, 1215, 82);
+
+    ctx.fillStyle = '#5865f2';
+    for (let b = 0; b < 24; b++) {
+      const barH = 10 + Math.abs(Math.sin(t * 4 + b * 0.4)) * 40;
+      ctx.fillRect(65 + b * 8, 620 - barH, 5, barH);
+    }
+
+    ctx.fillStyle = '#949ba4';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Áudio estéreo sintetizado (Teste de latência e PiP)', 280, 615);
+
+    animationFrame = requestAnimationFrame(renderFrame);
+  };
+
+  renderFrame();
+
+  const stream = canvas.captureStream ? canvas.captureStream(30) : new MediaStream();
+
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (AudioCtx) {
+      const ctxAudio = new AudioCtx();
+      const osc = ctxAudio.createOscillator();
+      const gain = ctxAudio.createGain();
+      const dest = ctxAudio.createMediaStreamDestination();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220, ctxAudio.currentTime);
+      gain.gain.setValueAtTime(0.01, ctxAudio.currentTime);
+
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start();
+
+      dest.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
+    }
+  } catch {
+    // Unsupported in headless/mock test
+  }
+
+  const stop = () => {
+    if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+    stream.getTracks().forEach((track) => track.stop());
+  };
+
+  return { stream, stop };
+};
+
+export type StreamResolution = '720p' | '1080p' | '1440p';
+export type StreamFps = 30 | 60;
+
+
 export interface SessionModel {
   state: SessionUiState;
   joinCode: string;
   sources: ScreenSource[];
   sourcePickerOpen: boolean;
+  resolution: StreamResolution;
+  fps: StreamFps;
   localStream?: MediaStream;
   remoteStream?: MediaStream;
   remoteMediaPhase?: MediaPhase;
   remoteMediaError?: string;
   remoteAudioPhase?: AudioPhase;
   remoteAudioError?: string;
+  isSimulatedPeer: boolean;
   setJoinCode: (value: string) => void;
+  setResolution: (resolution: StreamResolution) => void;
+  setFps: (fps: StreamFps) => void;
+  toggleSystemAudio: () => Promise<void>;
   refresh: () => Promise<TailscaleStatus | undefined>;
   openSourcePicker: () => Promise<void>;
   closeSourcePicker: () => void;
@@ -70,20 +221,32 @@ export interface SessionModel {
   close: () => Promise<void>;
   copyCode: () => Promise<boolean>;
   exportDiagnostics: () => Promise<boolean>;
+  sendChatMessage: (text: string) => void;
+  setUserName: (name: string) => void;
+  toggleSessionModal: (open?: boolean) => void;
+  toggleChatPanel: (open?: boolean) => void;
+  simulatePeer: (enable?: boolean) => void;
 }
+
 
 export const useSession = (): SessionModel => {
   const [state, dispatch] = useReducer(sessionReducer, initialSessionState);
   const [joinCode, setJoinCodeState] = useState('');
   const [sources, setSources] = useState<ScreenSource[]>([]);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+  const [resolution, setResolution] = useState<StreamResolution>('1080p');
+  const [fps, setFps] = useState<StreamFps>(60);
   const [localStream, setLocalStream] = useState<MediaStream | undefined>(undefined);
+
   const [remoteStream, setRemoteStream] = useState<MediaStream | undefined>(undefined);
   const [remoteMediaPhase, setRemoteMediaPhase] = useState<MediaPhase>('stopped');
   const [remoteMediaError, setRemoteMediaError] = useState<string | undefined>(undefined);
   const [remoteAudioPhase, setRemoteAudioPhase] = useState<AudioPhase>('unavailable');
   const [remoteAudioError, setRemoteAudioError] = useState<string | undefined>(undefined);
+  const [isSimulatedPeer, setIsSimulatedPeer] = useState(false);
+  const simulatedStreamCleanupRef = useRef<(() => void) | null>(null);
   const controllerRef = useRef<WebRtcSession | undefined>(undefined);
+
   const remoteIpRef = useRef<string | undefined>(undefined);
   const localConfirmedRef = useRef(false);
   const remoteConfirmedRef = useRef(false);
@@ -93,6 +256,11 @@ export const useSession = (): SessionModel => {
   const sessionStartedAtRef = useRef<number | undefined>(undefined);
   const diagnosticEventsRef = useRef<Array<{ atMs: number; event: DiagnosticEvent }>>([]);
   const metricsRef = useRef<WebRtcMetrics>({});
+  const localUserNameRef = useRef(state.localUserName);
+
+  useEffect(() => {
+    localUserNameRef.current = state.localUserName;
+  }, [state.localUserName]);
 
   const recordDiagnostic = useCallback((event: DiagnosticEvent): void => {
     const startedAt = sessionStartedAtRef.current;
@@ -148,7 +316,9 @@ export const useSession = (): SessionModel => {
   }, [clearSource, recordDiagnostic]);
 
   const close = useCallback(async (): Promise<void> => {
-    await stopSharing();
+    simulatedStreamCleanupRef.current?.();
+    simulatedStreamCleanupRef.current = null;
+    setIsSimulatedPeer(false);
     controllerRef.current?.close();
     controllerRef.current = undefined;
     remoteIpRef.current = undefined;
@@ -162,13 +332,15 @@ export const useSession = (): SessionModel => {
     await window.sfscreen.stopHostedSession();
     recordDiagnostic('session-closed');
     dispatch({ type: 'closed' });
-  }, [recordDiagnostic, stopSharing]);
+  }, [recordDiagnostic]);
+
 
   const createController = useCallback((): WebRtcSession => {
     controllerRef.current?.close();
     const controller = new WebRtcSession({
       onChannelOpen: () => {
         recordDiagnostic('channel-open');
+        controller.sendUserProfile(localUserNameRef.current);
         dispatch({ type: 'verifying', message: 'Canal seguro conectado. Compare o código de segurança.' });
       },
       onControlMessage: (message) => {
@@ -179,6 +351,14 @@ export const useSession = (): SessionModel => {
             recordDiagnostic('verified');
             dispatch({ type: 'connected' });
           }
+          return;
+        }
+        if (message.type === 'user-profile') {
+          dispatch({ type: 'set-remote-user-name', name: message.userName });
+          return;
+        }
+        if (message.type === 'chat-message') {
+          dispatch({ type: 'add-chat-message', message: message.message });
           return;
         }
         if (message.type === 'audio-state') {
@@ -223,7 +403,7 @@ export const useSession = (): SessionModel => {
 
   const activatePreparedStream = useCallback(async (stream: MediaStream): Promise<void> => {
     const controller = controllerRef.current;
-    if (!controller) throw new Error('A sessão WebRTC não está disponível.');
+    if (!controller) return;
     const videoTrack = stream.getVideoTracks().find((track) => track.readyState === 'live');
     if (!videoTrack) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
 
@@ -262,15 +442,15 @@ export const useSession = (): SessionModel => {
 
   const captureAndAttach = useCallback(async (source: ScreenSource, includeSystemAudio: boolean, selectionAlreadyArmed: boolean): Promise<void> => {
     const controller = controllerRef.current;
-    if (!controller || state.phase !== 'connected') return;
+    const isConnected = state.phase === 'connected';
     const previous = localStreamRef.current;
     let captured: MediaStream | undefined;
 
-    controller.sendVideoState('starting');
+    controller?.sendVideoState('starting');
     dispatch({ type: 'media', phase: 'starting' });
     recordDiagnostic('video-starting');
     if (includeSystemAudio) {
-      controller.sendAudioState('starting');
+      controller?.sendAudioState('starting');
       dispatch({ type: 'audio', phase: 'starting' });
       recordDiagnostic('audio-starting');
     }
@@ -288,26 +468,35 @@ export const useSession = (): SessionModel => {
       videoTrack.contentHint = 'detail';
       videoTrack.enabled = true;
       videoTrack.onended = () => { if (localStreamRef.current === captured) void stopSharing(); };
-      await controller.replaceVideoTrack(videoTrack);
+
+      if (isConnected && controller) {
+        await controller.replaceVideoTrack(videoTrack);
+      }
 
       if (includeSystemAudio) {
         const audioTrack = captured.getAudioTracks()[0];
         if (audioTrack) {
           audioTrack.enabled = true;
           audioTrack.onended = () => { if (localStreamRef.current === captured) void stopAudio(); };
-          await controller.replaceAudioTrack(audioTrack);
-          controller.sendAudioState('active');
+          if (isConnected && controller) {
+            await controller.replaceAudioTrack(audioTrack);
+            controller.sendAudioState('active');
+          }
           dispatch({ type: 'audio', phase: 'active' });
           recordDiagnostic('audio-active');
         } else {
-          await controller.removeAudioTrack();
-          controller.sendAudioState('unavailable');
+          if (isConnected && controller) {
+            await controller.removeAudioTrack();
+            controller.sendAudioState('unavailable');
+          }
           dispatch({ type: 'audio', phase: 'unavailable', error: 'O Windows não disponibilizou o áudio do sistema.' });
-          recordDiagnostic('audio-unavailable');
+recordDiagnostic('audio-unavailable');
         }
       } else {
-        await controller.removeAudioTrack();
-        controller.sendAudioState('unavailable');
+        if (isConnected && controller) {
+          await controller.removeAudioTrack();
+          controller.sendAudioState('unavailable');
+        }
         dispatch({ type: 'audio', phase: 'unavailable' });
       }
 
@@ -315,7 +504,7 @@ export const useSession = (): SessionModel => {
       capturedSourceIdRef.current = source.id;
       setLocalStream(captured);
       if (previous && previous !== captured) stopTracks(previous);
-      controller.sendVideoState('active');
+      controller?.sendVideoState('active');
       dispatch({ type: 'media', phase: 'sharing' });
       recordDiagnostic('video-active');
     } catch (caught) {
@@ -323,23 +512,34 @@ export const useSession = (): SessionModel => {
       const authorizationState = await window.sfscreen.getCaptureAuthorizationState().catch(() => 'idle' as const);
       const message = captureErrorMessage(caught, authorizationState);
       if (previous?.getVideoTracks().some((track) => track.readyState === 'live')) {
-        controller.sendVideoState('active');
+        controller?.sendVideoState('active');
         dispatch({ type: 'media', phase: 'sharing', error: message });
       } else {
-        controller.sendVideoState('failed');
-        controller.sendAudioState('failed');
+        controller?.sendVideoState('failed');
+        controller?.sendAudioState('failed');
         dispatch({ type: 'media', phase: 'failed', error: message });
       }
     }
   }, [recordDiagnostic, state.phase, stopAudio, stopSharing]);
 
+  const openSourcePicker = useCallback(async (): Promise<void> => {
+    const result = await window.sfscreen.listScreenSources();
+    if (!result.ok) return dispatch({ type: 'media', phase: 'failed', error: result.error.message });
+    setSources(result.value);
+    setSourcePickerOpen(true);
+  }, []);
+
   const startSharing = useCallback(async (): Promise<void> => {
-    if (!state.selectedSource || state.phase !== 'connected') return;
+    if (!state.selectedSource) return void openSourcePicker();
     const prepared = localStreamRef.current;
     const preparedVideo = prepared?.getVideoTracks().find((track) => track.readyState === 'live');
     if (prepared && preparedVideo && capturedSourceIdRef.current === state.selectedSource.id) {
       try {
-        await activatePreparedStream(prepared);
+        if (state.phase === 'connected') await activatePreparedStream(prepared);
+        else {
+          dispatch({ type: 'media', phase: 'sharing' });
+          if (state.includeSystemAudio) dispatch({ type: 'audio', phase: 'active' });
+        }
       } catch (caught) {
         controllerRef.current?.sendVideoState('failed');
         dispatch({ type: 'media', phase: 'failed', error: errorMessage(caught) });
@@ -347,7 +547,7 @@ export const useSession = (): SessionModel => {
       return;
     }
     await captureAndAttach(state.selectedSource, state.includeSystemAudio, true);
-  }, [activatePreparedStream, captureAndAttach, state.includeSystemAudio, state.phase, state.selectedSource]);
+  }, [activatePreparedStream, captureAndAttach, openSourcePicker, state.includeSystemAudio, state.phase, state.selectedSource]);
 
   useEffect(() => {
     void refresh();
@@ -360,7 +560,7 @@ export const useSession = (): SessionModel => {
       if (!controller) return;
       void controller.applyAnswer(event.answer).then((securityCode) => {
         remoteIpRef.current = event.peerIp;
-        dispatch({ type: 'verifying', securityCode, message: 'Resposta recebida. Aguarde o canal seguro e compare o código.' });
+        dispatch({ type: 'verifying', securityCode, message: 'Resposta recebida. Compare o código de segurança.' });
       }).catch((caught: unknown) => dispatch({ type: 'failed', message: errorMessage(caught) }));
     });
     return () => {
@@ -383,57 +583,68 @@ export const useSession = (): SessionModel => {
     return status;
   }, [refresh]);
 
-  const openSourcePicker = useCallback(async (): Promise<void> => {
-    const result = await window.sfscreen.listScreenSources();
-    if (!result.ok) return dispatch({ type: 'media', phase: 'failed', error: result.error.message });
-    setSources(result.value);
-    setSourcePickerOpen(true);
-  }, []);
-
   const selectSource = useCallback(async (source: ScreenSource, includeSystemAudio: boolean): Promise<void> => {
     const selection: ScreenSelection = { sourceId: source.id, includeSystemAudio };
     const result = await window.sfscreen.selectScreenSource(selection);
     if (!result.ok) return dispatch({ type: 'media', phase: 'failed', error: result.error.message });
-    const switchingWhileSharing = state.phase === 'connected' && state.mediaPhase === 'sharing';
     dispatch({ type: 'source-selected', source, includeSystemAudio });
     setSourcePickerOpen(false);
-    if (switchingWhileSharing) await captureAndAttach(source, includeSystemAudio, true);
-  }, [captureAndAttach, state.mediaPhase, state.phase]);
+    await captureAndAttach(source, includeSystemAudio, true);
+  }, [captureAndAttach]);
+
+  const toggleSystemAudio = useCallback(async (): Promise<void> => {
+    if (!state.selectedSource || state.mediaPhase !== 'sharing') return;
+    const newAudio = !state.includeSystemAudio;
+    const currentStream = localStreamRef.current;
+    const controller = controllerRef.current;
+    const isConnected = state.phase === 'connected';
+
+    if (!newAudio) {
+      if (currentStream) {
+        currentStream.getAudioTracks().forEach((track) => {
+          track.enabled = false;
+        });
+      }
+      if (isConnected && controller) {
+        await controller.removeAudioTrack();
+        controller.sendAudioState('unavailable');
+      }
+      dispatch({ type: 'source-selected', source: state.selectedSource, includeSystemAudio: false });
+      dispatch({ type: 'audio', phase: 'unavailable' });
+      recordDiagnostic('audio-stopped');
+    } else {
+      const existingAudioTrack = currentStream?.getAudioTracks().find((t) => t.readyState === 'live');
+      if (existingAudioTrack) {
+        existingAudioTrack.enabled = true;
+        if (isConnected && controller) {
+          await controller.replaceAudioTrack(existingAudioTrack);
+          controller.sendAudioState('active');
+        }
+        dispatch({ type: 'source-selected', source: state.selectedSource, includeSystemAudio: true });
+        dispatch({ type: 'audio', phase: 'active' });
+        recordDiagnostic('audio-active');
+      } else {
+        dispatch({ type: 'source-selected', source: state.selectedSource, includeSystemAudio: true });
+        await captureAndAttach(state.selectedSource, true, false);
+      }
+    }
+  }, [captureAndAttach, recordDiagnostic, state.includeSystemAudio, state.mediaPhase, state.phase, state.selectedSource]);
+
+
 
   const host = useCallback(async (): Promise<void> => {
-    if (!state.selectedSource) return void openSourcePicker();
-
-    const capturePromise = captureDisplayStream(state.includeSystemAudio);
     dispatch({ type: 'begin', role: 'host', phase: 'hosting', message: 'Preparando a conexão segura…' });
     sessionStartedAtRef.current = Date.now();
     diagnosticEventsRef.current = [];
     metricsRef.current = {};
     recordDiagnostic('session-started');
 
-    let captured: MediaStream | undefined;
     try {
       const status = await requireReady();
-      if (!status?.selfIp) {
-        void capturePromise.then(stopTracks).catch(() => undefined);
-        return;
-      }
+      if (!status?.selfIp) return;
 
-      captured = await capturePromise;
-      const videoTrack = captured.getVideoTracks()[0];
-      if (!videoTrack) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
-      videoTrack.contentHint = 'detail';
-      videoTrack.enabled = false;
-      videoTrack.onended = () => { if (localStreamRef.current === captured) void stopSharing(); };
-
-      const audioTrack = state.includeSystemAudio ? captured.getAudioTracks()[0] : undefined;
-      if (audioTrack) {
-        audioTrack.enabled = false;
-        audioTrack.onended = () => { if (localStreamRef.current === captured) void stopAudio(); };
-      }
-
-      localStreamRef.current = captured;
-      capturedSourceIdRef.current = state.selectedSource.id;
-      setLocalStream(captured);
+      const videoTrack = localStreamRef.current?.getVideoTracks().find((track) => track.readyState === 'live');
+      const audioTrack = state.includeSystemAudio ? localStreamRef.current?.getAudioTracks().find((track) => track.readyState === 'live') : undefined;
 
       const controller = createController();
       const offer = await controller.createOffer(
@@ -448,18 +659,10 @@ export const useSession = (): SessionModel => {
       if (!result.ok) throw new Error(result.error.message);
       dispatch({ type: 'hosted', hosted: result.value });
     } catch (caught) {
-      stopTracks(captured);
-      if (localStreamRef.current === captured) {
-        localStreamRef.current = undefined;
-        capturedSourceIdRef.current = undefined;
-        setLocalStream(undefined);
-      }
       controllerRef.current?.close();
-      const authorizationState = await window.sfscreen.getCaptureAuthorizationState().catch(() => 'idle' as const);
-      await clearSource();
-      dispatch({ type: 'failed', message: captureErrorMessage(caught, authorizationState) });
+      dispatch({ type: 'failed', message: errorMessage(caught) });
     }
-  }, [clearSource, createController, openSourcePicker, recordDiagnostic, requireReady, state.includeSystemAudio, state.selectedSource, stopAudio, stopSharing]);
+  }, [createController, recordDiagnostic, requireReady, state.includeSystemAudio]);
 
   const join = useCallback(async (): Promise<void> => {
     const code = formatSessionCode(joinCode);
@@ -477,7 +680,7 @@ export const useSession = (): SessionModel => {
       dispatch({ type: 'begin', role: 'viewer', phase: 'negotiating', message: 'Sessão encontrada. Criando conexão segura…' });
       const controller = createController();
       const { answer, securityCode } = await controller.createAnswer(found.value.offer, status.selfIps ?? [status.selfIp], found.value.hostIp);
-      dispatch({ type: 'verifying', securityCode, message: 'Resposta enviada. Aguarde o canal seguro e compare o código.' });
+      dispatch({ type: 'verifying', securityCode, message: 'Resposta enviada. Compare o código de segurança.' });
       const submitted = await window.sfscreen.submitAnswer(found.value.hostIp, code, answer);
       if (!submitted.ok) dispatch({ type: 'failed', message: submitted.error.message });
     } catch (caught) {
@@ -489,12 +692,16 @@ export const useSession = (): SessionModel => {
   const confirmSecurity = useCallback((): void => {
     localConfirmedRef.current = true;
     controllerRef.current?.confirmSecurity();
+    controllerRef.current?.sendUserProfile(localUserNameRef.current);
     dispatch({ type: 'local-confirmed' });
     if (remoteConfirmedRef.current) {
       recordDiagnostic('verified');
       dispatch({ type: 'connected' });
+      if (localStreamRef.current) {
+        void activatePreparedStream(localStreamRef.current);
+      }
     }
-  }, [recordDiagnostic]);
+  }, [activatePreparedStream, recordDiagnostic]);
 
   const setJoinCode = useCallback((value: string): void => setJoinCodeState(normalizeSessionCode(value)), []);
 
@@ -512,18 +719,89 @@ export const useSession = (): SessionModel => {
     return result.ok && result.value;
   }, [state.route]);
 
+  const sendChatMessage = useCallback((text: string): void => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const message: ChatMessagePayload = {
+      id: crypto.randomUUID(),
+      senderName: state.localUserName,
+      text: trimmed,
+      timestamp: Date.now(),
+    };
+    dispatch({ type: 'add-chat-message', message });
+    if (state.phase === 'connected') {
+      controllerRef.current?.sendChatMessage(message);
+    }
+  }, [state.localUserName, state.phase]);
+
+  const setUserName = useCallback((name: string): void => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    dispatch({ type: 'set-user-name', name: trimmed });
+    if (state.phase === 'connected') {
+      controllerRef.current?.sendUserProfile(trimmed);
+    }
+  }, [state.phase]);
+
+  const toggleSessionModal = useCallback((open?: boolean): void => {
+    dispatch({ type: 'toggle-session-modal', open });
+  }, []);
+
+  const toggleChatPanel = useCallback((open?: boolean): void => {
+    dispatch({ type: 'toggle-chat-panel', open });
+  }, []);
+
+  const simulatePeer = useCallback((enable?: boolean): void => {
+    const shouldEnable = enable !== undefined ? enable : !isSimulatedPeer;
+    if (!shouldEnable) {
+      simulatedStreamCleanupRef.current?.();
+      simulatedStreamCleanupRef.current = null;
+      setIsSimulatedPeer(false);
+      setRemoteStream(undefined);
+      setRemoteMediaPhase('stopped');
+      setRemoteAudioPhase('unavailable');
+      dispatch({ type: 'closed' });
+      return;
+    }
+
+    simulatedStreamCleanupRef.current?.();
+    const { stream, stop } = createSimulatedScreenStream();
+    simulatedStreamCleanupRef.current = stop;
+    setIsSimulatedPeer(true);
+    setRemoteStream(stream);
+    setRemoteMediaPhase('sharing');
+    setRemoteAudioPhase('active');
+    dispatch({ type: 'connected', route: 'direct' });
+    dispatch({ type: 'set-remote-user-name', userName: 'Alex (Simulado)' });
+    dispatch({
+      type: 'add-chat-message',
+      message: {
+        id: crypto.randomUUID(),
+        senderName: 'Alex (Simulado)',
+        text: 'Olá! Sou o participante simulado. Você pode testar compartilhar sua tela, alternar o foco no PiP, minimizar/mudar de janela para testar economia de RAM, ou trocar a qualidade!',
+        timestamp: Date.now(),
+      },
+    });
+  }, [isSimulatedPeer]);
+
   return {
     state,
     joinCode,
     sources,
     sourcePickerOpen,
+    resolution,
+    fps,
     localStream,
     remoteStream,
     remoteMediaPhase,
     remoteMediaError,
     remoteAudioPhase,
     remoteAudioError,
+    isSimulatedPeer,
     setJoinCode,
+    setResolution,
+    setFps,
+    toggleSystemAudio,
     refresh,
     openSourcePicker,
     closeSourcePicker: () => setSourcePickerOpen(false),
@@ -537,5 +815,12 @@ export const useSession = (): SessionModel => {
     close,
     copyCode,
     exportDiagnostics,
+    sendChatMessage,
+    setUserName,
+    toggleSessionModal,
+    toggleChatPanel,
+    simulatePeer,
   };
 };
+
+

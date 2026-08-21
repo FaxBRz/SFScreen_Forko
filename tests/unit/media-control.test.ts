@@ -14,9 +14,27 @@ describe('media control protocol', () => {
     expect(parseControlMessage(JSON.stringify({ protocolVersion: sessionProtocolVersion, type: 'audio-state', state: 'microphone' }))).toBeUndefined();
   });
 
+  it('round-trips user-profile and chat-message', () => {
+    const profile = { protocolVersion: sessionProtocolVersion, type: 'user-profile' as const, userName: 'Rafael' };
+    expect(parseControlMessage(serializeControlMessage(profile))).toEqual(profile);
+
+    const chat = {
+      protocolVersion: sessionProtocolVersion,
+      type: 'chat-message' as const,
+      message: {
+        id: 'msg-1',
+        senderName: 'Rafael',
+        text: 'Olá amigo',
+        timestamp: 1700000000000,
+      },
+    };
+    expect(parseControlMessage(serializeControlMessage(chat))).toEqual(chat);
+  });
+
   it('rejects malformed and older protocol messages', () => {
     expect(parseControlMessage('{')).toBeUndefined();
     expect(parseControlMessage(JSON.stringify({ protocolVersion: 1, type: 'video-state', state: 'active' }))).toBeUndefined();
     expect(parseControlMessage(JSON.stringify({ protocolVersion: sessionProtocolVersion, type: 'video-state', state: 'playing' }))).toBeUndefined();
   });
 });
+

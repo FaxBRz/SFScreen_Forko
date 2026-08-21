@@ -1,4 +1,4 @@
-import { serializeControlMessage, parseControlMessage, type AudioState, type SessionControlMessage, type VideoState } from '../../shared/session/media-control';
+import { serializeControlMessage, parseControlMessage, type AudioState, type ChatMessagePayload, type SessionControlMessage, type VideoState } from '../../shared/session/media-control';
 import { filterTailscaleCandidates, tailscaleStunUrl } from '../../shared/session/network';
 import { sessionLifetimeMs, sessionProtocolVersion, type CandidateData, type SessionDescription } from '../../shared/session/types';
 import type { WebRtcMetrics } from '../../shared/diagnostics';
@@ -121,6 +121,14 @@ export class WebRtcSession {
   confirmSecurity(): void {
     this.confirmed = true;
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'security-confirmed' });
+  }
+
+  sendUserProfile(userName: string): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'user-profile', userName });
+  }
+
+  sendChatMessage(message: ChatMessagePayload): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'chat-message', message });
   }
 
   sendVideoState(state: VideoState): void {

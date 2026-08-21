@@ -20,6 +20,33 @@ export const registerRuntimeIpc = ({ ipcMain, audioCapture, isAuthorizedSender }
     return window.isFullScreen();
   });
 
+  ipcMain.handle(ipcChannels.minimizeWindow, (event): void => {
+    if (!authorized(event.sender)) return;
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed()) return;
+    window.minimize();
+  });
+
+  ipcMain.handle(ipcChannels.maximizeWindow, (event): boolean => {
+    if (!authorized(event.sender)) return false;
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed()) return false;
+    if (window.isMaximized()) {
+      window.unmaximize();
+      return false;
+    }
+    window.maximize();
+    return true;
+  });
+
+  ipcMain.handle(ipcChannels.closeWindow, (event): void => {
+    if (!authorized(event.sender)) return;
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed()) return;
+    window.close();
+  });
+
+
   ipcMain.handle(ipcChannels.startFilteredSystemAudio, (event) => {
     if (!authorized(event.sender)) return failure('invalid-request', 'A origem desta solicitação não é autorizada.');
     return toSessionResult(() => audioCapture.start((chunk) => {

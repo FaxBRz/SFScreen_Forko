@@ -76,12 +76,12 @@ const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle> => {
   }
 
   let disposed = false;
-  let watchdog: number | undefined;
+  const watchdogTimer = { id: undefined as number | undefined };
   const nativeStop = track.stop.bind(track);
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
-    if (watchdog !== undefined) window.clearInterval(watchdog);
+    if (watchdogTimer.id !== undefined) window.clearInterval(watchdogTimer.id);
     unsubscribe();
     processor.onaudioprocess = null;
     processor.disconnect();
@@ -102,11 +102,12 @@ const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle> => {
   }
 
   track.addEventListener('ended', dispose, { once: true });
-  watchdog = window.setInterval(() => {
+  watchdogTimer.id = window.setInterval(() => {
     if (track.readyState === 'ended') dispose();
   }, 500);
 
   return { track };
+
 };
 
 const wantsAudio = (constraints?: DisplayMediaStreamOptions): boolean => {
