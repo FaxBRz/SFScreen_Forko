@@ -79,12 +79,8 @@ const MessageSquareIcon = (): ReactElement => (
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
-const KeyRoundIcon = (): ReactElement => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4L2 18Z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
-  </svg>
-);
 const ActivityIcon = (): ReactElement => (
+
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
   </svg>
@@ -2126,13 +2122,10 @@ export const App = (): ReactElement => {
                 {state.chatMessages.length > 0 && <span className="dock-badge">{state.chatMessages.length}</span>}
               </button>
 
-              <button className="dock-icon-btn" type="button" title="Conexão & Convites" onClick={() => session.toggleSessionModal(true)}>
-                <KeyRoundIcon />
-              </button>
-
               <button className="dock-icon-btn" type="button" title="Configurações" onClick={() => setSettingsOpen(true)}>
                 <GearIcon />
               </button>
+
 
               <button className="dock-action-btn is-hangup" type="button" title="Sair da chamada" onClick={() => void session.close()}>
                 <PhoneOffIcon />
