@@ -5,7 +5,7 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/node_modules/application-loopback/**',
+      unpack: '**/node_modules/loopback-capture/**',
     },
   },
   rebuildConfig: {},
