@@ -10,7 +10,7 @@ export default defineConfig({
       fileName: () => 'main.js',
     },
     rollupOptions: {
-      external: ['electron', 'application-loopback'],
+      external: ['electron', 'loopback-capture'],
     },
   },
 });
