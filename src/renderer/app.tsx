@@ -9,18 +9,18 @@ const directPeerConfiguration = (useStun: boolean): RTCConfiguration => ({
   bundlePolicy: 'max-bundle',
 });
 
-const waitForIceGathering = (peer: RTCPeerConnection): Promise<void> => new Promise((resolve, reject) => {
-  if (peer.iceGatheringState === 'complete') return resolve();
+const waitForIceGathering = (peer: RTCPeerConnection): Promise<boolean> => new Promise((resolve) => {
+  if (peer.iceGatheringState === 'complete') return resolve(true);
   const onStateChange = (): void => {
     if (peer.iceGatheringState !== 'complete') return;
     window.clearTimeout(timeout);
     peer.removeEventListener('icegatheringstatechange', onStateChange);
-    resolve();
+    resolve(true);
   };
   const timeout = window.setTimeout(() => {
     peer.removeEventListener('icegatheringstatechange', onStateChange);
-    reject(new Error('A coleta de candidatos ICE excedeu o tempo limite.'));
-  }, 15_000);
+    resolve(false);
+  }, 10_000);
   peer.addEventListener('icegatheringstatechange', onStateChange);
 });
 
@@ -101,14 +101,19 @@ export const App = (): ReactElement => {
       channelRef.current = channel;
       channel.onopen = () => setStatus('Canal de diagnóstico P2P aberto.');
       await peer.setLocalDescription(await peer.createOffer());
-      await waitForIceGathering(peer);
+      const gatheringCompleted = await waitForIceGathering(peer);
       if (!peer.localDescription) throw new Error('A oferta WebRTC não foi criada.');
       const message = await signMessage(makePayload('invite', crypto.randomUUID(), crypto.randomUUID(), peer.localDescription, candidates));
       localMessageRef.current = message;
       const saved = await window.sfscreen.exportSignalFile('invite', serializeMessage(message));
-      setStatus(saved ? 'Convite salvo. Envie-o ao espectador pelo canal externo combinado.' : 'Convite criado; o salvamento foi cancelado.');
-    } catch {
-      closeSession(); setError('Não foi possível criar um convite direto.');
+      setStatus(saved
+        ? gatheringCompleted
+          ? 'Convite salvo. Envie-o ao espectador pelo canal externo combinado.'
+          : 'Convite salvo com os candidatos já coletados; o STUN não concluiu a tempo.'
+        : 'Convite criado; o salvamento foi cancelado.');
+    } catch (caught) {
+      closeSession();
+      setError(caught instanceof Error ? `Não foi possível criar o convite: ${caught.message}` : 'Não foi possível criar um convite direto.');
     }
   };
 
@@ -124,13 +129,17 @@ export const App = (): ReactElement => {
         const { peer, candidates } = preparePeer();
         await peer.setRemoteDescription({ type: 'offer', sdp: message.sdp });
         await peer.setLocalDescription(await peer.createAnswer());
-        await waitForIceGathering(peer);
+        const gatheringCompleted = await waitForIceGathering(peer);
         if (!peer.localDescription) throw new Error('A resposta WebRTC não foi criada.');
         const response = await signMessage(makePayload('answer', message.sessionId, message.nonce, peer.localDescription, candidates));
         localMessageRef.current = response;
         setSecurityCode(await createSecurityCode(message.sessionId, message.nonce, message.fingerprint, response.fingerprint));
         const saved = await window.sfscreen.exportSignalFile('answer', serializeMessage(response));
-        setStatus(saved ? 'Resposta salva. Devolva-a ao apresentador e compare o código.' : 'Resposta criada; o salvamento foi cancelado.');
+        setStatus(saved
+          ? gatheringCompleted
+            ? 'Resposta salva. Devolva-a ao apresentador e compare o código.'
+            : 'Resposta salva com os candidatos já coletados; o STUN não concluiu a tempo.'
+          : 'Resposta criada; o salvamento foi cancelado.');
         return;
       }
       const local = localMessageRef.current;
