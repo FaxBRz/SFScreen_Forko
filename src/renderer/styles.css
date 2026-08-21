@@ -5,4 +5,5 @@ main { max-width: 1080px; margin: 0 auto; padding: 56px 32px; } .intro { max-wid
 .workspace { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; } .card { background: #151e30; border: 1px solid #283855; border-radius: 14px; padding: 24px; } .session-status { grid-column: 1 / -1; }
 .primary, .secondary { border-radius: 8px; padding: 11px 15px; cursor: pointer; } .primary { color: #062017; background: #77d7aa; border: 0; font-weight: 700; } .secondary { color: #c8d3e2; background: transparent; border: 1px solid #3a4a66; } button:disabled { cursor: not-allowed; opacity: .5; }
 .error { color: #ffb4ab; } .security-code { color: #fff; font-size: clamp(2rem, 8vw, 4rem); font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: .15em; margin: 18px 0 0; } .connected { color: #77d7aa; font-weight: 700; } .disconnected { color: #c8d3e2; }
+.toggle { display: block; color: #e7edf8; margin: 20px 0 6px; } .toggle input { margin-right: 8px; } .hint { font-size: .88rem; margin-top: 0; }
 @media (max-width: 700px) { main { padding: 32px 18px; } .workspace { grid-template-columns: 1fr; } .session-status { grid-column: auto; } }
