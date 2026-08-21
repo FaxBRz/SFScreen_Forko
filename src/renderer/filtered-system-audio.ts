@@ -42,14 +42,10 @@ class StereoPcmRingBuffer {
 
 interface FilteredTrackHandle {
   track: MediaStreamTrack;
-  dispose: () => void;
 }
 
-const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle | undefined> => {
-  const AudioContextConstructor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextConstructor) throw new Error('Web Audio não está disponível nesta versão do Chromium.');
-
-  const context = new AudioContextConstructor({ sampleRate: 48_000, latencyHint: 'interactive' });
+const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle> => {
+  const context = new AudioContext({ sampleRate: 48_000, latencyHint: 'interactive' });
   const destination = context.createMediaStreamDestination();
   const processor = context.createScriptProcessor(2_048, 0, 2);
   const queue = new StereoPcmRingBuffer();
@@ -69,13 +65,6 @@ const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle | undefin
     throw new Error(started.error.message);
   }
 
-  if (started.value.mode === 'not-needed') {
-    unsubscribe();
-    processor.disconnect();
-    void context.close();
-    return undefined;
-  }
-
   const captureId = started.value.captureId;
   const track = destination.stream.getAudioTracks()[0];
   if (!track || !captureId) {
@@ -87,10 +76,12 @@ const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle | undefin
   }
 
   let disposed = false;
+  let watchdog: number | undefined;
   const nativeStop = track.stop.bind(track);
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
+    if (watchdog !== undefined) window.clearInterval(watchdog);
     unsubscribe();
     processor.onaudioprocess = null;
     processor.disconnect();
@@ -107,11 +98,15 @@ const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle | undefin
       },
     });
   } catch {
-    track.addEventListener('ended', dispose, { once: true });
+    // Some Chromium builds expose MediaStreamTrack.stop as non-configurable.
   }
 
   track.addEventListener('ended', dispose, { once: true });
-  return { track, dispose };
+  watchdog = window.setInterval(() => {
+    if (track.readyState === 'ended') dispose();
+  }, 500);
+
+  return { track };
 };
 
 const wantsAudio = (constraints?: DisplayMediaStreamOptions): boolean => {
@@ -133,8 +128,6 @@ export const installFilteredSystemAudio = (): void => {
     const originalAudioTracks = stream.getAudioTracks();
     try {
       const filtered = await createFilteredAudioTrack();
-      if (!filtered) return stream; // Discord is not running; normal system loopback is safe.
-
       for (const track of originalAudioTracks) {
         stream.removeTrack(track);
         track.stop();
@@ -142,7 +135,7 @@ export const installFilteredSystemAudio = (): void => {
       stream.addTrack(filtered.track);
       return stream;
     } catch (error) {
-      // Discord is running but filtered capture failed. Do not leak the call through normal loopback.
+      // Never fall back to unfiltered loopback: that would leak Discord audio.
       for (const track of originalAudioTracks) {
         stream.removeTrack(track);
         track.stop();
