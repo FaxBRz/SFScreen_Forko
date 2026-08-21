@@ -63,13 +63,20 @@ export class WebRtcSession {
 
   constructor(private readonly events: WebRtcSessionEvents) {}
 
-  async createOffer(selfIps: readonly string[], stunServerIp: string, sessionId: string, nonce: string): Promise<SessionDescription> {
+  async createOffer(
+    selfIps: readonly string[],
+    stunServerIp: string,
+    sessionId: string,
+    nonce: string,
+    initialVideoTrack?: MediaStreamTrack,
+    initialAudioTrack?: MediaStreamTrack,
+  ): Promise<SessionDescription> {
     const peer = this.createPeer(stunServerIp);
     this.attachChannel(peer.createDataChannel('sfscreen-diagnostics', { ordered: true }));
-    const videoTransceiver = peer.addTransceiver('video', { direction: 'sendonly' });
+    const videoTransceiver = peer.addTransceiver(initialVideoTrack ?? 'video', { direction: 'sendonly' });
     preferVp8(videoTransceiver);
     this.videoSender = videoTransceiver.sender;
-    this.audioSender = peer.addTransceiver('audio', { direction: 'sendonly' }).sender;
+    this.audioSender = peer.addTransceiver(initialAudioTrack ?? 'audio', { direction: 'sendonly' }).sender;
     const offer = await peer.createOffer();
     if (!offer.sdp) throw new Error('A oferta WebRTC não contém SDP.');
     await peer.setLocalDescription(offer);
@@ -111,7 +118,7 @@ export class WebRtcSession {
   async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
     if (!this.videoSender) throw new Error('O canal de vídeo não foi negociado.');
     track.contentHint = 'detail';
-    await this.videoSender.replaceTrack(track);
+    if (this.videoSender.track !== track) await this.videoSender.replaceTrack(track);
     const parameters = this.videoSender.getParameters();
     if (parameters.encodings[0]) {
       parameters.encodings[0].maxBitrate = 5_000_000;
@@ -125,7 +132,7 @@ export class WebRtcSession {
 
   async replaceAudioTrack(track: MediaStreamTrack): Promise<void> {
     if (!this.audioSender) throw new Error('O canal de áudio não foi negociado.');
-    await this.audioSender.replaceTrack(track);
+    if (this.audioSender.track !== track) await this.audioSender.replaceTrack(track);
   }
 
   async removeAudioTrack(): Promise<void> {

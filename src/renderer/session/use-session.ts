@@ -13,6 +13,23 @@ const errorMessage = (error: SessionError | Error | unknown): string => {
 
 const stopTracks = (stream: MediaStream | undefined): void => stream?.getTracks().forEach((track) => track.stop());
 
+const captureDisplayStream = (includeSystemAudio: boolean): Promise<MediaStream> => {
+  const request = navigator.mediaDevices.getDisplayMedia({ audio: includeSystemAudio, video: true });
+  return new Promise<MediaStream>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      request.then(stopTracks).catch(() => undefined);
+      reject(new Error('A captura não foi iniciada em 10 segundos.'));
+    }, 10_000);
+    request.then((stream) => {
+      window.clearTimeout(timeout);
+      resolve(stream);
+    }, (error: unknown) => {
+      window.clearTimeout(timeout);
+      reject(error);
+    });
+  });
+};
+
 const captureErrorMessage = (error: unknown, state: import('../../shared/screen-source').CaptureAuthorizationState): string => {
   if (state === 'selected') return 'O Electron recusou a captura antes de consultar o autorizador do monitor.';
   if (state === 'request-received') return 'O Electron recebeu o pedido de captura, mas não concluiu a validação da fonte. Escolha o monitor novamente e tente.';
@@ -94,9 +111,9 @@ export const useSession = (): SessionModel => {
     if (!stream) return;
     await controllerRef.current?.removeAudioTrack();
     stream.getAudioTracks().forEach((track) => track.stop());
-      controllerRef.current?.sendAudioState('stopped');
-      dispatch({ type: 'audio', phase: 'stopped' });
-      recordDiagnostic('audio-stopped');
+    controllerRef.current?.sendAudioState('stopped');
+    dispatch({ type: 'audio', phase: 'stopped' });
+    recordDiagnostic('audio-stopped');
   }, [recordDiagnostic]);
 
   const stopSharing = useCallback(async (): Promise<void> => {
@@ -198,39 +215,34 @@ export const useSession = (): SessionModel => {
       controller.sendAudioState('unavailable');
       dispatch({ type: 'audio', phase: 'unavailable' });
     }
-    let captured: MediaStream | undefined;
+
+    let captured = localStreamRef.current;
     try {
-      // This deliberately precedes every await: getDisplayMedia needs the click's transient user activation.
-      const request = navigator.mediaDevices.getDisplayMedia({ audio: state.includeSystemAudio, video: true });
-      captured = await new Promise<MediaStream>((resolve, reject) => {
-        const timeout = window.setTimeout(() => {
-          request.then(stopTracks).catch(() => undefined);
-          reject(new Error('A captura não foi iniciada em 10 segundos.'));
-        }, 10_000);
-        request.then((stream) => {
-          window.clearTimeout(timeout);
-          resolve(stream);
-        }, (error: unknown) => {
-          window.clearTimeout(timeout);
-          reject(error);
-        });
-      });
-      const track = captured.getVideoTracks()[0];
-      if (!track) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
-      track.contentHint = 'detail';
-      track.onended = () => { if (localStreamRef.current === captured) void stopSharing(); };
-      const previous = localStreamRef.current;
-      await controller.replaceVideoTrack(track);
-      localStreamRef.current = captured;
-      setLocalStream(captured);
-      stopTracks(previous);
+      let videoTrack = captured?.getVideoTracks().find((track) => track.readyState === 'live');
+      if (!captured || !videoTrack) {
+        captured = await captureDisplayStream(state.includeSystemAudio);
+        videoTrack = captured.getVideoTracks()[0];
+        if (!videoTrack) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
+        videoTrack.contentHint = 'detail';
+        videoTrack.onended = () => { if (localStreamRef.current === captured) void stopSharing(); };
+        const previous = localStreamRef.current;
+        await controller.replaceVideoTrack(videoTrack);
+        localStreamRef.current = captured;
+        setLocalStream(captured);
+        stopTracks(previous);
+      }
+
+      videoTrack.enabled = true;
+      await controller.replaceVideoTrack(videoTrack);
+
       if (state.includeSystemAudio) {
-        const audioTrack = captured.getAudioTracks()[0];
+        const audioTrack = captured.getAudioTracks().find((track) => track.readyState === 'live');
         if (!audioTrack) {
           controller.sendAudioState('unavailable');
           dispatch({ type: 'audio', phase: 'unavailable', error: 'O Windows não disponibilizou o áudio do sistema.' });
           recordDiagnostic('audio-unavailable');
         } else {
+          audioTrack.enabled = true;
           audioTrack.onended = () => { if (localStreamRef.current === captured) void stopAudio(); };
           try {
             await controller.replaceAudioTrack(audioTrack);
@@ -244,15 +256,16 @@ export const useSession = (): SessionModel => {
           }
         }
       }
+
       controller.sendVideoState('active');
       dispatch({ type: 'media', phase: 'sharing' });
       recordDiagnostic('video-active');
     } catch (caught) {
-      stopTracks(captured);
+      if (captured !== localStreamRef.current) stopTracks(captured);
       controller.sendVideoState('failed');
       controller.sendAudioState('failed');
       const authorizationState = await window.sfscreen.getCaptureAuthorizationState().catch(() => 'idle' as const);
-      await clearSource();
+      if (!localStreamRef.current) await clearSource();
       dispatch({ type: 'media', phase: 'failed', error: captureErrorMessage(caught, authorizationState) });
     }
   }, [clearSource, recordDiagnostic, state.includeSystemAudio, state.phase, state.selectedSource, stopAudio, stopSharing]);
@@ -308,24 +321,64 @@ export const useSession = (): SessionModel => {
 
   const host = useCallback(async (): Promise<void> => {
     if (!state.selectedSource) return void openSourcePicker();
+
+    // Start capture while the button click still owns transient user activation. The tracks stay
+    // disabled until both peers verify the session and the host explicitly clicks Start Sharing.
+    const capturePromise = captureDisplayStream(state.includeSystemAudio);
     dispatch({ type: 'begin', role: 'host', phase: 'hosting', message: 'Preparando a conexão segura…' });
     sessionStartedAtRef.current = Date.now();
     diagnosticEventsRef.current = [];
     metricsRef.current = {};
     recordDiagnostic('session-started');
+
+    let captured: MediaStream | undefined;
     try {
       const status = await requireReady();
-      if (!status?.selfIp) return;
+      if (!status?.selfIp) {
+        void capturePromise.then(stopTracks).catch(() => undefined);
+        return;
+      }
+
+      captured = await capturePromise;
+      const videoTrack = captured.getVideoTracks()[0];
+      if (!videoTrack) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
+      videoTrack.contentHint = 'detail';
+      videoTrack.enabled = false;
+      videoTrack.onended = () => { if (localStreamRef.current === captured) void stopSharing(); };
+
+      const audioTrack = state.includeSystemAudio ? captured.getAudioTracks()[0] : undefined;
+      if (audioTrack) {
+        audioTrack.enabled = false;
+        audioTrack.onended = () => { if (localStreamRef.current === captured) void stopAudio(); };
+      }
+
+      localStreamRef.current = captured;
+      setLocalStream(captured);
+
       const controller = createController();
-      const offer = await controller.createOffer(status.selfIps ?? [status.selfIp], status.selfIp, crypto.randomUUID(), crypto.randomUUID());
+      const offer = await controller.createOffer(
+        status.selfIps ?? [status.selfIp],
+        status.selfIp,
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+        videoTrack,
+        audioTrack,
+      );
       const result = await window.sfscreen.hostSession(offer);
-      if (!result.ok) return dispatch({ type: 'failed', message: result.error.message });
+      if (!result.ok) throw new Error(result.error.message);
       dispatch({ type: 'hosted', hosted: result.value });
     } catch (caught) {
+      stopTracks(captured);
+      if (localStreamRef.current === captured) {
+        localStreamRef.current = undefined;
+        setLocalStream(undefined);
+      }
       controllerRef.current?.close();
-      dispatch({ type: 'failed', message: errorMessage(caught) });
+      const authorizationState = await window.sfscreen.getCaptureAuthorizationState().catch(() => 'idle' as const);
+      await clearSource();
+      dispatch({ type: 'failed', message: captureErrorMessage(caught, authorizationState) });
     }
-  }, [createController, openSourcePicker, recordDiagnostic, requireReady, state.selectedSource]);
+  }, [clearSource, createController, openSourcePicker, recordDiagnostic, requireReady, state.includeSystemAudio, state.selectedSource, stopAudio, stopSharing]);
 
   const join = useCallback(async (): Promise<void> => {
     const code = formatSessionCode(joinCode);
