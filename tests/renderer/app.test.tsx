@@ -485,7 +485,42 @@ describe('SFScreen Discord layout', () => {
 
     expect(screen.getByText(/Alex \(Simulado\) está apresentando/i)).toBeTruthy();
   });
+
+  it('does not toggle to Grid mode when clicking and dragging or holding mouse down during zoom', () => {
+    const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({
+      phase: 'connected',
+      mediaPhase: 'sharing',
+      remoteUserName: 'Alex (Simulado)',
+      selectedSource: { id: 'screen:1', name: 'Monitor 1', thumbnailDataUrl: 'data:image/png;base64,' },
+    }));
+    current.localStream = fakeStream;
+    current.remoteStream = fakeStream;
+    current.remoteMediaPhase = 'sharing';
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    const viewport = screen.getByText(/Alex \(Simulado\) está apresentando/i).closest('.stage-video-viewport')!;
+
+    // Double click to zoom in to 150%
+    fireEvent.doubleClick(viewport);
+
+    // Zoom navigator is visible
+    expect(screen.getByTitle(/Arraste a caixa azul ou clique para mover o zoom de lugar/i)).toBeTruthy();
+
+    // Mouse down, move (pan drag), mouse up, and click event
+    fireEvent.mouseDown(viewport, { clientX: 300, clientY: 300, button: 0 });
+    fireEvent.mouseMove(viewport, { clientX: 340, clientY: 350 });
+    fireEvent.mouseUp(viewport);
+    fireEvent.click(viewport);
+
+    // Should STILL be in Focus mode, NOT switched to Grid mode
+    expect(screen.queryAllByTitle(/Clique para focar nesta tela/i)).toHaveLength(0);
+    expect(screen.getByText(/Alex \(Simulado\) está apresentando/i)).toBeTruthy();
+  });
 });
+
+
 
 
 

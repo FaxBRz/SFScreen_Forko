@@ -796,9 +796,13 @@ export const App = (): ReactElement => {
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
+  const didPanOrDragRef = useRef(false);
+  const mouseDownTimeRef = useRef(0);
+  const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
   const [videoFit, setVideoFit] = useState<"contain" | "cover">("contain");
   const minimapRef = useRef<HTMLDivElement>(null);
   const isDraggingMinimapRef = useRef(false);
+
 
 
 
@@ -1077,6 +1081,9 @@ export const App = (): ReactElement => {
   }, [stageContextMenu]);
 
   const handleVideoMouseDown = (e: React.MouseEvent): void => {
+    mouseDownTimeRef.current = Date.now();
+    mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
+    didPanOrDragRef.current = false;
     if (zoomLevel <= 1) return;
     if (e.button !== 0) return;
     setIsPanning(true);
@@ -1089,6 +1096,12 @@ export const App = (): ReactElement => {
   };
 
   const handleVideoMouseMove = (e: React.MouseEvent): void => {
+    if (mouseDownPosRef.current) {
+      const dist = Math.hypot(e.clientX - mouseDownPosRef.current.x, e.clientY - mouseDownPosRef.current.y);
+      if (dist > 4) {
+        didPanOrDragRef.current = true;
+      }
+    }
     if (!isPanning || !panStartRef.current || zoomLevel <= 1) return;
     const dx = e.clientX - panStartRef.current.mouseX;
     const dy = e.clientY - panStartRef.current.mouseY;
@@ -1100,6 +1113,9 @@ export const App = (): ReactElement => {
   };
 
   const handleVideoMouseUp = (): void => {
+    if (Date.now() - mouseDownTimeRef.current > 200) {
+      didPanOrDragRef.current = true;
+    }
     setIsPanning(false);
     panStartRef.current = null;
   };
@@ -1127,6 +1143,10 @@ export const App = (): ReactElement => {
   };
 
   const handleStageVideoClick = (e: React.MouseEvent): void => {
+    // Proteção: Se estiver com zoom ativo, se clicou e segurou, ou se arrastou a tela, NÃO ir para o modo grade
+    if (zoomLevel > 1 || didPanOrDragRef.current || isPanning) {
+      return;
+    }
     const target = e.target as HTMLElement;
     if (
       target.closest("button") ||
@@ -1135,7 +1155,8 @@ export const App = (): ReactElement => {
       target.closest(".stage-top-right-pill") ||
       target.closest(".stage-corner-controls") ||
       target.closest(".stage-zoom-navigator-card") ||
-      target.closest(".stage-pip-card")
+      target.closest(".stage-pip-card") ||
+      target.closest(".discord-context-menu")
     ) {
       return;
     }
@@ -1143,6 +1164,7 @@ export const App = (): ReactElement => {
       setLayoutMode("grid");
     }
   };
+
 
 
   const resetZoom = (): void => {
@@ -1598,12 +1620,13 @@ export const App = (): ReactElement => {
                       className="stage-layout-mode-btn"
                       type="button"
                       onClick={() => setLayoutMode("grid")}
-                      title="Alternar para Modo Grade (Lado a Lado)"
+                      title="Alternar para Modo Grade"
                     >
                       <GridViewIcon />
                       <span>Modo Grade</span>
                     </button>
                   )}
+
 
                   {!focusedIsLocal && (
                     <button
@@ -2242,9 +2265,10 @@ export const App = (): ReactElement => {
                   }}
                 >
                   {isGridActive ? <FocusViewIcon /> : <GridViewIcon />}
-                  <span>{isGridActive ? "Mudar para Modo Foco" : "Mudar para Modo Grade (Lado a Lado)"}</span>
+                  <span>{isGridActive ? "Mudar para Modo Foco" : "Mudar para Modo Grade"}</span>
                 </button>
               )}
+
 
               {/* Tela Cheia */}
               <button
@@ -2434,9 +2458,10 @@ export const App = (): ReactElement => {
                   }}
                 >
                   {isGridActive ? <FocusViewIcon /> : <GridViewIcon />}
-                  <span>{isGridActive ? "Mudar para Modo Foco" : "Mudar para Modo Grade (Lado a Lado)"}</span>
+                  <span>{isGridActive ? "Mudar para Modo Foco" : "Mudar para Modo Grade"}</span>
                 </button>
               )}
+
 
               {/* Tela Cheia */}
               <button
