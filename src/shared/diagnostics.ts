@@ -3,12 +3,15 @@ import type { TailscaleRoute } from './session/types';
 export const diagnosticsFormatVersion = 1 as const;
 export const maxDiagnosticsBytes = 64 * 1024;
 
-export type DiagnosticEvent = 'session-started' | 'channel-open' | 'verified' | 'video-starting' | 'video-active' | 'video-stopped' | 'audio-starting' | 'audio-active' | 'audio-stopped' | 'audio-unavailable' | 'connection-failed' | 'session-closed';
+export type DiagnosticEvent = 'session-started' | 'channel-open' | 'verified' | 'video-starting' | 'video-active' | 'remote-video-track' | 'video-stopped' | 'audio-starting' | 'audio-active' | 'audio-stopped' | 'audio-unavailable' | 'connection-failed' | 'session-closed';
 
 export interface WebRtcMetrics {
   roundTripTimeMs?: number;
   outgoingBitrateKbps?: number;
   videoFramesPerSecond?: number;
+  videoBytesReceived?: number;
+  videoFramesDecoded?: number;
+  videoFramesReceivedPerSecond?: number;
   videoPacketsLost?: number;
   audioPacketsLost?: number;
 }
@@ -22,8 +25,8 @@ export interface DiagnosticsReport {
   metrics: WebRtcMetrics;
 }
 
-const events: readonly DiagnosticEvent[] = ['session-started', 'channel-open', 'verified', 'video-starting', 'video-active', 'video-stopped', 'audio-starting', 'audio-active', 'audio-stopped', 'audio-unavailable', 'connection-failed', 'session-closed'];
-const metricKeys: readonly (keyof WebRtcMetrics)[] = ['roundTripTimeMs', 'outgoingBitrateKbps', 'videoFramesPerSecond', 'videoPacketsLost', 'audioPacketsLost'];
+const events: readonly DiagnosticEvent[] = ['session-started', 'channel-open', 'verified', 'video-starting', 'video-active', 'remote-video-track', 'video-stopped', 'audio-starting', 'audio-active', 'audio-stopped', 'audio-unavailable', 'connection-failed', 'session-closed'];
+const metricKeys: readonly (keyof WebRtcMetrics)[] = ['roundTripTimeMs', 'outgoingBitrateKbps', 'videoFramesPerSecond', 'videoBytesReceived', 'videoFramesDecoded', 'videoFramesReceivedPerSecond', 'videoPacketsLost', 'audioPacketsLost'];
 
 export const isDiagnosticsReport = (value: unknown): value is DiagnosticsReport => {
   if (typeof value !== 'object' || value === null) return false;

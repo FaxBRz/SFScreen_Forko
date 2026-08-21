@@ -15,6 +15,8 @@ const stunServer = new TailscaleStunServer(() => tailscale.getStatus());
 const screenCapture = new ScreenCaptureService();
 const diagnostics = new DiagnosticsService();
 
+if (process.env.SFSCREEN_DISABLE_GPU === '1') app.disableHardwareAcceleration();
+
 // The app signals only the Tailscale host candidate. Chromium otherwise hides it behind mDNS,
 // preventing the allowlist below from identifying the Tailscale adapter at all.
 app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');

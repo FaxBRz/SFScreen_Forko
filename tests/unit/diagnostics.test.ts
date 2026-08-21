@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { diagnosticsFormatVersion, isDiagnosticsReport } from '../../src/shared/diagnostics';
 
-const report = { formatVersion: diagnosticsFormatVersion, appVersion: '0.1.3', exportedAt: '2026-08-21T12:00:00.000Z', route: 'relay', events: [{ atMs: 120, event: 'video-active' }], metrics: { roundTripTimeMs: 42 } };
+const report = { formatVersion: diagnosticsFormatVersion, appVersion: '0.1.3', exportedAt: '2026-08-21T12:00:00.000Z', route: 'relay', events: [{ atMs: 120, event: 'remote-video-track' }], metrics: { roundTripTimeMs: 42, videoFramesDecoded: 18 } };
 
 describe('sanitized diagnostics', () => {
   it('accepts only the small allowlisted diagnostic shape', () => {

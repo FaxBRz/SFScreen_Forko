@@ -175,7 +175,10 @@ export const useSession = (): SessionModel => {
           });
         }
       },
-      onRemoteStream: (stream) => setRemoteStream(stream),
+      onRemoteStream: (stream, trackKind) => {
+        if (trackKind === 'video') recordDiagnostic('remote-video-track');
+        setRemoteStream(stream);
+      },
     });
     controllerRef.current = controller;
     return controller;

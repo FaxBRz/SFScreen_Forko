@@ -7,7 +7,7 @@ export interface WebRtcSessionEvents {
   onChannelOpen: () => void;
   onControlMessage: (message: SessionControlMessage) => void;
   onConnectionState: (state: RTCPeerConnectionState) => void;
-  onRemoteStream: (stream: MediaStream) => void;
+  onRemoteStream: (stream: MediaStream, trackKind: 'video' | 'audio') => void;
 }
 
 const fingerprint = (sdp: string): string => {
@@ -40,11 +40,23 @@ const candidateData = (candidate: RTCIceCandidate): CandidateData => {
   return { candidate: value.candidate ?? '', sdpMid: value.sdpMid ?? null, sdpMLineIndex: value.sdpMLineIndex ?? null, usernameFragment: value.usernameFragment ?? null };
 };
 
+const preferVp8 = (transceiver: RTCRtpTransceiver): void => {
+  const capabilities = RTCRtpSender.getCapabilities?.('video');
+  if (!capabilities) return;
+  const vp8 = capabilities.codecs.filter((codec) => codec.mimeType.toLowerCase() === 'video/vp8');
+  if (vp8.length === 0) return;
+  transceiver.setCodecPreferences([
+    ...vp8,
+    ...capabilities.codecs.filter((codec) => codec.mimeType.toLowerCase() !== 'video/vp8'),
+  ]);
+};
+
 export class WebRtcSession {
   private peer?: RTCPeerConnection;
   private channel?: RTCDataChannel;
   private videoSender?: RTCRtpSender;
   private audioSender?: RTCRtpSender;
+  private readonly remoteTracks = new Map<string, MediaStreamTrack>();
   private readonly candidates: CandidateData[] = [];
   private confirmed = false;
   private previousOutbound?: { bytes: number; at: number };
@@ -54,7 +66,9 @@ export class WebRtcSession {
   async createOffer(selfIps: readonly string[], stunServerIp: string, sessionId: string, nonce: string): Promise<SessionDescription> {
     const peer = this.createPeer(stunServerIp);
     this.attachChannel(peer.createDataChannel('sfscreen-diagnostics', { ordered: true }));
-    this.videoSender = peer.addTransceiver('video', { direction: 'sendonly' }).sender;
+    const videoTransceiver = peer.addTransceiver('video', { direction: 'sendonly' });
+    preferVp8(videoTransceiver);
+    this.videoSender = videoTransceiver.sender;
     this.audioSender = peer.addTransceiver('audio', { direction: 'sendonly' }).sender;
     const offer = await peer.createOffer();
     if (!offer.sdp) throw new Error('A oferta WebRTC não contém SDP.');
@@ -130,6 +144,11 @@ export class WebRtcSession {
         if (typeof value.bytesSent === 'number') outboundBytes = value.bytesSent;
         if (typeof value.framesPerSecond === 'number') metrics.videoFramesPerSecond = Math.round(value.framesPerSecond);
       }
+      if (value.type === 'inbound-rtp' && value.kind === 'video') {
+        if (typeof value.bytesReceived === 'number') metrics.videoBytesReceived = value.bytesReceived;
+        if (typeof value.framesDecoded === 'number') metrics.videoFramesDecoded = value.framesDecoded;
+        if (typeof value.framesPerSecond === 'number') metrics.videoFramesReceivedPerSecond = Math.round(value.framesPerSecond);
+      }
       if (value.type === 'remote-inbound-rtp' && value.kind === 'video' && typeof value.packetsLost === 'number') metrics.videoPacketsLost = value.packetsLost;
       if (value.type === 'remote-inbound-rtp' && value.kind === 'audio' && typeof value.packetsLost === 'number') metrics.audioPacketsLost = value.packetsLost;
     }
@@ -146,6 +165,8 @@ export class WebRtcSession {
     this.peer = undefined;
     this.videoSender = undefined;
     this.audioSender = undefined;
+    this.remoteTracks.forEach((track) => track.stop());
+    this.remoteTracks.clear();
     this.candidates.length = 0;
     this.confirmed = false;
     this.previousOutbound = undefined;
@@ -157,7 +178,12 @@ export class WebRtcSession {
     peer.onicecandidate = (event) => { if (event.candidate) this.candidates.push(candidateData(event.candidate)); };
     peer.onconnectionstatechange = () => this.events.onConnectionState(peer.connectionState);
     peer.ondatachannel = (event) => this.attachChannel(event.channel);
-    peer.ontrack = (event) => this.events.onRemoteStream(event.streams[0] ?? new MediaStream([event.track]));
+    peer.ontrack = (event) => {
+      if (event.track.kind !== 'video' && event.track.kind !== 'audio') return;
+      this.remoteTracks.set(event.track.id, event.track);
+      event.track.onended = () => this.remoteTracks.delete(event.track.id);
+      this.events.onRemoteStream(new MediaStream(Array.from(this.remoteTracks.values())), event.track.kind);
+    };
     this.peer = peer;
     return peer;
   }
