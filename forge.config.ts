@@ -4,7 +4,9 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: '**/node_modules/application-loopback/**',
+    },
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({})],
