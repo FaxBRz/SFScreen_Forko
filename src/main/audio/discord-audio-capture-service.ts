@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import type { FilteredAudioStart } from '../../shared/session/types';
 
 const execFileAsync = promisify(execFile);
+const processRefreshMs = 5_000;
 
 interface ProcessEntry {
   ProcessId: number;
@@ -12,6 +13,7 @@ interface ProcessEntry {
 
 interface NativeLoopbackCapture {
   start: (processId: number, includeProcessTree: boolean, listener: (chunk: Buffer) => void) => unknown;
+  startSystemAudio: (listener: (chunk: Buffer) => void) => unknown;
   stop: () => void;
 }
 
@@ -20,6 +22,15 @@ type NativeLoopbackConstructor = new () => NativeLoopbackCapture;
 interface NativeLoopbackModule {
   LoopbackCapture?: NativeLoopbackConstructor;
   default?: { LoopbackCapture?: NativeLoopbackConstructor };
+}
+
+interface ActiveCapture {
+  captureId: string;
+  capture: NativeLoopbackCapture;
+  discordPid?: number;
+  listener: (chunk: Buffer) => void;
+  refreshTimer: NodeJS.Timeout;
+  switching: boolean;
 }
 
 const normalizeProcesses = (value: unknown): ProcessEntry[] => {
@@ -88,32 +99,44 @@ const loadNativeCapture = (): NativeLoopbackConstructor => {
   return constructor;
 };
 
+const stopNative = (capture: NativeLoopbackCapture): void => {
+  try { capture.stop(); } catch { /* capture may already be stopped */ }
+};
+
 export class DiscordAudioCaptureService {
-  private current?: { captureId: string; capture: NativeLoopbackCapture };
+  private current?: ActiveCapture;
 
   async start(listener: (chunk: Buffer) => void): Promise<FilteredAudioStart> {
     this.stop();
     if (process.platform !== 'win32') throw new Error('O filtro de áudio por processo só está disponível no Windows.');
 
-    const discordPid = await findDiscordRootPid();
-    if (discordPid === undefined) return { mode: 'not-needed', sampleRate: 48000, channels: 2 };
-
     const Capture = loadNativeCapture();
-    const capture = new Capture();
+    const discordPid = await findDiscordRootPid();
     const captureId = randomUUID();
+    const capture = new Capture();
+    const forward = (chunk: Buffer): void => {
+      if (this.current?.captureId !== captureId || chunk.length === 0) return;
+      listener(chunk);
+    };
+
+    const placeholderTimer = setInterval(() => undefined, processRefreshMs);
+    this.current = { captureId, capture, discordPid, listener, refreshTimer: placeholderTimer, switching: false };
 
     try {
-      // false maps to PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE in loopback-capture.
-      capture.start(discordPid, false, (chunk) => {
-        if (this.current?.captureId !== captureId || chunk.length === 0) return;
-        listener(chunk);
-      });
+      if (discordPid === undefined) capture.startSystemAudio(forward);
+      else capture.start(discordPid, false, forward); // false = EXCLUDE_TARGET_PROCESS_TREE.
     } catch (error) {
-      try { capture.stop(); } catch { /* ignore cleanup errors */ }
+      clearInterval(placeholderTimer);
+      this.current = undefined;
+      stopNative(capture);
       throw error;
     }
 
-    this.current = { captureId, capture };
+    clearInterval(placeholderTimer);
+    const refreshTimer = setInterval(() => { void this.refreshProcess(captureId); }, processRefreshMs);
+    if (this.current?.captureId === captureId) this.current.refreshTimer = refreshTimer;
+    else clearInterval(refreshTimer);
+
     return { mode: 'filtered', sampleRate: 48000, channels: 2, captureId };
   }
 
@@ -122,6 +145,38 @@ export class DiscordAudioCaptureService {
     if (captureId !== undefined && captureId !== this.current.captureId) return;
     const current = this.current;
     this.current = undefined;
-    try { current.capture.stop(); } catch { /* capture may already be stopped */ }
+    clearInterval(current.refreshTimer);
+    stopNative(current.capture);
+  }
+
+  private async refreshProcess(captureId: string): Promise<void> {
+    const current = this.current;
+    if (!current || current.captureId !== captureId || current.switching) return;
+    current.switching = true;
+    try {
+      const nextPid = await findDiscordRootPid();
+      const active = this.current;
+      if (!active || active.captureId !== captureId || active.discordPid === nextPid) return;
+
+      const Capture = loadNativeCapture();
+      const replacement = new Capture();
+      const forward = (chunk: Buffer): void => {
+        if (this.current?.captureId !== captureId || chunk.length === 0) return;
+        active.listener(chunk);
+      };
+
+      if (nextPid === undefined) replacement.startSystemAudio(forward);
+      else replacement.start(nextPid, false, forward);
+
+      const previous = active.capture;
+      active.capture = replacement;
+      active.discordPid = nextPid;
+      stopNative(previous);
+    } catch {
+      // Keep the existing capture alive and retry on the next refresh.
+    } finally {
+      const active = this.current;
+      if (active?.captureId === captureId) active.switching = false;
+    }
   }
 }
