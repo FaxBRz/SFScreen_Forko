@@ -137,6 +137,30 @@ const TrashIcon = (): ReactElement => (
   </svg>
 );
 
+const CameraIcon = (): ReactElement => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+    <circle cx="12" cy="13" r="3" />
+  </svg>
+);
+
+const MicMutedIcon = (): ReactElement => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <line x1="2" x2="22" y1="2" y2="22" />
+    <path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2" />
+    <path d="M5 10v2a7 7 0 0 0 12 5" />
+    <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33" />
+    <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
+    <line x1="12" x2="12" y1="19" y2="22" />
+  </svg>
+);
+
+const SignalBarsIcon = (): ReactElement => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 20h.01" /><path d="M7 20v-4" /><path d="M12 20v-8" /><path d="M17 20V4" />
+  </svg>
+);
+
 const MonitorIcon = (): ReactElement => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <rect width="20" height="14" x="2" y="3" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" />
@@ -1687,23 +1711,63 @@ export const App = (): ReactElement => {
                   tabIndex={0}
                   title="Clique para focar nesta tela"
                 >
-                  <div className="grid-tile-header">
-                    <span className="presenter-tag"><ScreenCastIcon /> {state.localUserName} (Você)</span>
-                    <span className="resolution-tag">{session.resolution} · {session.fps} FPS</span>
+                  <div className="grid-tile-ambient-bg" />
+
+                  {/* Header Bar */}
+                  <div className="grid-tile-header-bar">
+                    <div className="tile-header-left">
+                      <span className="tile-user-pill"><MonitorIcon /> {state.localUserName} (Você)</span>
+                      <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
+                      <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
+                      <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
+                        {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
+                      </span>
+                      <span className="tile-icon-badge" title="Transmissão de tela"><ScreenCastIcon /></span>
+                    </div>
+                    <div className="tile-header-right">
+                      <div className="tile-live-badge">
+                        <span className="tile-live-dot" />
+                        <span>AO VIVO</span>
+                      </div>
+                    </div>
                   </div>
 
+                  {/* Video & Center Area */}
                   <div className="grid-tile-video-wrapper">
                     {!isWindowFocused ? (
                       <div className="grid-tile-paused-state">
                         <EcoZapIcon />
                         <p>Sua transmissão está ligada, porém pausamos a renderização para reduzir consumos.</p>
                       </div>
+                    ) : session.localStream ? (
+                      <div className="tile-video-inner-box">
+                        <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
+                      </div>
                     ) : (
-                      <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
+                      <div className="tile-center-profile-box">
+                        <div className="tile-avatar-ring is-self">
+                          <div className="tile-avatar-inner">{state.localUserName.slice(0, 1).toUpperCase()}</div>
+                        </div>
+                        <span className="tile-avatar-name">{state.localUserName}</span>
+                      </div>
                     )}
                   </div>
-                  <div className="grid-tile-overlay-hint">
 
+                  {/* Footer Bar */}
+                  <div className="grid-tile-footer-bar">
+                    <div className="tile-footer-pill" title="Latência da conexão">
+                      <SignalBarsIcon />
+                      <span>Conexão estável · 18 ms</span>
+                      <InfoCircleIcon />
+                    </div>
+                    <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo pronto">
+                      <CameraIcon />
+                      <span>Câmera</span>
+                      <span className="camera-status-dot" />
+                    </div>
+                  </div>
+
+                  <div className="grid-tile-overlay-hint">
                     <FocusViewIcon />
                     <span>Clique para focar</span>
                   </div>
@@ -1725,37 +1789,77 @@ export const App = (): ReactElement => {
                   tabIndex={0}
                   title="Clique para focar nesta tela"
                 >
+                  <div className="grid-tile-ambient-bg" />
 
-                  <div className="grid-tile-header">
-                    <span className="presenter-tag"><ScreenCastIcon /> {state.remoteUserName}</span>
-                    <span className="resolution-tag">1080p · 60 FPS</span>
-                    <button
-                      className={`grid-tile-sound-btn ${remoteMuted ? "is-muted" : "is-active"}`}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setRemoteMuted((v) => !v);
-                      }}
-                      title={remoteMuted ? `Ativar som de ${state.remoteUserName}` : `Silenciar áudio de ${state.remoteUserName}`}
-                    >
-                      {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
-                    </button>
+                  {/* Header Bar */}
+                  <div className="grid-tile-header-bar">
+                    <div className="tile-header-left">
+                      <span className="tile-user-pill"><MonitorIcon /> {state.remoteUserName}</span>
+                      <span className="tile-res-pill">1080p · 60 FPS</span>
+                      <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
+                      <button
+                        className={`tile-icon-badge is-btn ${remoteMuted ? "is-muted" : "is-active"}`}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRemoteMuted((v) => !v);
+                        }}
+                        title={remoteMuted ? `Ativar som de ${state.remoteUserName}` : `Silenciar áudio de ${state.remoteUserName}`}
+                      >
+                        {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
+                      </button>
+                      <span className="tile-icon-badge" title="Transmissão"><ScreenCastIcon /></span>
+                    </div>
+                    <div className="tile-header-right">
+                      <div className="tile-live-badge">
+                        <span className="tile-live-dot" />
+                        <span>AO VIVO</span>
+                      </div>
+                    </div>
                   </div>
 
+                  {/* Video & Center Area */}
                   <div className="grid-tile-video-wrapper">
-                    <Video
-                      stream={session.remoteStream}
-                      muted={remoteMuted}
-                      volume={remoteVolume}
-                      className="stage-video is-contain"
-                    />
+                    {session.remoteStream ? (
+                      <div className="tile-video-inner-box">
+                        <Video
+                          stream={session.remoteStream}
+                          muted={remoteMuted}
+                          volume={remoteVolume}
+                          className="stage-video is-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="tile-center-profile-box">
+                        <div className="tile-avatar-ring">
+                          <div className="tile-avatar-inner">{state.remoteUserName.slice(0, 1).toUpperCase()}</div>
+                        </div>
+                        <span className="tile-avatar-name">{state.remoteUserName}</span>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Footer Bar */}
+                  <div className="grid-tile-footer-bar">
+                    <div className="tile-footer-pill" title="Latência da conexão">
+                      <SignalBarsIcon />
+                      <span>Conexão estável · 18 ms</span>
+                      <InfoCircleIcon />
+                    </div>
+                    <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
+                      <CameraIcon />
+                      <span>{state.remoteUserName}</span>
+                      <span className="camera-status-dot" />
+                    </div>
+                  </div>
+
                   <div className="grid-tile-overlay-hint">
                     <FocusViewIcon />
                     <span>Clique para focar</span>
                   </div>
                 </div>
               </div>
+
             ) : focusedSharing && focusedStream ? (
               <div
                 className="stage-video-viewport"
