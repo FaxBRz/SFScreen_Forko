@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/renderer/app';
 import { initialSessionState, type SessionUiState } from '../../src/renderer/session/session-machine';
 import { useSession, type SessionModel } from '../../src/renderer/session/use-session';
@@ -32,11 +32,14 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   confirmSecurity: vi.fn(),
   startSharing: vi.fn(async () => undefined),
   stopSharing: vi.fn(async () => undefined),
+  stopAudio: vi.fn(async () => undefined),
   close: vi.fn(async () => undefined),
   copyCode: vi.fn(async () => true),
+  exportDiagnostics: vi.fn(async () => true),
 });
 
 describe('session dashboard', () => {
+  afterEach(cleanup);
   beforeEach(() => vi.mocked(useSession).mockReturnValue(model()));
 
   it('shows both focused flows and accepts Enter in the session field', () => {
@@ -69,5 +72,18 @@ describe('session dashboard', () => {
     expect(screen.getByRole('dialog', { name: 'Escolha o que compartilhar' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Monitor principal' }));
     expect(current.selectSource).toHaveBeenCalledOnce();
+  });
+
+  it('keeps system audio opt-in in the source picker', () => {
+    const current = model();
+    current.sourcePickerOpen = true;
+    current.sources = [{ id: 'screen:1', name: 'Monitor principal', thumbnailDataUrl: 'data:image/png;base64,' }];
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+    const option = screen.getByRole('checkbox', { name: /compartilhar áudio do sistema/i });
+    expect((option as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(option);
+    fireEvent.click(screen.getByRole('button', { name: 'Monitor principal' }));
+    expect(current.selectSource).toHaveBeenCalledWith(current.sources[0], true);
   });
 });

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { webrtcUdpPortRange } from '../shared/session/types';
 import { ScreenCaptureService } from './capture/screen-capture-service';
+import { DiagnosticsService } from './diagnostics-service';
 import { registerSessionIpc } from './session-ipc';
 import { SessionServer } from './tailscale/session-server';
 import { TailscaleService } from './tailscale/tailscale-service';
@@ -10,6 +11,7 @@ let mainWindow: BrowserWindow | null = null;
 const tailscale = new TailscaleService();
 const sessionServer = new SessionServer(() => tailscale.getStatus(true));
 const screenCapture = new ScreenCaptureService();
+const diagnostics = new DiagnosticsService();
 
 const createWindow = (): void => {
   mainWindow = new BrowserWindow({
@@ -38,10 +40,18 @@ const createWindow = (): void => {
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     void screenCapture.handleDisplayRequest(request, callback, mainWindow?.webContents.mainFrame, mainWindow?.webContents.id);
   });
-  registerSessionIpc({ ipcMain, tailscale, sessionServer, screenCapture });
+  registerSessionIpc({
+    ipcMain,
+    tailscale,
+    sessionServer,
+    screenCapture,
+    diagnostics,
+    isAuthorizedSender: (sender) => mainWindow !== null && !mainWindow.isDestroyed() && sender === mainWindow.webContents,
+  });
   createWindow();
 });
 

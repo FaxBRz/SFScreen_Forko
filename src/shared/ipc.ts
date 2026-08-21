@@ -2,6 +2,7 @@ export const ipcChannels = {
   listScreenSources: 'screen:list-sources',
   selectScreenSource: 'screen:select-source',
   clearScreenSource: 'screen:clear-source',
+  exportDiagnostics: 'diagnostics:export',
   getTailscaleStatus: 'tailscale:get-status',
   hostSession: 'session:host',
   findSession: 'session:find',

@@ -25,11 +25,18 @@ describe('session machine', () => {
 
   it('keeps media state independent from the verified connection', () => {
     const source = { id: 'screen:1', name: 'Monitor 1', thumbnailDataUrl: 'data:image/png;base64,' };
-    const selected = sessionReducer(initialSessionState, { type: 'source-selected', source });
+    const selected = sessionReducer(initialSessionState, { type: 'source-selected', source, includeSystemAudio: false });
     const connected = sessionReducer(selected, { type: 'connected' });
     const sharing = sessionReducer(connected, { type: 'media', phase: 'sharing' });
     const stopped = sessionReducer(sharing, { type: 'media', phase: 'stopped' });
     expect(stopped.phase).toBe('connected');
     expect(stopped.mediaPhase).toBe('stopped');
+  });
+
+  it('tracks optional system audio independently of video', () => {
+    const selected = sessionReducer(initialSessionState, { type: 'source-selected', source: { id: 'screen:1', name: 'Monitor 1', thumbnailDataUrl: 'data:image/png;base64,' }, includeSystemAudio: true });
+    const active = sessionReducer(selected, { type: 'audio', phase: 'active' });
+    const stopped = sessionReducer(active, { type: 'audio', phase: 'stopped' });
+    expect(stopped).toMatchObject({ includeSystemAudio: true, audioPhase: 'stopped', mediaPhase: 'selected' });
   });
 });

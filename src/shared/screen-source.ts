@@ -3,3 +3,8 @@ export interface ScreenSource {
   name: string;
   thumbnailDataUrl: string;
 }
+
+export interface ScreenSelection {
+  sourceId: string;
+  includeSystemAudio: boolean;
+}

@@ -1,6 +1,7 @@
-import { serializeControlMessage, parseControlMessage, type SessionControlMessage, type VideoState } from '../../shared/session/media-control';
+import { serializeControlMessage, parseControlMessage, type AudioState, type SessionControlMessage, type VideoState } from '../../shared/session/media-control';
 import { filterTailscaleCandidates } from '../../shared/session/network';
 import { sessionLifetimeMs, sessionProtocolVersion, type CandidateData, type SessionDescription } from '../../shared/session/types';
+import type { WebRtcMetrics } from '../../shared/diagnostics';
 
 export interface WebRtcSessionEvents {
   onChannelOpen: () => void;
@@ -43,8 +44,10 @@ export class WebRtcSession {
   private peer?: RTCPeerConnection;
   private channel?: RTCDataChannel;
   private videoSender?: RTCRtpSender;
+  private audioSender?: RTCRtpSender;
   private readonly candidates: CandidateData[] = [];
   private confirmed = false;
+  private previousOutbound?: { bytes: number; at: number };
 
   constructor(private readonly events: WebRtcSessionEvents) {}
 
@@ -52,6 +55,7 @@ export class WebRtcSession {
     const peer = this.createPeer();
     this.attachChannel(peer.createDataChannel('sfscreen-diagnostics', { ordered: true }));
     this.videoSender = peer.addTransceiver('video', { direction: 'sendonly' }).sender;
+    this.audioSender = peer.addTransceiver('audio', { direction: 'sendonly' }).sender;
     const offer = await peer.createOffer();
     if (!offer.sdp) throw new Error('A oferta WebRTC não contém SDP.');
     await peer.setLocalDescription(offer);
@@ -86,6 +90,10 @@ export class WebRtcSession {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'video-state', state });
   }
 
+  sendAudioState(state: AudioState): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'audio-state', state });
+  }
+
   async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
     if (!this.videoSender) throw new Error('O canal de vídeo não foi negociado.');
     track.contentHint = 'detail';
@@ -101,14 +109,46 @@ export class WebRtcSession {
     await this.videoSender?.replaceTrack(null);
   }
 
+  async replaceAudioTrack(track: MediaStreamTrack): Promise<void> {
+    if (!this.audioSender) throw new Error('O canal de áudio não foi negociado.');
+    await this.audioSender.replaceTrack(track);
+  }
+
+  async removeAudioTrack(): Promise<void> {
+    await this.audioSender?.replaceTrack(null);
+  }
+
+  async getMetrics(): Promise<WebRtcMetrics> {
+    if (!this.peer) return {};
+    const stats = await this.peer.getStats();
+    const metrics: WebRtcMetrics = {};
+    let outboundBytes: number | undefined;
+    for (const stat of stats.values()) {
+      const value = stat as unknown as Record<string, unknown>;
+      if (value.type === 'candidate-pair' && value.nominated === true && typeof value.currentRoundTripTime === 'number') metrics.roundTripTimeMs = Math.round(value.currentRoundTripTime * 1_000);
+      if (value.type === 'outbound-rtp' && value.kind === 'video') {
+        if (typeof value.bytesSent === 'number') outboundBytes = value.bytesSent;
+        if (typeof value.framesPerSecond === 'number') metrics.videoFramesPerSecond = Math.round(value.framesPerSecond);
+      }
+      if (value.type === 'remote-inbound-rtp' && value.kind === 'video' && typeof value.packetsLost === 'number') metrics.videoPacketsLost = value.packetsLost;
+      if (value.type === 'remote-inbound-rtp' && value.kind === 'audio' && typeof value.packetsLost === 'number') metrics.audioPacketsLost = value.packetsLost;
+    }
+    const now = performance.now();
+    if (outboundBytes !== undefined && this.previousOutbound && now > this.previousOutbound.at) metrics.outgoingBitrateKbps = Math.round(((outboundBytes - this.previousOutbound.bytes) * 8) / (now - this.previousOutbound.at));
+    if (outboundBytes !== undefined) this.previousOutbound = { bytes: outboundBytes, at: now };
+    return metrics;
+  }
+
   close(): void {
     this.channel?.close();
     this.channel = undefined;
     this.peer?.close();
     this.peer = undefined;
     this.videoSender = undefined;
+    this.audioSender = undefined;
     this.candidates.length = 0;
     this.confirmed = false;
+    this.previousOutbound = undefined;
   }
 
   private createPeer(): RTCPeerConnection {

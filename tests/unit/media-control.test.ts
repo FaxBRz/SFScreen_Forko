@@ -8,6 +8,12 @@ describe('media control protocol', () => {
     expect(parseControlMessage(serializeControlMessage(message))).toEqual(message);
   });
 
+  it('round-trips audio states and rejects invalid audio state', () => {
+    const message = { protocolVersion: sessionProtocolVersion, type: 'audio-state' as const, state: 'active' as const };
+    expect(parseControlMessage(serializeControlMessage(message))).toEqual(message);
+    expect(parseControlMessage(JSON.stringify({ protocolVersion: sessionProtocolVersion, type: 'audio-state', state: 'microphone' }))).toBeUndefined();
+  });
+
   it('rejects malformed and older protocol messages', () => {
     expect(parseControlMessage('{')).toBeUndefined();
     expect(parseControlMessage(JSON.stringify({ protocolVersion: 1, type: 'video-state', state: 'active' }))).toBeUndefined();

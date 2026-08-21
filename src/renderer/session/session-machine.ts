@@ -4,6 +4,7 @@ import type { HostedSession, TailscaleStatus } from '../../shared/session/types'
 export type SessionPhase = 'checking' | 'idle' | 'hosting' | 'searching' | 'negotiating' | 'verifying' | 'connected' | 'failed' | 'closed';
 export type SessionRole = 'host' | 'viewer';
 export type MediaPhase = 'unselected' | 'selected' | 'starting' | 'sharing' | 'stopped' | 'failed';
+export type AudioPhase = 'unavailable' | 'starting' | 'active' | 'stopped' | 'failed';
 
 export interface SessionUiState {
   phase: SessionPhase;
@@ -19,6 +20,9 @@ export interface SessionUiState {
   mediaPhase: MediaPhase;
   selectedSource?: ScreenSource;
   mediaError?: string;
+  includeSystemAudio: boolean;
+  audioPhase: AudioPhase;
+  audioError?: string;
   now: number;
 }
 
@@ -31,9 +35,10 @@ export type SessionAction =
   | { type: 'remote-confirmed' }
   | { type: 'connected'; route?: string }
   | { type: 'route'; route: string }
-  | { type: 'source-selected'; source: ScreenSource }
+  | { type: 'source-selected'; source: ScreenSource; includeSystemAudio: boolean }
   | { type: 'source-cleared' }
   | { type: 'media'; phase: Exclude<MediaPhase, 'unselected' | 'selected'>; error?: string }
+  | { type: 'audio'; phase: AudioPhase; error?: string }
   | { type: 'failed'; message: string }
   | { type: 'closed' }
   | { type: 'tick'; now: number };
@@ -48,6 +53,8 @@ export const initialSessionState: SessionUiState = {
   remoteConfirmed: false,
   route: 'unknown',
   mediaPhase: 'unselected',
+  includeSystemAudio: false,
+  audioPhase: 'unavailable',
   now: Date.now(),
 };
 
@@ -56,7 +63,7 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
     case 'status':
       return { ...state, tailscale: action.status, phase: state.phase === 'checking' ? action.status.state === 'ready' ? 'idle' : 'failed' : state.phase, message: state.phase === 'checking' ? action.status.state === 'ready' ? 'Tailscale pronto. Crie ou entre em uma sessão.' : action.status.message ?? 'Tailscale indisponível.' : state.message };
     case 'begin':
-      return { ...state, phase: action.phase, role: action.role, message: action.message, error: undefined, hosted: undefined, securityCode: undefined, localConfirmed: false, remoteConfirmed: false, route: 'unknown', mediaPhase: action.role === 'host' && state.selectedSource ? 'selected' : 'unselected', mediaError: undefined };
+      return { ...state, phase: action.phase, role: action.role, message: action.message, error: undefined, hosted: undefined, securityCode: undefined, localConfirmed: false, remoteConfirmed: false, route: 'unknown', mediaPhase: action.role === 'host' && state.selectedSource ? 'selected' : 'unselected', mediaError: undefined, audioPhase: state.includeSystemAudio ? 'stopped' : 'unavailable', audioError: undefined };
     case 'hosted':
       return { ...state, hosted: action.hosted, message: 'Sessão pronta. Compartilhe este código com o espectador.' };
     case 'verifying':
@@ -70,11 +77,13 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
     case 'route':
       return { ...state, route: action.route };
     case 'source-selected':
-      return { ...state, selectedSource: action.source, mediaPhase: state.mediaPhase === 'sharing' ? 'sharing' : 'selected', mediaError: undefined };
+      return { ...state, selectedSource: action.source, includeSystemAudio: action.includeSystemAudio, mediaPhase: state.mediaPhase === 'sharing' ? 'sharing' : 'selected', mediaError: undefined, audioPhase: action.includeSystemAudio ? 'stopped' : 'unavailable', audioError: undefined };
     case 'source-cleared':
-      return { ...state, selectedSource: undefined, mediaPhase: state.mediaPhase === 'sharing' ? 'sharing' : 'unselected' };
+      return { ...state, selectedSource: undefined, includeSystemAudio: false, mediaPhase: state.mediaPhase === 'sharing' ? 'sharing' : 'unselected', audioPhase: state.mediaPhase === 'sharing' ? state.audioPhase : 'unavailable' };
     case 'media':
       return { ...state, mediaPhase: action.phase, mediaError: action.error };
+    case 'audio':
+      return { ...state, audioPhase: action.phase, audioError: action.error };
     case 'failed':
       return { ...state, phase: 'failed', error: action.message, message: 'Não foi possível concluir a sessão.' };
     case 'closed':
