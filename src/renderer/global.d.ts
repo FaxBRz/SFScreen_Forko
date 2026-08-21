@@ -1,4 +1,4 @@
-import type { SFScreenApi } from '../shared/screen-source';
+import type { SFScreenApi } from '../shared/session/types';
 
 declare global {
   interface Window {

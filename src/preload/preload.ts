@@ -1,11 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { ipcChannels } from '../shared/ipc';
-import type { SFScreenApi, ScreenSource } from '../shared/screen-source';
+import type { SFScreenApi } from '../shared/session/types';
 
 const api: SFScreenApi = {
-  listScreenSources: (): Promise<ScreenSource[]> => ipcRenderer.invoke(ipcChannels.listScreenSources),
-  exportSignalFile: (kind, contents): Promise<boolean> => ipcRenderer.invoke(ipcChannels.exportSignalFile, kind, contents),
-  importSignalFile: (): Promise<string | null> => ipcRenderer.invoke(ipcChannels.importSignalFile),
+  getTailscaleStatus: () => ipcRenderer.invoke(ipcChannels.getTailscaleStatus),
+  hostSession: (offer) => ipcRenderer.invoke(ipcChannels.hostSession, offer),
+  findSession: (code) => ipcRenderer.invoke(ipcChannels.findSession, code),
+  submitAnswer: (hostIp, code, answer) => ipcRenderer.invoke(ipcChannels.submitAnswer, hostIp, code, answer),
+  stopHostedSession: () => ipcRenderer.invoke(ipcChannels.stopHostedSession),
+  onSessionAnswer: (listener) => {
+    const callback = (_event: Electron.IpcRendererEvent, event: Parameters<typeof listener>[0]): void => listener(event);
+    ipcRenderer.on(ipcChannels.sessionAnswer, callback);
+    return () => ipcRenderer.removeListener(ipcChannels.sessionAnswer, callback);
+  },
 };
 
 contextBridge.exposeInMainWorld('sfscreen', api);
