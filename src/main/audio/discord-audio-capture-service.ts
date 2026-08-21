@@ -82,9 +82,9 @@ const findDiscordRootPid = async (): Promise<number | undefined> => {
 const loadNativeCapture = (): NativeLoopbackConstructor => {
   // Kept as a runtime require so Vite leaves the N-API binary outside the JS bundle.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const module = require('application-loopback') as NativeLoopbackModule;
+  const module = require('loopback-capture') as NativeLoopbackModule;
   const constructor = module.LoopbackCapture ?? module.default?.LoopbackCapture;
-  if (!constructor) throw new Error('O módulo de captura WASAPI não expôs LoopbackCapture.');
+  if (!constructor) throw new Error('O módulo loopback-capture não expôs LoopbackCapture.');
   return constructor;
 };
 
@@ -103,7 +103,7 @@ export class DiscordAudioCaptureService {
     const captureId = randomUUID();
 
     try {
-      // false maps to PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE.
+      // false maps to PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE in loopback-capture.
       capture.start(discordPid, false, (chunk) => {
         if (this.current?.captureId !== captureId || chunk.length === 0) return;
         listener(chunk);
