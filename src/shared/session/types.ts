@@ -57,6 +57,13 @@ export interface SessionAnswerEvent {
   peerIp: string;
 }
 
+export interface FilteredAudioStart {
+  mode: 'filtered' | 'not-needed';
+  sampleRate: 48000;
+  channels: 2;
+  captureId?: string;
+}
+
 export type SessionErrorCode =
   | 'tailscale-unavailable'
   | 'policy-blocked'
@@ -94,4 +101,8 @@ export interface SFScreenApi {
   submitAnswer: (hostIp: string, code: string, answer: SessionDescription) => Promise<SessionResult<void>>;
   stopHostedSession: () => Promise<SessionResult<void>>;
   onSessionAnswer: (listener: (event: SessionAnswerEvent) => void) => () => void;
+  toggleFullscreen: () => Promise<boolean>;
+  startFilteredSystemAudio: () => Promise<SessionResult<FilteredAudioStart>>;
+  stopFilteredSystemAudio: (captureId?: string) => Promise<SessionResult<void>>;
+  onFilteredAudioChunk: (listener: (chunk: ArrayBuffer) => void) => () => void;
 }
