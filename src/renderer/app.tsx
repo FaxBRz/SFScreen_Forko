@@ -341,11 +341,45 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
   const seconds = state.hosted ? Math.max(0, Math.ceil((Date.parse(state.hosted.expiresAt) - state.now) / 1_000)) : undefined;
 
   const handleCopy = async (): Promise<void> => {
-    const success = await session.copyCode();
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2_500);
+    if (!state.hosted) return;
+    const text = state.hosted.code;
+    let success = false;
+    try {
+      success = await session.copyCode();
+    } catch {
+      success = false;
     }
+    if (!success) {
+      try {
+        if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          success = true;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    if (!success) {
+      try {
+        const el = document.createElement("textarea");
+        el.value = text;
+        el.setAttribute("readonly", "");
+        el.style.position = "fixed";
+        el.style.top = "0";
+        el.style.left = "0";
+        el.style.opacity = "0";
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+        success = true;
+      } catch {
+        success = false;
+      }
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2_500);
   };
 
   const handleJoin = (event: FormEvent): void => {
@@ -368,7 +402,7 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
           <div className="verification-box">
             <p className="section-kicker">Verificação Criptográfica</p>
             <h3>Compare o código de segurança</h3>
-            <div className="security-code-large">{state.securityCode}</div>
+            <div className="security-code-large" title="Selecione para copiar">{state.securityCode}</div>
             <p>Confirme estes seis dígitos com a outra pessoa antes de liberar a transmissão.</p>
             <button className="button primary full-width" type="button" onClick={session.confirmSecurity} disabled={state.localConfirmed}>
               {state.localConfirmed ? "Aguardando confirmação remota…" : "O código confere"}
@@ -394,14 +428,21 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
                 <p className="tab-description">Gere um código de uso único para receber um convidado na sua chamada.</p>
                 {state.hosted ? (
                   <div className="invite-code-card">
-                    <span className="code-value">{state.hosted.code}</span>
+                    <span
+                      className="code-value"
+                      title="Clique para copiar ou selecione o código"
+                      onClick={() => void handleCopy()}
+                    >
+                      {state.hosted.code}
+                    </span>
                     <button type="button" className="button primary copy-btn" onClick={() => void handleCopy()}>
                       <ClipboardCopyIcon />
-                      <span>{copied ? "Copiado" : "Copiar código"}</span>
+                      <span>{copied ? "Copiado!" : "Copiar código"}</span>
                     </button>
                     <small className="code-timer">Expira em {seconds}s</small>
                   </div>
                 ) : (
+
                   <div className="invite-action-box">
                     <button className="button primary full-width" type="button" onClick={() => void session.host()} disabled={state.tailscale.state !== "ready"}>
                       Gerar Código de Sessão
@@ -1350,9 +1391,16 @@ export const App = (): ReactElement => {
         </div>
 
         <div className="topbar-center window-no-drag">
-          <div className="status-pill status-connection" title="Status da rede Tailscale">
+          <div
+            className="status-pill status-connection"
+            title={`Status da rede Tailscale: ${state.tailscale.peers?.length || 0} peer(s) na tailnet (${(state.tailscale.peers || []).filter((p) => p.online).length} online)`}
+          >
             <SignalWifiIcon />
-            <span>{state.tailscale.state === "ready" ? "Conexão excelente · 18 ms" : "Tailscale conectando…"}</span>
+            <span>
+              {state.tailscale.state === "ready"
+                ? `Conexão excelente · 18 ms · ${state.tailscale.peers?.length || 0} peer${(state.tailscale.peers?.length || 0) !== 1 ? "s" : ""}`
+                : "Tailscale conectando…"}
+            </span>
           </div>
 
           <div className="status-pill status-security" title="Criptografia ativa">
@@ -1360,6 +1408,7 @@ export const App = (): ReactElement => {
             <span>DTLS-SRTP ativo</span>
           </div>
         </div>
+
 
         <div className="topbar-right window-no-drag">
           <button className="icon-action-button" type="button" title="Configurações" onClick={() => setSettingsOpen(true)}>

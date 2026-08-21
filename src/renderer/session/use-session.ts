@@ -707,8 +707,37 @@ recordDiagnostic('audio-unavailable');
 
   const copyCode = useCallback(async (): Promise<boolean> => {
     if (!state.hosted) return false;
-    try { await navigator.clipboard.writeText(state.hosted.code); return true; } catch { return false; }
+    const text = state.hosted.code;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Fallback
+    }
+    try {
+      if (typeof document !== 'undefined') {
+        const el = document.createElement('textarea');
+        el.value = text;
+        el.setAttribute('readonly', '');
+        el.style.position = 'fixed';
+        el.style.top = '0';
+        el.style.left = '0';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(el);
+        return successful;
+      }
+    } catch {
+      // Fallback failed
+    }
+    return false;
   }, [state.hosted]);
+
 
   const exportDiagnostics = useCallback(async (): Promise<boolean> => {
     const controllerMetrics = await controllerRef.current?.getMetrics().catch(() => undefined);

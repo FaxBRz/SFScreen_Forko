@@ -2679,6 +2679,18 @@ button:disabled {
   font-weight: 800;
   color: #fff;
   letter-spacing: 0.12em;
+  user-select: all !important;
+  -webkit-user-select: all !important;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: all 0.15s ease;
+}
+
+.code-value:hover {
+  background: rgba(35, 165, 90, 0.12);
+  color: #23a55a;
 }
 
 .copy-btn {
@@ -2713,6 +2725,8 @@ button:disabled {
   background: #0f1015;
   color: #fff;
   font-size: 0.95rem;
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 .code-input {
@@ -2758,7 +2772,11 @@ button:disabled {
   color: #fff;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   margin: 2px 0;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  cursor: text;
 }
+
 
 .confirmation-status-bar {
   display: flex;

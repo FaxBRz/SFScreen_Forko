@@ -104,6 +104,45 @@ describe('SFScreen Discord layout', () => {
     expect(current.confirmSecurity).toHaveBeenCalledOnce();
   });
 
+  it('allows copying invite code via button and clicking the code value directly', () => {
+    const current = model(readyState({
+      phase: 'idle',
+      sessionModalOpen: true,
+      hosted: { code: 'K7P-4MX-Q', expiresAt: new Date(Date.now() + 60_000).toISOString() },
+    }));
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // Click "Copiar código" button
+    const copyBtn = screen.getByRole('button', { name: /copiar código/i });
+    fireEvent.click(copyBtn);
+    expect(current.copyCode).toHaveBeenCalledOnce();
+
+    // Click code text directly
+    const codeSpan = screen.getByText('K7P-4MX-Q');
+    fireEvent.click(codeSpan);
+    expect(current.copyCode).toHaveBeenCalledTimes(2);
+  });
+
+  it('displays connection status and Tailscale peers count in topbar', () => {
+    const current = model(readyState({
+      tailscale: {
+        state: 'ready',
+        selfIp: '100.64.0.1',
+        peers: [
+          { id: '1', name: 'device-1', ip: '100.64.0.2', online: true, route: 'direct' },
+          { id: '2', name: 'device-2', ip: '100.64.0.3', online: false, route: 'relay' },
+        ],
+      },
+    }));
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // Should display peers count in topbar pill
+    expect(screen.getByText(/Conexão excelente · 18 ms · 2 peers/i)).toBeTruthy();
+  });
+
+
   it('shows the monitor picker and starts sharing upon selection', () => {
     const current = model();
     current.sourcePickerOpen = true;
