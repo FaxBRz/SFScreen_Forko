@@ -58,6 +58,13 @@ export const initialSessionState: SessionUiState = {
   now: Date.now(),
 };
 
+const connectedState = (state: SessionUiState, route = state.route): SessionUiState => ({
+  ...state,
+  phase: 'connected',
+  route,
+  message: 'Conexão verificada. Ambos podem compartilhar a própria tela.',
+});
+
 export const sessionReducer = (state: SessionUiState, action: SessionAction): SessionUiState => {
   switch (action.type) {
     case 'status':
@@ -67,13 +74,22 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
     case 'hosted':
       return { ...state, hosted: action.hosted, message: 'Sessão pronta. Compartilhe este código com o espectador.' };
     case 'verifying':
+      // Handshake events can arrive almost simultaneously. Once connected, never let a late
+      // data-channel/open or SDP callback downgrade the UI back to verification.
+      if (state.phase === 'connected') return state;
       return { ...state, phase: 'verifying', message: action.message, securityCode: action.securityCode ?? state.securityCode };
-    case 'local-confirmed':
-      return { ...state, localConfirmed: true };
-    case 'remote-confirmed':
-      return { ...state, remoteConfirmed: true };
+    case 'local-confirmed': {
+      if (state.localConfirmed) return state;
+      const next = { ...state, localConfirmed: true };
+      return state.remoteConfirmed ? connectedState(next) : next;
+    }
+    case 'remote-confirmed': {
+      if (state.remoteConfirmed) return state;
+      const next = { ...state, remoteConfirmed: true };
+      return state.localConfirmed ? connectedState(next) : next;
+    }
     case 'connected':
-      return { ...state, phase: 'connected', route: action.route ?? state.route, message: 'Conexão verificada. O apresentador controla o início do vídeo.' };
+      return connectedState(state, action.route ?? state.route);
     case 'route':
       return { ...state, route: action.route };
     case 'source-selected':
