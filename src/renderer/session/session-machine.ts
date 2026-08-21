@@ -1,7 +1,9 @@
+import type { ScreenSource } from '../../shared/screen-source';
 import type { HostedSession, TailscaleStatus } from '../../shared/session/types';
 
 export type SessionPhase = 'checking' | 'idle' | 'hosting' | 'searching' | 'negotiating' | 'verifying' | 'connected' | 'failed' | 'closed';
 export type SessionRole = 'host' | 'viewer';
+export type MediaPhase = 'unselected' | 'selected' | 'starting' | 'sharing' | 'stopped' | 'failed';
 
 export interface SessionUiState {
   phase: SessionPhase;
@@ -14,6 +16,9 @@ export interface SessionUiState {
   localConfirmed: boolean;
   remoteConfirmed: boolean;
   route: string;
+  mediaPhase: MediaPhase;
+  selectedSource?: ScreenSource;
+  mediaError?: string;
   now: number;
 }
 
@@ -26,6 +31,9 @@ export type SessionAction =
   | { type: 'remote-confirmed' }
   | { type: 'connected'; route?: string }
   | { type: 'route'; route: string }
+  | { type: 'source-selected'; source: ScreenSource }
+  | { type: 'source-cleared' }
+  | { type: 'media'; phase: Exclude<MediaPhase, 'unselected' | 'selected'>; error?: string }
   | { type: 'failed'; message: string }
   | { type: 'closed' }
   | { type: 'tick'; now: number };
@@ -39,6 +47,7 @@ export const initialSessionState: SessionUiState = {
   localConfirmed: false,
   remoteConfirmed: false,
   route: 'unknown',
+  mediaPhase: 'unselected',
   now: Date.now(),
 };
 
@@ -47,7 +56,7 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
     case 'status':
       return { ...state, tailscale: action.status, phase: state.phase === 'checking' ? action.status.state === 'ready' ? 'idle' : 'failed' : state.phase, message: state.phase === 'checking' ? action.status.state === 'ready' ? 'Tailscale pronto. Crie ou entre em uma sessão.' : action.status.message ?? 'Tailscale indisponível.' : state.message };
     case 'begin':
-      return { ...state, phase: action.phase, role: action.role, message: action.message, error: undefined, hosted: undefined, securityCode: undefined, localConfirmed: false, remoteConfirmed: false, route: 'unknown' };
+      return { ...state, phase: action.phase, role: action.role, message: action.message, error: undefined, hosted: undefined, securityCode: undefined, localConfirmed: false, remoteConfirmed: false, route: 'unknown', mediaPhase: action.role === 'host' && state.selectedSource ? 'selected' : 'unselected', mediaError: undefined };
     case 'hosted':
       return { ...state, hosted: action.hosted, message: 'Sessão pronta. Compartilhe este código com o espectador.' };
     case 'verifying':
@@ -57,9 +66,15 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
     case 'remote-confirmed':
       return { ...state, remoteConfirmed: true };
     case 'connected':
-      return { ...state, phase: 'connected', route: action.route ?? state.route, message: 'Conexão verificada e pronta para a próxima etapa de mídia.' };
+      return { ...state, phase: 'connected', route: action.route ?? state.route, message: 'Conexão verificada. O apresentador controla o início do vídeo.' };
     case 'route':
       return { ...state, route: action.route };
+    case 'source-selected':
+      return { ...state, selectedSource: action.source, mediaPhase: state.mediaPhase === 'sharing' ? 'sharing' : 'selected', mediaError: undefined };
+    case 'source-cleared':
+      return { ...state, selectedSource: undefined, mediaPhase: state.mediaPhase === 'sharing' ? 'sharing' : 'unselected' };
+    case 'media':
+      return { ...state, mediaPhase: action.phase, mediaError: action.error };
     case 'failed':
       return { ...state, phase: 'failed', error: action.message, message: 'Não foi possível concluir a sessão.' };
     case 'closed':

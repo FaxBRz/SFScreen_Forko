@@ -1,7 +1,7 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { webrtcUdpPortRange } from '../shared/session/types';
-import type { ScreenSource } from '../shared/screen-source';
+import { ScreenCaptureService } from './capture/screen-capture-service';
 import { registerSessionIpc } from './session-ipc';
 import { SessionServer } from './tailscale/session-server';
 import { TailscaleService } from './tailscale/tailscale-service';
@@ -9,11 +9,7 @@ import { TailscaleService } from './tailscale/tailscale-service';
 let mainWindow: BrowserWindow | null = null;
 const tailscale = new TailscaleService();
 const sessionServer = new SessionServer(() => tailscale.getStatus(true));
-
-const getScreenSources = async (): Promise<ScreenSource[]> => {
-  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 320, height: 180 } });
-  return sources.map((source) => ({ id: source.id, name: source.name, thumbnailDataUrl: source.thumbnail.toDataURL() }));
-};
+const screenCapture = new ScreenCaptureService();
 
 const createWindow = (): void => {
   mainWindow = new BrowserWindow({
@@ -30,13 +26,22 @@ const createWindow = (): void => {
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  const createdWindow = mainWindow;
+  const createdWebContentsId = createdWindow.webContents.id;
+  createdWindow.on('closed', () => {
+    screenCapture.clearSource(createdWebContentsId);
+    if (mainWindow === createdWindow) mainWindow = null;
+  });
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   else void mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
 };
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
-  registerSessionIpc({ ipcMain, tailscale, sessionServer, getScreenSources });
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    void screenCapture.handleDisplayRequest(request, callback, mainWindow?.webContents.mainFrame, mainWindow?.webContents.id);
+  });
+  registerSessionIpc({ ipcMain, tailscale, sessionServer, screenCapture });
   createWindow();
 });
 

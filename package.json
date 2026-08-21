@@ -1,8 +1,8 @@
 {
   "name": "sfscreen",
   "productName": "SFScreen",
-  "version": "0.0.1",
-  "description": "Prova de conceito de compartilhamento de tela P2P direto.",
+  "version": "0.1.0",
+  "description": "Compartilhamento privado de tela por Tailscale e WebRTC.",
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",

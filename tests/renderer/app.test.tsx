@@ -15,14 +15,23 @@ const readyState = (overrides: Partial<SessionUiState> = {}): SessionUiState => 
   ...overrides,
 });
 
-const model = (state = readyState()): SessionModel => ({
+const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Monitor 1', thumbnailDataUrl: 'data:image/png;base64,' }, mediaPhase: 'selected' })): SessionModel => ({
   state,
   joinCode: '',
+  sources: [],
+  sourcePickerOpen: false,
+  localStream: undefined,
+  remoteStream: undefined,
   setJoinCode: vi.fn(),
   refresh: vi.fn(async () => state.tailscale),
+  openSourcePicker: vi.fn(async () => undefined),
+  closeSourcePicker: vi.fn(),
+  selectSource: vi.fn(async () => undefined),
   host: vi.fn(async () => undefined),
   join: vi.fn(async () => undefined),
   confirmSecurity: vi.fn(),
+  startSharing: vi.fn(async () => undefined),
+  stopSharing: vi.fn(async () => undefined),
   close: vi.fn(async () => undefined),
   copyCode: vi.fn(async () => true),
 });
@@ -49,5 +58,16 @@ describe('session dashboard', () => {
     expect(screen.getByText('123456')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'O código confere' }));
     expect(current.confirmSecurity).toHaveBeenCalledOnce();
+  });
+
+  it('shows the monitor picker and starts only after verification', () => {
+    const current = model();
+    current.sourcePickerOpen = true;
+    current.sources = [{ id: 'screen:1', name: 'Monitor principal', thumbnailDataUrl: 'data:image/png;base64,' }];
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+    expect(screen.getByRole('dialog', { name: 'Escolha o que compartilhar' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Monitor principal' }));
+    expect(current.selectSource).toHaveBeenCalledOnce();
   });
 });

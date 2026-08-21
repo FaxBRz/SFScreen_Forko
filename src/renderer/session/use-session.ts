@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { formatSessionCode, normalizeSessionCode } from '../../shared/session/code';
+import type { ScreenSource } from '../../shared/screen-source';
 import type { SessionError, TailscaleStatus } from '../../shared/session/types';
 import { initialSessionState, sessionReducer, type SessionUiState } from './session-machine';
 import { WebRtcSession } from './webrtc-session';
@@ -9,14 +10,25 @@ const errorMessage = (error: SessionError | Error | unknown): string => {
   return 'Não foi possível concluir a operação.';
 };
 
+const stopTracks = (stream: MediaStream | undefined): void => stream?.getTracks().forEach((track) => track.stop());
+
 export interface SessionModel {
   state: SessionUiState;
   joinCode: string;
+  sources: ScreenSource[];
+  sourcePickerOpen: boolean;
+  localStream?: MediaStream;
+  remoteStream?: MediaStream;
   setJoinCode: (value: string) => void;
   refresh: () => Promise<TailscaleStatus | undefined>;
+  openSourcePicker: () => Promise<void>;
+  closeSourcePicker: () => void;
+  selectSource: (source: ScreenSource) => Promise<void>;
   host: () => Promise<void>;
   join: () => Promise<void>;
   confirmSecurity: () => void;
+  startSharing: () => Promise<void>;
+  stopSharing: () => Promise<void>;
   close: () => Promise<void>;
   copyCode: () => Promise<boolean>;
 }
@@ -24,10 +36,16 @@ export interface SessionModel {
 export const useSession = (): SessionModel => {
   const [state, dispatch] = useReducer(sessionReducer, initialSessionState);
   const [joinCode, setJoinCodeState] = useState('');
+  const [sources, setSources] = useState<ScreenSource[]>([]);
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+  const [localStream, setLocalStream] = useState<MediaStream | undefined>(undefined);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | undefined>(undefined);
   const controllerRef = useRef<WebRtcSession | undefined>(undefined);
   const remoteIpRef = useRef<string | undefined>(undefined);
   const localConfirmedRef = useRef(false);
   const remoteConfirmedRef = useRef(false);
+  const localStreamRef = useRef<MediaStream | undefined>(undefined);
+  const stoppingMediaRef = useRef(false);
 
   const refresh = useCallback(async (): Promise<TailscaleStatus | undefined> => {
     try {
@@ -40,24 +58,59 @@ export const useSession = (): SessionModel => {
     }
   }, []);
 
+  const clearSource = useCallback(async (): Promise<void> => {
+    await window.sfscreen.clearScreenSource();
+    dispatch({ type: 'source-cleared' });
+  }, []);
+
+  const stopSharing = useCallback(async (): Promise<void> => {
+    if (stoppingMediaRef.current) return;
+    stoppingMediaRef.current = true;
+    try {
+      await controllerRef.current?.removeVideoTrack();
+      controllerRef.current?.sendVideoState('stopped');
+      stopTracks(localStreamRef.current);
+      localStreamRef.current = undefined;
+      setLocalStream(() => undefined);
+      await clearSource();
+      dispatch({ type: 'media', phase: 'stopped' });
+    } finally {
+      stoppingMediaRef.current = false;
+    }
+  }, [clearSource]);
+
   const close = useCallback(async (): Promise<void> => {
+    await stopSharing();
     controllerRef.current?.close();
     controllerRef.current = undefined;
     remoteIpRef.current = undefined;
     localConfirmedRef.current = false;
     remoteConfirmedRef.current = false;
+    setRemoteStream(undefined);
     await window.sfscreen.stopHostedSession();
     dispatch({ type: 'closed' });
-  }, []);
+  }, [stopSharing]);
 
   const createController = useCallback((): WebRtcSession => {
     controllerRef.current?.close();
     const controller = new WebRtcSession({
       onChannelOpen: () => dispatch({ type: 'verifying', message: 'Canal seguro conectado. Compare o código de segurança.' }),
-      onRemoteConfirmed: () => {
-        remoteConfirmedRef.current = true;
-        dispatch({ type: 'remote-confirmed' });
-        if (localConfirmedRef.current) dispatch({ type: 'connected' });
+      onControlMessage: (message) => {
+        if (message.type === 'security-confirmed') {
+          remoteConfirmedRef.current = true;
+          dispatch({ type: 'remote-confirmed' });
+          if (localConfirmedRef.current) dispatch({ type: 'connected' });
+          return;
+        }
+        if (message.state === 'active') dispatch({ type: 'media', phase: 'sharing' });
+        else if (message.state === 'starting') dispatch({ type: 'media', phase: 'starting' });
+        else if (message.state === 'failed') {
+          setRemoteStream(undefined);
+          dispatch({ type: 'media', phase: 'failed', error: 'O apresentador não conseguiu iniciar o compartilhamento.' });
+        } else {
+          setRemoteStream(undefined);
+          dispatch({ type: 'media', phase: 'stopped' });
+        }
       },
       onConnectionState: (connectionState) => {
         if (connectionState === 'failed') dispatch({ type: 'failed', message: 'A conexão WebRTC falhou pela interface Tailscale.' });
@@ -68,10 +121,39 @@ export const useSession = (): SessionModel => {
           });
         }
       },
+      onRemoteStream: (stream) => setRemoteStream(stream),
     });
     controllerRef.current = controller;
     return controller;
   }, []);
+
+  const startSharing = useCallback(async (): Promise<void> => {
+    const controller = controllerRef.current;
+    if (!controller || !state.selectedSource || state.phase !== 'connected') return;
+    dispatch({ type: 'media', phase: 'starting' });
+    controller.sendVideoState('starting');
+    let captured: MediaStream | undefined;
+    try {
+      // This deliberately precedes every await: getDisplayMedia needs the click's transient user activation.
+      captured = await navigator.mediaDevices.getDisplayMedia({ audio: false, video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { max: 30 } } });
+      const track = captured.getVideoTracks()[0];
+      if (!track) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
+      track.contentHint = 'detail';
+      track.onended = () => { void stopSharing(); };
+      const previous = localStreamRef.current;
+      await controller.replaceVideoTrack(track);
+      localStreamRef.current = captured;
+      setLocalStream(captured);
+      stopTracks(previous);
+      controller.sendVideoState('active');
+      dispatch({ type: 'media', phase: 'sharing' });
+    } catch (caught) {
+      stopTracks(captured);
+      controller.sendVideoState('failed');
+      await clearSource();
+      dispatch({ type: 'media', phase: 'failed', error: errorMessage(caught) });
+    }
+  }, [clearSource, state.phase, state.selectedSource, stopSharing]);
 
   useEffect(() => {
     void refresh();
@@ -79,17 +161,17 @@ export const useSession = (): SessionModel => {
     const unsubscribe = window.sfscreen.onSessionAnswer((event) => {
       const controller = controllerRef.current;
       if (!controller) return;
-      void controller.applyAnswer(event.answer)
-        .then((securityCode) => {
-          remoteIpRef.current = event.peerIp;
-          dispatch({ type: 'verifying', securityCode, message: 'Resposta recebida. Aguarde o canal seguro e compare o código.' });
-        })
-        .catch((caught: unknown) => dispatch({ type: 'failed', message: errorMessage(caught) }));
+      void controller.applyAnswer(event.answer).then((securityCode) => {
+        remoteIpRef.current = event.peerIp;
+        dispatch({ type: 'verifying', securityCode, message: 'Resposta recebida. Aguarde o canal seguro e compare o código.' });
+      }).catch((caught: unknown) => dispatch({ type: 'failed', message: errorMessage(caught) }));
     });
     return () => {
       window.clearInterval(clock);
       unsubscribe();
+      stopTracks(localStreamRef.current);
       controllerRef.current?.close();
+      void window.sfscreen.clearScreenSource();
       void window.sfscreen.stopHostedSession();
     };
   }, [refresh]);
@@ -103,7 +185,22 @@ export const useSession = (): SessionModel => {
     return status;
   }, [refresh]);
 
+  const openSourcePicker = useCallback(async (): Promise<void> => {
+    const result = await window.sfscreen.listScreenSources();
+    if (!result.ok) return dispatch({ type: 'media', phase: 'failed', error: result.error.message });
+    setSources(result.value);
+    setSourcePickerOpen(true);
+  }, []);
+
+  const selectSource = useCallback(async (source: ScreenSource): Promise<void> => {
+    const result = await window.sfscreen.selectScreenSource(source.id);
+    if (!result.ok) return dispatch({ type: 'media', phase: 'failed', error: result.error.message });
+    dispatch({ type: 'source-selected', source });
+    setSourcePickerOpen(false);
+  }, []);
+
   const host = useCallback(async (): Promise<void> => {
+    if (!state.selectedSource) return void openSourcePicker();
     dispatch({ type: 'begin', role: 'host', phase: 'hosting', message: 'Preparando a conexão segura…' });
     try {
       const status = await requireReady();
@@ -117,7 +214,7 @@ export const useSession = (): SessionModel => {
       controllerRef.current?.close();
       dispatch({ type: 'failed', message: errorMessage(caught) });
     }
-  }, [createController, requireReady]);
+  }, [createController, openSourcePicker, requireReady, state.selectedSource]);
 
   const join = useCallback(async (): Promise<void> => {
     const code = formatSessionCode(joinCode);
@@ -150,13 +247,8 @@ export const useSession = (): SessionModel => {
   const setJoinCode = useCallback((value: string): void => setJoinCodeState(normalizeSessionCode(value)), []);
   const copyCode = useCallback(async (): Promise<boolean> => {
     if (!state.hosted) return false;
-    try {
-      await navigator.clipboard.writeText(state.hosted.code);
-      return true;
-    } catch {
-      return false;
-    }
+    try { await navigator.clipboard.writeText(state.hosted.code); return true; } catch { return false; }
   }, [state.hosted]);
 
-  return { state, joinCode, setJoinCode, refresh, host, join, confirmSecurity, close, copyCode };
+  return { state, joinCode, sources, sourcePickerOpen, localStream, remoteStream, setJoinCode, refresh, openSourcePicker, closeSourcePicker: () => setSourcePickerOpen(false), selectSource, host, join, confirmSecurity, startSharing, stopSharing, close, copyCode };
 };

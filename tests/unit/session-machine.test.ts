@@ -22,4 +22,14 @@ describe('session machine', () => {
     expect(closed.hosted).toBeUndefined();
     expect(closed.securityCode).toBeUndefined();
   });
+
+  it('keeps media state independent from the verified connection', () => {
+    const source = { id: 'screen:1', name: 'Monitor 1', thumbnailDataUrl: 'data:image/png;base64,' };
+    const selected = sessionReducer(initialSessionState, { type: 'source-selected', source });
+    const connected = sessionReducer(selected, { type: 'connected' });
+    const sharing = sessionReducer(connected, { type: 'media', phase: 'sharing' });
+    const stopped = sessionReducer(sharing, { type: 'media', phase: 'stopped' });
+    expect(stopped.phase).toBe('connected');
+    expect(stopped.mediaPhase).toBe('stopped');
+  });
 });

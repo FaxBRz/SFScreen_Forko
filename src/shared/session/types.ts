@@ -2,7 +2,7 @@ export const signalingPort = 43917;
 export const webrtcUdpPortRange = { min: 43920, max: 44019 } as const;
 export const sessionLifetimeMs = 10 * 60 * 1000;
 export const maxSignalBytes = 256 * 1024;
-export const sessionProtocolVersion = 1 as const;
+export const sessionProtocolVersion = 2 as const;
 
 export type TailscaleState = 'not-installed' | 'not-authenticated' | 'offline' | 'no-peers' | 'ready' | 'policy-blocked';
 export type TailscaleRoute = 'direct' | 'relay' | 'peer-relay' | 'unknown';
@@ -64,6 +64,9 @@ export type SessionErrorCode =
   | 'invalid-response'
   | 'timeout'
   | 'webrtc-failed'
+  | 'capture-not-authorized'
+  | 'source-unavailable'
+  | 'capture-failed'
   | 'session-busy'
   | 'unknown';
 
@@ -79,6 +82,9 @@ export type SessionResult<T> =
 
 export interface SFScreenApi {
   getTailscaleStatus: () => Promise<TailscaleStatus>;
+  listScreenSources: () => Promise<SessionResult<import('../screen-source').ScreenSource[]>>;
+  selectScreenSource: (sourceId: string) => Promise<SessionResult<void>>;
+  clearScreenSource: () => Promise<SessionResult<void>>;
   hostSession: (offer: SessionDescription) => Promise<SessionResult<HostedSession>>;
   findSession: (code: string) => Promise<SessionResult<DiscoveredSession>>;
   submitAnswer: (hostIp: string, code: string, answer: SessionDescription) => Promise<SessionResult<void>>;

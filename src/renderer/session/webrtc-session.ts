@@ -1,10 +1,12 @@
+import { serializeControlMessage, parseControlMessage, type SessionControlMessage, type VideoState } from '../../shared/session/media-control';
 import { filterTailscaleCandidates } from '../../shared/session/network';
 import { sessionLifetimeMs, sessionProtocolVersion, type CandidateData, type SessionDescription } from '../../shared/session/types';
 
 export interface WebRtcSessionEvents {
   onChannelOpen: () => void;
-  onRemoteConfirmed: () => void;
+  onControlMessage: (message: SessionControlMessage) => void;
   onConnectionState: (state: RTCPeerConnectionState) => void;
+  onRemoteStream: (stream: MediaStream) => void;
 }
 
 const fingerprint = (sdp: string): string => {
@@ -40,6 +42,7 @@ const candidateData = (candidate: RTCIceCandidate): CandidateData => {
 export class WebRtcSession {
   private peer?: RTCPeerConnection;
   private channel?: RTCDataChannel;
+  private videoSender?: RTCRtpSender;
   private readonly candidates: CandidateData[] = [];
   private confirmed = false;
 
@@ -48,6 +51,7 @@ export class WebRtcSession {
   async createOffer(selfIp: string, sessionId: string, nonce: string): Promise<SessionDescription> {
     const peer = this.createPeer();
     this.attachChannel(peer.createDataChannel('sfscreen-diagnostics', { ordered: true }));
+    this.videoSender = peer.addTransceiver('video', { direction: 'sendonly' }).sender;
     const offer = await peer.createOffer();
     if (!offer.sdp) throw new Error('A oferta WebRTC não contém SDP.');
     await peer.setLocalDescription(offer);
@@ -75,7 +79,26 @@ export class WebRtcSession {
 
   confirmSecurity(): void {
     this.confirmed = true;
-    if (this.channel?.readyState === 'open') this.channel.send('security-confirmed');
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'security-confirmed' });
+  }
+
+  sendVideoState(state: VideoState): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'video-state', state });
+  }
+
+  async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
+    if (!this.videoSender) throw new Error('O canal de vídeo não foi negociado.');
+    track.contentHint = 'detail';
+    await this.videoSender.replaceTrack(track);
+    const parameters = this.videoSender.getParameters();
+    if (parameters.encodings[0]) {
+      parameters.encodings[0].maxBitrate = 5_000_000;
+      await this.videoSender.setParameters(parameters);
+    }
+  }
+
+  async removeVideoTrack(): Promise<void> {
+    await this.videoSender?.replaceTrack(null);
   }
 
   close(): void {
@@ -83,6 +106,7 @@ export class WebRtcSession {
     this.channel = undefined;
     this.peer?.close();
     this.peer = undefined;
+    this.videoSender = undefined;
     this.candidates.length = 0;
     this.confirmed = false;
   }
@@ -93,6 +117,7 @@ export class WebRtcSession {
     peer.onicecandidate = (event) => { if (event.candidate) this.candidates.push(candidateData(event.candidate)); };
     peer.onconnectionstatechange = () => this.events.onConnectionState(peer.connectionState);
     peer.ondatachannel = (event) => this.attachChannel(event.channel);
+    peer.ontrack = (event) => this.events.onRemoteStream(event.streams[0] ?? new MediaStream([event.track]));
     this.peer = peer;
     return peer;
   }
@@ -100,10 +125,17 @@ export class WebRtcSession {
   private attachChannel(channel: RTCDataChannel): void {
     this.channel = channel;
     channel.onopen = () => {
-      if (this.confirmed) channel.send('security-confirmed');
+      if (this.confirmed) this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'security-confirmed' });
       this.events.onChannelOpen();
     };
-    channel.onmessage = (event) => { if (event.data === 'security-confirmed') this.events.onRemoteConfirmed(); };
+    channel.onmessage = (event) => {
+      const message = parseControlMessage(event.data);
+      if (message) this.events.onControlMessage(message);
+    };
+  }
+
+  private sendControl(message: SessionControlMessage): void {
+    if (this.channel?.readyState === 'open') this.channel.send(serializeControlMessage(message));
   }
 
   private async applyDescription(description: SessionDescription): Promise<void> {
