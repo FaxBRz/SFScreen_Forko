@@ -47,18 +47,30 @@ export interface HostedSession {
   expiresAt: string;
 }
 
+export interface DiscoveredSession {
+  hostIp: string;
+  offer: SessionDescription;
+}
+
+export interface SessionAnswerEvent {
+  answer: SessionDescription;
+  peerIp: string;
+}
+
 export type SessionErrorCode =
-  | 'tailscale-not-ready'
-  | 'peer-not-found'
-  | 'invalid-code'
-  | 'expired-session'
-  | 'session-used'
-  | 'protocol-mismatch'
-  | 'invalid-payload'
+  | 'tailscale-unavailable'
+  | 'policy-blocked'
+  | 'session-not-found'
+  | 'session-expired'
+  | 'invalid-request'
+  | 'invalid-response'
+  | 'timeout'
+  | 'webrtc-failed'
+  | 'capture-not-authorized'
   | 'source-unavailable'
   | 'capture-failed'
-  | 'network-failed'
-  | 'internal-error';
+  | 'session-busy'
+  | 'unknown';
 
 export interface SessionError {
   code: SessionErrorCode;
@@ -66,4 +78,20 @@ export interface SessionError {
   retryable: boolean;
 }
 
-export type Result<T> = { ok: true; value: T } | { ok: false; error: SessionError };
+export type SessionResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: SessionError };
+
+export interface SFScreenApi {
+  getTailscaleStatus: () => Promise<TailscaleStatus>;
+  listScreenSources: () => Promise<SessionResult<import('../screen-source').ScreenSource[]>>;
+  selectScreenSource: (selection: import('../screen-source').ScreenSelection) => Promise<SessionResult<void>>;
+  clearScreenSource: () => Promise<SessionResult<void>>;
+  getCaptureAuthorizationState: () => Promise<import('../screen-source').CaptureAuthorizationState>;
+  exportDiagnostics: (report: import('../diagnostics').DiagnosticsReport) => Promise<SessionResult<boolean>>;
+  hostSession: (offer: SessionDescription) => Promise<SessionResult<HostedSession>>;
+  findSession: (code: string) => Promise<SessionResult<DiscoveredSession>>;
+  submitAnswer: (hostIp: string, code: string, answer: SessionDescription) => Promise<SessionResult<void>>;
+  stopHostedSession: () => Promise<SessionResult<void>>;
+  onSessionAnswer: (listener: (event: SessionAnswerEvent) => void) => () => void;
+}
