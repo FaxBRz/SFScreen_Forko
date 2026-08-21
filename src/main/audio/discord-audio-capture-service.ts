@@ -29,7 +29,7 @@ interface ActiveCapture {
   capture: NativeLoopbackCapture;
   discordPid?: number;
   listener: (chunk: Buffer) => void;
-  refreshTimer: NodeJS.Timeout;
+  refreshTimer?: NodeJS.Timeout;
   switching: boolean;
 }
 
@@ -119,20 +119,16 @@ export class DiscordAudioCaptureService {
       listener(chunk);
     };
 
-    const placeholderTimer = setInterval(() => undefined, processRefreshMs);
-    this.current = { captureId, capture, discordPid, listener, refreshTimer: placeholderTimer, switching: false };
-
+    this.current = { captureId, capture, discordPid, listener, switching: false };
     try {
       if (discordPid === undefined) capture.startSystemAudio(forward);
       else capture.start(discordPid, false, forward); // false = EXCLUDE_TARGET_PROCESS_TREE.
     } catch (error) {
-      clearInterval(placeholderTimer);
       this.current = undefined;
       stopNative(capture);
       throw error;
     }
 
-    clearInterval(placeholderTimer);
     const refreshTimer = setInterval(() => { void this.refreshProcess(captureId); }, processRefreshMs);
     if (this.current?.captureId === captureId) this.current.refreshTimer = refreshTimer;
     else clearInterval(refreshTimer);
@@ -145,7 +141,7 @@ export class DiscordAudioCaptureService {
     if (captureId !== undefined && captureId !== this.current.captureId) return;
     const current = this.current;
     this.current = undefined;
-    clearInterval(current.refreshTimer);
+    if (current.refreshTimer) clearInterval(current.refreshTimer);
     stopNative(current.capture);
   }
 
@@ -165,8 +161,13 @@ export class DiscordAudioCaptureService {
         active.listener(chunk);
       };
 
-      if (nextPid === undefined) replacement.startSystemAudio(forward);
-      else replacement.start(nextPid, false, forward);
+      try {
+        if (nextPid === undefined) replacement.startSystemAudio(forward);
+        else replacement.start(nextPid, false, forward);
+      } catch (error) {
+        stopNative(replacement);
+        throw error;
+      }
 
       const previous = active.capture;
       active.capture = replacement;
