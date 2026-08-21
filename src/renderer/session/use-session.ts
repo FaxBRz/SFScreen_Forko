@@ -138,14 +138,14 @@ export const useSession = (): SessionModel => {
       localStreamRef.current = undefined;
       capturedSourceIdRef.current = undefined;
       setLocalStream(undefined);
-      await window.sfscreen.clearScreenSource();
+      await clearSource();
       dispatch({ type: 'media', phase: 'stopped' });
       dispatch({ type: 'audio', phase: 'stopped' });
       recordDiagnostic('video-stopped');
     } finally {
       stoppingMediaRef.current = false;
     }
-  }, [recordDiagnostic]);
+  }, [clearSource, recordDiagnostic]);
 
   const close = useCallback(async (): Promise<void> => {
     await stopSharing();
@@ -346,7 +346,7 @@ export const useSession = (): SessionModel => {
       }
       return;
     }
-    await captureAndAttach(state.selectedSource, state.includeSystemAudio, false);
+    await captureAndAttach(state.selectedSource, state.includeSystemAudio, true);
   }, [activatePreparedStream, captureAndAttach, state.includeSystemAudio, state.phase, state.selectedSource]);
 
   useEffect(() => {
