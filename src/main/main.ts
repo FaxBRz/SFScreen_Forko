@@ -1,8 +1,10 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { webrtcUdpPortRange } from '../shared/session/types';
+import { DiscordAudioCaptureService } from './audio/discord-audio-capture-service';
 import { ScreenCaptureService } from './capture/screen-capture-service';
 import { DiagnosticsService } from './diagnostics-service';
+import { registerRuntimeIpc } from './runtime-ipc';
 import { registerSessionIpc } from './session-ipc';
 import { SessionServer } from './tailscale/session-server';
 import { TailscaleStunServer } from './tailscale/stun-server';
@@ -14,6 +16,7 @@ const sessionServer = new SessionServer(() => tailscale.getStatus(true));
 const stunServer = new TailscaleStunServer(() => tailscale.getStatus());
 const screenCapture = new ScreenCaptureService();
 const diagnostics = new DiagnosticsService();
+const audioCapture = new DiscordAudioCaptureService();
 
 if (process.env.SFSCREEN_DISABLE_GPU === '1') app.disableHardwareAcceleration();
 
@@ -39,6 +42,7 @@ const createWindow = (): void => {
   const createdWindow = mainWindow;
   const createdWebContentsId = createdWindow.webContents.id;
   createdWindow.on('closed', () => {
+    audioCapture.stop();
     screenCapture.clearSource(createdWebContentsId);
     if (mainWindow === createdWindow) mainWindow = null;
   });
@@ -58,6 +62,7 @@ app.whenReady().then(() => {
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     void screenCapture.handleDisplayRequest(request, callback, mainWindow?.webContents.mainFrame, mainWindow?.webContents.id).catch(() => undefined);
   });
+  const isAuthorizedSender = (sender: Electron.WebContents): boolean => mainWindow !== null && !mainWindow.isDestroyed() && sender === mainWindow.webContents;
   registerSessionIpc({
     ipcMain,
     tailscale,
@@ -65,10 +70,14 @@ app.whenReady().then(() => {
     stunServer,
     screenCapture,
     diagnostics,
-    isAuthorizedSender: (sender) => mainWindow !== null && !mainWindow.isDestroyed() && sender === mainWindow.webContents,
+    isAuthorizedSender,
   });
+  registerRuntimeIpc({ ipcMain, audioCapture, isAuthorizedSender });
   createWindow();
 });
 
-app.on('before-quit', () => { void Promise.all([sessionServer.stop(), stunServer.stop()]); });
+app.on('before-quit', () => {
+  audioCapture.stop();
+  void Promise.all([sessionServer.stop(), stunServer.stop()]);
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
