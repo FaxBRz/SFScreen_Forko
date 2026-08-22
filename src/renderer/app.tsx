@@ -2292,17 +2292,67 @@ export const App = (): ReactElement => {
                         )}
                       </div>
                     </div>
-                  ) : (
+                  ) : session.cameraActive && session.localCameraStream ? (
                     <div
-                      className={`grid-tile-nonsharing-content ${session.cameraActive && session.localCameraStream ? "is-clickable" : ""}`}
-                      onClick={session.cameraActive && session.localCameraStream ? () => {
+                      className="grid-tile-nonsharing-content is-camera-standalone is-clickable"
+                      onClick={() => {
                         setFocused("local-camera");
                         setLayoutMode("focus");
-                      } : undefined}
-                      role={session.cameraActive && session.localCameraStream ? "button" : undefined}
-                      tabIndex={session.cameraActive && session.localCameraStream ? 0 : undefined}
-                      title={session.cameraActive && session.localCameraStream ? "Clique para focar na câmera" : undefined}
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      title="Clique para focar na câmera"
                     >
+                      <div className="tile-side-avatar-box is-standalone-centered is-self">
+                        <div className="card-inner-header">
+                          <div className="card-header-pills">
+                            <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
+                            <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
+                              {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
+                            </span>
+                            <button
+                              className="tile-icon-badge is-btn is-active"
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void session.toggleCamera();
+                              }}
+                              title="Câmera ligada"
+                            >
+                              <CameraIcon />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="tile-camera-feed-wrap">
+                          <Video stream={session.localCameraStream} muted volume={0} className="tile-camera-video" />
+                        </div>
+
+                        <div className="card-inner-footer">
+                          <button
+                            className="tile-footer-pill is-btn"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSidebarOpen(true);
+                              setVoicePopoverOpen(true);
+                            }}
+                            title="Status da conexão de rede e voz"
+                          >
+                            <SignalBarsIcon />
+                            <span>Conexão estável · 18 ms</span>
+                            <InfoCircleIcon />
+                          </button>
+                          <div className="tile-footer-pill is-camera" title="Câmera ligada">
+                            <CameraIcon />
+                            <span>Câmera</span>
+                            <span className="camera-status-dot is-online" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid-tile-nonsharing-content">
                       <div className={`card-ambient-backdrop ${!state.localUserAvatar ? "is-fallback" : ""}`}>
                         {state.localUserAvatar && (
                           <img src={state.localUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
@@ -2316,31 +2366,25 @@ export const App = (): ReactElement => {
                             {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
                           </span>
                           <button
-                            className={`tile-icon-badge is-btn ${session.cameraActive ? "is-active" : "is-muted"}`}
+                            className="tile-icon-badge is-btn is-muted"
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               void session.toggleCamera();
                             }}
-                            title={session.cameraActive ? "Câmera ligada" : "Câmera desligada"}
+                            title="Câmera desligada"
                           >
                             <CameraIcon />
                           </button>
                         </div>
                       </div>
 
-                      {session.cameraActive && session.localCameraStream ? (
-                        <div className="tile-camera-feed-wrap">
-                          <Video stream={session.localCameraStream} muted volume={0} className="tile-camera-video" />
+                      <div className="tile-center-profile-box">
+                        <div className="tile-avatar-ring is-self">
+                          <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-inner is-self" />
                         </div>
-                      ) : (
-                        <div className="tile-center-profile-box">
-                          <div className="tile-avatar-ring is-self">
-                            <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-inner is-self" />
-                          </div>
-                          <span className="tile-avatar-name">{state.localUserName}</span>
-                        </div>
-                      )}
+                        <span className="tile-avatar-name">{state.localUserName}</span>
+                      </div>
 
                       <div className="card-inner-footer">
                         <button
@@ -2357,10 +2401,10 @@ export const App = (): ReactElement => {
                           <span>Conexão estável · 18 ms</span>
                           <InfoCircleIcon />
                         </button>
-                        <div className="tile-footer-pill is-camera" title={session.cameraActive ? "Câmera ligada" : "Câmera desligada"}>
+                        <div className="tile-footer-pill is-camera" title="Câmera desligada">
                           <CameraIcon />
                           <span>Câmera</span>
-                          <span className={`camera-status-dot ${session.cameraActive ? "is-online" : "is-offline"}`} />
+                          <span className="camera-status-dot is-offline" />
                         </div>
                       </div>
                     </div>
@@ -2497,17 +2541,67 @@ export const App = (): ReactElement => {
                         />
                       </div>
                     </div>
-                  ) : (
+                  ) : session.remoteCameraStream ? (
                     <div
-                      className={`grid-tile-nonsharing-content ${session.remoteCameraStream ? "is-clickable" : ""}`}
-                      onClick={session.remoteCameraStream ? () => {
+                      className="grid-tile-nonsharing-content is-camera-standalone is-clickable"
+                      onClick={() => {
                         setFocused("remote-camera");
                         setLayoutMode("focus");
-                      } : undefined}
-                      role={session.remoteCameraStream ? "button" : undefined}
-                      tabIndex={session.remoteCameraStream ? 0 : undefined}
-                      title={session.remoteCameraStream ? `Clique para focar na câmera de ${state.remoteUserName}` : undefined}
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      title={`Clique para focar na câmera de ${state.remoteUserName}`}
                     >
+                      <div className="tile-side-avatar-box is-standalone-centered">
+                        <div className="card-inner-header">
+                          <div className="card-header-pills">
+                            <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
+                            <button
+                              className={`tile-icon-badge is-btn ${remoteMuted ? "is-muted" : "is-active"}`}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRemoteMuted((v) => !v);
+                              }}
+                              title={remoteMuted ? `Ativar som de ${state.remoteUserName}` : `Silenciar áudio de ${state.remoteUserName}`}
+                            >
+                              {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
+                            </button>
+                            <span className="tile-icon-badge is-active" title="Câmera">
+                              <CameraIcon />
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="tile-camera-feed-wrap">
+                          <Video stream={session.remoteCameraStream} muted volume={0} className="tile-camera-video" />
+                        </div>
+
+                        <div className="card-inner-footer">
+                          <button
+                            className="tile-footer-pill is-btn"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSidebarOpen(true);
+                              setVoicePopoverOpen(true);
+                            }}
+                            title="Status da conexão de rede e voz"
+                          >
+                            <SignalBarsIcon />
+                            <span>Conexão estável · 18 ms</span>
+                            <InfoCircleIcon />
+                          </button>
+                          <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
+                            <CameraIcon />
+                            <span>{state.remoteUserName}</span>
+                            <span className="camera-status-dot is-online" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid-tile-nonsharing-content">
                       <div className={`card-ambient-backdrop ${!state.remoteUserAvatar ? "is-fallback" : ""}`}>
                         {state.remoteUserAvatar && (
                           <img src={state.remoteUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
@@ -2528,40 +2622,34 @@ export const App = (): ReactElement => {
                           >
                             {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
                           </button>
-                          <span className={`tile-icon-badge ${session.remoteCameraStream ? "is-active" : "is-muted"}`} title="Câmera">
+                          <span className="tile-icon-badge is-muted" title="Câmera">
                             <CameraIcon />
                           </span>
                         </div>
                       </div>
 
-                      {session.remoteCameraStream ? (
-                        <div className="tile-camera-feed-wrap">
-                          <Video stream={session.remoteCameraStream} muted volume={0} className="tile-camera-video" />
+                      <div className="tile-center-profile-box">
+                        <div className="tile-avatar-ring">
+                          <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-inner" />
                         </div>
-                      ) : (
-                        <div className="tile-center-profile-box">
-                          <div className="tile-avatar-ring">
-                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-inner" />
-                          </div>
-                          <span className="tile-avatar-name">{state.remoteUserName}</span>
-                        </div>
-                      )}
+                        <span className="tile-avatar-name">{state.remoteUserName}</span>
+                      </div>
 
-                        <div className="card-inner-footer">
-                          <button
-                            className="tile-footer-pill is-btn"
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSidebarOpen(true);
-                              setVoicePopoverOpen(true);
-                            }}
-                            title="Status da conexão de rede e voz"
-                          >
-                            <SignalBarsIcon />
-                            <span>Conexão estável · 18 ms</span>
-                            <InfoCircleIcon />
-                          </button>
+                      <div className="card-inner-footer">
+                        <button
+                          className="tile-footer-pill is-btn"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSidebarOpen(true);
+                            setVoicePopoverOpen(true);
+                          }}
+                          title="Status da conexão de rede e voz"
+                        >
+                          <SignalBarsIcon />
+                          <span>Conexão estável · 18 ms</span>
+                          <InfoCircleIcon />
+                        </button>
                         <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
                           <CameraIcon />
                           <span>{state.remoteUserName}</span>

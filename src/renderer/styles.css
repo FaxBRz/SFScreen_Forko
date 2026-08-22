@@ -1298,6 +1298,20 @@ button:disabled {
   z-index: 2;
 }
 
+.grid-tile-nonsharing-content.is-camera-standalone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+
+.tile-side-avatar-box.is-standalone-centered {
+  margin: 0 auto;
+  max-width: 440px;
+  width: 100%;
+  height: 100%;
+}
+
 .tile-side-avatar-ring {
   width: clamp(84px, 10vw, 136px);
   height: clamp(84px, 10vw, 136px);
