@@ -243,6 +243,30 @@ const EcoZapIcon = (): ReactElement => (
   </svg>
 );
 
+/* ─── Profile Avatar Component (Supports Uploaded Photos & Initials) ─── */
+interface UserAvatarProps {
+  name: string;
+  avatar?: string;
+  className?: string;
+  isSelf?: boolean;
+}
+
+const UserAvatar = ({ name, avatar, className = "", isSelf = false }: UserAvatarProps): ReactElement => {
+  if (avatar) {
+    return (
+      <div className={`user-avatar-wrap ${className} ${isSelf ? "is-self" : ""}`}>
+        <img src={avatar} alt={name} className="user-avatar-img" />
+      </div>
+    );
+  }
+  return (
+    <div className={`user-avatar-wrap ${className} ${isSelf ? "is-self" : ""}`}>
+      <span className="user-avatar-letter">{(name || "U").slice(0, 1).toUpperCase()}</span>
+    </div>
+  );
+};
+
+
 
 
 
@@ -520,15 +544,48 @@ const SettingsModal = ({
   const { state } = session;
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [name, setName] = useState(state.localUserName);
+  const [avatar, setAvatar] = useState<string | undefined>(state.localUserAvatar);
   const [copiedDiag, setCopiedDiag] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result;
+      if (typeof result === "string") {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const size = 180;
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            const minSide = Math.min(img.width, img.height);
+            const sx = (img.width - minSide) / 2;
+            const sy = (img.height - minSide) / 2;
+            ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+            const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+            setAvatar(compressedDataUrl);
+          }
+        };
+        img.src = result;
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSaveProfile = (e: FormEvent): void => {
     e.preventDefault();
     if (name.trim()) {
       session.setUserName(name.trim());
+      session.setUserAvatar(avatar);
       onClose();
     }
   };
+
 
   const handleExportDiag = async (): Promise<void> => {
     const success = await session.exportDiagnostics();
@@ -588,10 +645,40 @@ const SettingsModal = ({
           {activeTab === "profile" && (
             <form onSubmit={handleSaveProfile} className="settings-form">
               <div className="profile-preview-card">
-                <div className="profile-avatar-big">{name.slice(0, 1).toUpperCase() || "U"}</div>
-                <div>
+                <div className="profile-avatar-wrapper" onClick={() => fileInputRef.current?.click()} title="Clique para alterar a foto">
+                  <UserAvatar name={name} avatar={avatar} isSelf className="profile-avatar-big" />
+                  <div className="profile-avatar-overlay">
+                    <CameraIcon />
+                  </div>
+                </div>
+                <div className="profile-details-col">
                   <strong>{name || "Seu Nome"}</strong>
-                  <p className="modal-subtext">Nome visível para os outros participantes da chamada.</p>
+                  <p className="modal-subtext">Sua foto e nome ficam visíveis na chamada e no modo grade.</p>
+                  <div className="profile-photo-buttons">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      style={{ display: "none" }}
+                      onChange={handleAvatarFileChange}
+                    />
+                    <button
+                      type="button"
+                      className="button outline small"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <CameraIcon /> Alterar foto
+                    </button>
+                    {avatar && (
+                      <button
+                        type="button"
+                        className="button ghost small is-danger"
+                        onClick={() => setAvatar(undefined)}
+                      >
+                        <TrashIcon /> Remover
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="setting-field">
@@ -611,6 +698,7 @@ const SettingsModal = ({
               </div>
             </form>
           )}
+
 
           {activeTab === "network" && (
             <div className="settings-info-grid">
@@ -1562,7 +1650,7 @@ export const App = (): ReactElement => {
             <GearIcon />
           </button>
           <button className="user-avatar-button" type="button" title={`Perfil: ${state.localUserName}`} onClick={() => setSettingsOpen(true)}>
-            {state.localUserName.slice(0, 1).toUpperCase()}
+            <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="topbar-avatar-inner" />
           </button>
 
           {/* Window Native Controls */}
@@ -1600,7 +1688,7 @@ export const App = (): ReactElement => {
             <div className="participant-list">
               {isConnected && (
                 <div className="participant-item">
-                  <div className="user-avatar-small">{state.remoteUserName.slice(0, 1).toUpperCase()}</div>
+                  <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="user-avatar-small" />
                   <div className="participant-info">
                     <span className="name-row">
                       <strong>{state.remoteUserName}</strong>
@@ -1632,7 +1720,7 @@ export const App = (): ReactElement => {
               )}
 
               <div className="participant-item">
-                <div className="user-avatar-small is-self">{state.localUserName.slice(0, 1).toUpperCase()}</div>
+                <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="user-avatar-small is-self" />
                 <div className="participant-info">
                   <span className="name-row">
                     <strong>{state.localUserName}</strong>
@@ -1642,6 +1730,7 @@ export const App = (): ReactElement => {
                 </div>
               </div>
             </div>
+
 
             <div className="sidebar-footer">
               <button className="button primary invite-btn" type="button" onClick={() => session.toggleSessionModal(true)}>
@@ -1716,7 +1805,10 @@ export const App = (): ReactElement => {
                   {/* Header Bar */}
                   <div className="grid-tile-header-bar">
                     <div className="tile-header-left">
-                      <span className="tile-user-pill"><MonitorIcon /> {state.localUserName} (Você)</span>
+                      <span className="tile-user-pill">
+                        <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-mini is-self" />
+                        <span>{state.localUserName} (Você)</span>
+                      </span>
                       <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
                       <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
                       <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
@@ -1746,7 +1838,7 @@ export const App = (): ReactElement => {
                     ) : (
                       <div className="tile-center-profile-box">
                         <div className="tile-avatar-ring is-self">
-                          <div className="tile-avatar-inner">{state.localUserName.slice(0, 1).toUpperCase()}</div>
+                          <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-inner is-self" />
                         </div>
                         <span className="tile-avatar-name">{state.localUserName}</span>
                       </div>
@@ -1794,7 +1886,10 @@ export const App = (): ReactElement => {
                   {/* Header Bar */}
                   <div className="grid-tile-header-bar">
                     <div className="tile-header-left">
-                      <span className="tile-user-pill"><MonitorIcon /> {state.remoteUserName}</span>
+                      <span className="tile-user-pill">
+                        <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-mini" />
+                        <span>{state.remoteUserName}</span>
+                      </span>
                       <span className="tile-res-pill">1080p · 60 FPS</span>
                       <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
                       <button
@@ -1832,12 +1927,13 @@ export const App = (): ReactElement => {
                     ) : (
                       <div className="tile-center-profile-box">
                         <div className="tile-avatar-ring">
-                          <div className="tile-avatar-inner">{state.remoteUserName.slice(0, 1).toUpperCase()}</div>
+                          <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-inner" />
                         </div>
                         <span className="tile-avatar-name">{state.remoteUserName}</span>
                       </div>
                     )}
                   </div>
+
 
                   {/* Footer Bar */}
                   <div className="grid-tile-footer-bar">
@@ -1888,10 +1984,14 @@ export const App = (): ReactElement => {
                   >
                     <EyeIcon />
                     <span className="viewers-count">1</span>
-                    <div className={`viewer-mini-avatar ${!focusedIsLocal ? "is-self" : ""}`} title={focusedIsLocal ? (state.remoteUserName || "Outra pessoa") : "Você"}>
-                      {(focusedIsLocal ? (state.remoteUserName || "O") : (state.localUserName || "V")).slice(0, 1).toUpperCase()}
-                    </div>
+                    <UserAvatar
+                      name={focusedIsLocal ? (state.remoteUserName || "O") : (state.localUserName || "V")}
+                      avatar={focusedIsLocal ? state.remoteUserAvatar : state.localUserAvatar}
+                      isSelf={!focusedIsLocal}
+                      className="viewer-mini-avatar"
+                    />
                   </div>
+
 
 
                   {dualSharing && (
@@ -1968,9 +2068,7 @@ export const App = (): ReactElement => {
               <div className={`stage-call-participants-view ${isConnected ? "has-two-peers" : "is-single-peer"}`}>
                 {/* Local Participant Card */}
                 <div className="call-participant-card is-self-card">
-                  <div className="call-card-avatar is-self">
-                    {state.localUserName.slice(0, 1).toUpperCase()}
-                  </div>
+                  <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="call-card-avatar is-self" />
                   <div className="call-card-name-tag">
                     <span className="name-text">{state.localUserName} (Você)</span>
                     {state.role === "host" && <span className="crown-icon" title="Host da sessão"><CrownIcon /></span>}
@@ -1980,9 +2078,7 @@ export const App = (): ReactElement => {
                 {/* Remote Participant Card (when connected) */}
                 {isConnected && (
                   <div className="call-participant-card">
-                    <div className="call-card-avatar">
-                      {state.remoteUserName.slice(0, 1).toUpperCase()}
-                    </div>
+                    <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="call-card-avatar" />
                     <div className="call-card-name-tag">
                       <span className="name-text">{state.remoteUserName}</span>
                       {state.role === "viewer" && <span className="crown-icon" title="Host da sessão"><CrownIcon /></span>}
@@ -1990,6 +2086,7 @@ export const App = (): ReactElement => {
                   </div>
                 )}
               </div>
+
             )}
 
 
@@ -2395,8 +2492,14 @@ export const App = (): ReactElement => {
               )}
               {state.chatMessages.map((msg) => (
                 <div key={msg.id} className={`chat-message-item ${msg.senderName === state.localUserName ? "is-self" : ""}`}>
-                  <div className="chat-avatar">{msg.senderName.slice(0, 1).toUpperCase()}</div>
+                  <UserAvatar
+                    name={msg.senderName}
+                    avatar={msg.senderName === state.localUserName ? state.localUserAvatar : state.remoteUserAvatar}
+                    isSelf={msg.senderName === state.localUserName}
+                    className="chat-avatar"
+                  />
                   <div className="chat-bubble">
+
                     <div className="chat-meta">
                       <strong>{msg.senderName}</strong>
                       <small>{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>

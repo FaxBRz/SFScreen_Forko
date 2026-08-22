@@ -25,7 +25,9 @@ export interface SessionUiState {
   audioPhase: AudioPhase;
   audioError?: string;
   localUserName: string;
+  localUserAvatar?: string;
   remoteUserName: string;
+  remoteUserAvatar?: string;
   chatMessages: ChatMessagePayload[];
   sessionModalOpen: boolean;
   chatPanelOpen: boolean;
@@ -49,14 +51,15 @@ export type SessionAction =
   | { type: 'closed' }
   | { type: 'set-user-name'; name: string }
   | { type: 'set-local-user-name'; userName: string }
+  | { type: 'set-local-user-avatar'; avatar?: string }
+  | { type: 'set-remote-user-profile'; userName: string; userAvatar?: string }
   | { type: 'set-remote-user-name'; name?: string; userName?: string }
+  | { type: 'set-remote-user-avatar'; avatar?: string }
   | { type: 'add-chat-message'; message: ChatMessagePayload }
   | { type: 'delete-chat-message'; id: string }
   | { type: 'toggle-session-modal'; open?: boolean }
   | { type: 'toggle-chat-panel'; open?: boolean }
   | { type: 'tick'; now: number };
-
-
 
 const emptyStatus: TailscaleStatus = { state: 'offline', peers: [] };
 
@@ -70,6 +73,16 @@ export const getSavedUserName = (): string => {
   return 'Você';
 };
 
+export const getSavedUserAvatar = (): string | undefined => {
+  try {
+    const saved = localStorage.getItem('sfscreen_avatar');
+    if (saved && saved.trim()) return saved.trim();
+  } catch {
+    // Ignored
+  }
+  return undefined;
+};
+
 export const initialSessionState: SessionUiState = {
   phase: 'checking',
   tailscale: emptyStatus,
@@ -81,12 +94,15 @@ export const initialSessionState: SessionUiState = {
   includeSystemAudio: false,
   audioPhase: 'unavailable',
   localUserName: getSavedUserName(),
+  localUserAvatar: getSavedUserAvatar(),
   remoteUserName: 'Outra pessoa',
+  remoteUserAvatar: undefined,
   chatMessages: [],
   sessionModalOpen: false,
   chatPanelOpen: false,
   now: Date.now(),
 };
+
 
 const connectedState = (state: SessionUiState, route = state.route): SessionUiState => ({
   ...state,
@@ -196,9 +212,27 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
     case 'set-local-user-name':
       try { localStorage.setItem('sfscreen_username', action.userName); } catch { /* ignore */ }
       return { ...state, localUserName: action.userName };
+    case 'set-local-user-avatar':
+      try {
+        if (action.avatar) {
+          localStorage.setItem('sfscreen_avatar', action.avatar);
+        } else {
+          localStorage.removeItem('sfscreen_avatar');
+        }
+      } catch { /* ignore */ }
+      return { ...state, localUserAvatar: action.avatar };
+    case 'set-remote-user-profile':
+      return {
+        ...state,
+        remoteUserName: action.userName || 'Outra pessoa',
+        remoteUserAvatar: action.userAvatar,
+      };
     case 'set-remote-user-name':
       return { ...state, remoteUserName: (action.userName ?? action.name) || 'Outra pessoa' };
+    case 'set-remote-user-avatar':
+      return { ...state, remoteUserAvatar: action.avatar };
     case 'add-chat-message':
+
       return { ...state, chatMessages: [...state.chatMessages, action.message] };
     case 'delete-chat-message':
       return { ...state, chatMessages: state.chatMessages.filter((m) => m.id !== action.id) };

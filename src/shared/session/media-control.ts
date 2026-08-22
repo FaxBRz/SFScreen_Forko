@@ -12,7 +12,7 @@ export interface ChatMessagePayload {
 
 export type SessionControlMessage =
   | { protocolVersion: typeof sessionProtocolVersion; type: 'security-confirmed' }
-  | { protocolVersion: typeof sessionProtocolVersion; type: 'user-profile'; userName: string }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'user-profile'; userName: string; userAvatar?: string }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'chat-message'; message: ChatMessagePayload }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'delete-chat-message'; messageId: string }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'video-state'; state: VideoState }
@@ -29,8 +29,10 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
     if (control.protocolVersion !== sessionProtocolVersion) return undefined;
     if (control.type === 'security-confirmed') return { protocolVersion: sessionProtocolVersion, type: 'security-confirmed' };
     if (control.type === 'user-profile' && typeof control.userName === 'string' && control.userName.trim().length > 0 && control.userName.length <= 64) {
-      return { protocolVersion: sessionProtocolVersion, type: 'user-profile', userName: control.userName.trim() };
+      const userAvatar = typeof control.userAvatar === 'string' && control.userAvatar.length <= 250000 ? control.userAvatar : undefined;
+      return { protocolVersion: sessionProtocolVersion, type: 'user-profile', userName: control.userName.trim(), userAvatar };
     }
+
     if (control.type === 'delete-chat-message' && typeof control.messageId === 'string' && control.messageId.length > 0 && control.messageId.length <= 128) {
       return { protocolVersion: sessionProtocolVersion, type: 'delete-chat-message', messageId: control.messageId };
     }

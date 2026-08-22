@@ -15,8 +15,9 @@ describe('media control protocol', () => {
   });
 
   it('round-trips user-profile and chat-message', () => {
-    const profile = { protocolVersion: sessionProtocolVersion, type: 'user-profile' as const, userName: 'Rafael' };
+    const profile = { protocolVersion: sessionProtocolVersion, type: 'user-profile' as const, userName: 'Rafael', userAvatar: 'data:image/png;base64,avatar123' };
     expect(parseControlMessage(serializeControlMessage(profile))).toEqual(profile);
+
 
     const chat = {
       protocolVersion: sessionProtocolVersion,

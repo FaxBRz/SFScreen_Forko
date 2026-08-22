@@ -59,9 +59,17 @@ describe('session machine', () => {
     const toggledModal = sessionReducer(toggledChat, { type: 'toggle-session-modal', open: true });
     expect(toggledModal.sessionModalOpen).toBe(true);
 
+    const withAvatar = sessionReducer(withLocal, { type: 'set-local-user-avatar', avatar: 'data:image/png;base64,localPic' });
+    expect(withAvatar.localUserAvatar).toBe('data:image/png;base64,localPic');
+
+    const withRemoteProfile = sessionReducer(withAvatar, { type: 'set-remote-user-profile', userName: 'Rafael', userAvatar: 'data:image/png;base64,remotePic' });
+    expect(withRemoteProfile.remoteUserName).toBe('Rafael');
+    expect(withRemoteProfile.remoteUserAvatar).toBe('data:image/png;base64,remotePic');
+
     const deletedChat = sessionReducer(withChat, { type: 'delete-chat-message', id: 'msg-1' });
     expect(deletedChat.chatMessages).toHaveLength(0);
   });
 });
+
 
 

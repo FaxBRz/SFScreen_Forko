@@ -123,9 +123,10 @@ export class WebRtcSession {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'security-confirmed' });
   }
 
-  sendUserProfile(userName: string): void {
-    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'user-profile', userName });
+  sendUserProfile(userName: string, userAvatar?: string): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'user-profile', userName, userAvatar });
   }
+
 
   sendChatMessage(message: ChatMessagePayload): void {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'chat-message', message });

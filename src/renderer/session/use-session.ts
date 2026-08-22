@@ -237,6 +237,7 @@ export interface SessionModel {
   sendChatMessage: (text: string) => void;
   deleteChatMessage: (id: string) => void;
   setUserName: (name: string) => void;
+  setUserAvatar: (avatar?: string) => void;
   toggleSessionModal: (open?: boolean) => void;
   toggleChatPanel: (open?: boolean) => void;
   simulatePeer: (enable?: boolean) => void;
@@ -274,10 +275,15 @@ export const useSession = (): SessionModel => {
   const diagnosticEventsRef = useRef<Array<{ atMs: number; event: DiagnosticEvent }>>([]);
   const metricsRef = useRef<WebRtcMetrics>({});
   const localUserNameRef = useRef(state.localUserName);
+  const localUserAvatarRef = useRef(state.localUserAvatar);
 
   useEffect(() => {
     localUserNameRef.current = state.localUserName;
   }, [state.localUserName]);
+
+  useEffect(() => {
+    localUserAvatarRef.current = state.localUserAvatar;
+  }, [state.localUserAvatar]);
 
   const recordDiagnostic = useCallback((event: DiagnosticEvent): void => {
     const startedAt = sessionStartedAtRef.current;
@@ -357,7 +363,7 @@ export const useSession = (): SessionModel => {
     const controller = new WebRtcSession({
       onChannelOpen: () => {
         recordDiagnostic('channel-open');
-        controller.sendUserProfile(localUserNameRef.current);
+        controller.sendUserProfile(localUserNameRef.current, localUserAvatarRef.current);
         dispatch({ type: 'verifying', message: 'Canal seguro conectado. Compare o código de segurança.' });
       },
       onControlMessage: (message) => {
@@ -371,7 +377,7 @@ export const useSession = (): SessionModel => {
           return;
         }
         if (message.type === 'user-profile') {
-          dispatch({ type: 'set-remote-user-name', name: message.userName });
+          dispatch({ type: 'set-remote-user-profile', userName: message.userName, userAvatar: message.userAvatar });
           return;
         }
         if (message.type === 'chat-message') {
@@ -720,7 +726,7 @@ recordDiagnostic('audio-unavailable');
   const confirmSecurity = useCallback((): void => {
     localConfirmedRef.current = true;
     controllerRef.current?.confirmSecurity();
-    controllerRef.current?.sendUserProfile(localUserNameRef.current);
+    controllerRef.current?.sendUserProfile(localUserNameRef.current, localUserAvatarRef.current);
     dispatch({ type: 'local-confirmed' });
     if (remoteConfirmedRef.current) {
       recordDiagnostic('verified');
@@ -845,7 +851,14 @@ recordDiagnostic('audio-unavailable');
     if (!trimmed) return;
     dispatch({ type: 'set-user-name', name: trimmed });
     if (state.phase === 'connected') {
-      controllerRef.current?.sendUserProfile(trimmed);
+      controllerRef.current?.sendUserProfile(trimmed, localUserAvatarRef.current);
+    }
+  }, [state.phase]);
+
+  const setUserAvatar = useCallback((avatar?: string): void => {
+    dispatch({ type: 'set-local-user-avatar', avatar });
+    if (state.phase === 'connected') {
+      controllerRef.current?.sendUserProfile(localUserNameRef.current, avatar);
     }
   }, [state.phase]);
 
@@ -924,8 +937,10 @@ recordDiagnostic('audio-unavailable');
     sendChatMessage,
     deleteChatMessage,
     setUserName,
+    setUserAvatar,
     toggleSessionModal,
     toggleChatPanel,
     simulatePeer,
   };
 };
+
