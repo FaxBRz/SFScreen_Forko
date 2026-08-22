@@ -1902,13 +1902,13 @@ export const App = (): ReactElement => {
 
   const localScreenActive = localSharing && !!session.localStream;
   const localCameraActive = session.cameraActive && !!session.localCameraStream;
-  const remoteScreenActive = remoteSharing && watchingRemote && !!session.remoteStream;
-  const remoteCameraActive = !!session.remoteCameraStream;
+  const remoteScreenActive = isConnected && remoteSharing && watchingRemote && !!session.remoteStream;
+  const remoteCameraActive = isConnected && !!session.remoteCameraStream;
 
   const localHasVideo = localScreenActive || localCameraActive;
   const remoteHasVideo = remoteScreenActive || remoteCameraActive;
-  const dualSharing = localHasVideo && remoteHasVideo;
-  const isGridActive = layoutMode === "grid" && dualSharing;
+  const dualSharing = isConnected && localHasVideo && remoteHasVideo;
+  const isGridActive = isConnected && layoutMode === "grid" && dualSharing;
 
   const [prevDualSharing, setPrevDualSharing] = useState(dualSharing);
   if (prevDualSharing !== dualSharing) {
@@ -1918,8 +1918,9 @@ export const App = (): ReactElement => {
     }
   }
 
-  const effectiveFocused: FocusedTarget =
-    (focused === "remote" || focused === "remote-screen") && !remoteScreenActive && localScreenActive
+  const effectiveFocused: FocusedTarget = !isConnected
+    ? (localCameraActive && focused === "local-camera" ? "local-camera" : localScreenActive ? "local-screen" : "local")
+    : (focused === "remote" || focused === "remote-screen") && !remoteScreenActive && localScreenActive
       ? "local-screen"
       : (focused === "local" || focused === "local-screen") && !localScreenActive && remoteScreenActive
         ? "remote-screen"
@@ -1929,8 +1930,8 @@ export const App = (): ReactElement => {
             ? (remoteScreenActive ? "remote-screen" : localScreenActive ? "local-screen" : localCameraActive ? "local-camera" : "remote-screen")
             : focused;
 
-  const focusedIsLocal = effectiveFocused === "local" || effectiveFocused === "local-screen" || effectiveFocused === "local-camera";
-  const focusedIsCamera = effectiveFocused === "local-camera" || effectiveFocused === "remote-camera";
+  const focusedIsLocal = !isConnected || effectiveFocused === "local" || effectiveFocused === "local-screen" || effectiveFocused === "local-camera";
+  const focusedIsCamera = effectiveFocused === "local-camera" || (isConnected && effectiveFocused === "remote-camera");
   const focusedSharing = effectiveFocused === "local-camera"
     ? localCameraActive
     : effectiveFocused === "remote-camera"
@@ -1942,70 +1943,82 @@ export const App = (): ReactElement => {
   const focusedStream = effectiveFocused === "local-camera"
     ? session.localCameraStream
     : effectiveFocused === "remote-camera"
-      ? session.remoteCameraStream
+      ? (isConnected ? session.remoteCameraStream : undefined)
       : focusedIsLocal
         ? session.localStream
-        : (watchingRemote ? session.remoteStream : undefined);
+        : (isConnected && watchingRemote ? session.remoteStream : undefined);
 
   let otherStream: MediaStream | undefined;
   let otherTarget: FocusedTarget | undefined;
   let otherLabel = "";
 
-  if (effectiveFocused === "remote" || effectiveFocused === "remote-screen") {
-    if (localScreenActive) {
-      otherStream = session.localStream;
-      otherTarget = "local-screen";
-      otherLabel = "Você (Tela)";
-    } else if (localCameraActive) {
+  if (isConnected) {
+    if (effectiveFocused === "remote" || effectiveFocused === "remote-screen") {
+      if (localScreenActive) {
+        otherStream = session.localStream;
+        otherTarget = "local-screen";
+        otherLabel = "Você (Tela)";
+      } else if (localCameraActive) {
+        otherStream = session.localCameraStream;
+        otherTarget = "local-camera";
+        otherLabel = "Você (Câmera)";
+      } else if (remoteCameraActive) {
+        otherStream = session.remoteCameraStream;
+        otherTarget = "remote-camera";
+        otherLabel = `${state.remoteUserName} (Câmera)`;
+      }
+    } else if (effectiveFocused === "local" || effectiveFocused === "local-screen") {
+      if (remoteScreenActive) {
+        otherStream = session.remoteStream;
+        otherTarget = "remote-screen";
+        otherLabel = state.remoteUserName;
+      } else if (remoteCameraActive) {
+        otherStream = session.remoteCameraStream;
+        otherTarget = "remote-camera";
+        otherLabel = `${state.remoteUserName} (Câmera)`;
+      } else if (localCameraActive) {
+        otherStream = session.localCameraStream;
+        otherTarget = "local-camera";
+        otherLabel = "Você (Câmera)";
+      }
+    } else if (effectiveFocused === "local-camera") {
+      if (remoteScreenActive) {
+        otherStream = session.remoteStream;
+        otherTarget = "remote-screen";
+        otherLabel = state.remoteUserName;
+      } else if (remoteCameraActive) {
+        otherStream = session.remoteCameraStream;
+        otherTarget = "remote-camera";
+        otherLabel = `${state.remoteUserName} (Câmera)`;
+      } else if (localScreenActive) {
+        otherStream = session.localStream;
+        otherTarget = "local-screen";
+        otherLabel = "Você (Tela)";
+      }
+    } else if (effectiveFocused === "remote-camera") {
+      if (remoteScreenActive) {
+        otherStream = session.remoteStream;
+        otherTarget = "remote-screen";
+        otherLabel = `${state.remoteUserName} (Tela)`;
+      } else if (localScreenActive) {
+        otherStream = session.localStream;
+        otherTarget = "local-screen";
+        otherLabel = "Você (Tela)";
+      } else if (localCameraActive) {
+        otherStream = session.localCameraStream;
+        otherTarget = "local-camera";
+        otherLabel = "Você (Câmera)";
+      }
+    }
+  } else if (localScreenActive && localCameraActive) {
+    if (effectiveFocused === "local-screen") {
       otherStream = session.localCameraStream;
       otherTarget = "local-camera";
       otherLabel = "Você (Câmera)";
-    } else if (remoteCameraActive) {
-      otherStream = session.remoteCameraStream;
-      otherTarget = "remote-camera";
-      otherLabel = `${state.remoteUserName} (Câmera)`;
-    }
-  } else if (effectiveFocused === "local" || effectiveFocused === "local-screen") {
-    if (remoteScreenActive) {
-      otherStream = session.remoteStream;
-      otherTarget = "remote-screen";
-      otherLabel = state.remoteUserName;
-    } else if (remoteCameraActive) {
-      otherStream = session.remoteCameraStream;
-      otherTarget = "remote-camera";
-      otherLabel = `${state.remoteUserName} (Câmera)`;
-    } else if (localCameraActive) {
-      otherStream = session.localCameraStream;
-      otherTarget = "local-camera";
-      otherLabel = "Você (Câmera)";
-    }
-  } else if (effectiveFocused === "local-camera") {
-    if (remoteScreenActive) {
-      otherStream = session.remoteStream;
-      otherTarget = "remote-screen";
-      otherLabel = state.remoteUserName;
-    } else if (remoteCameraActive) {
-      otherStream = session.remoteCameraStream;
-      otherTarget = "remote-camera";
-      otherLabel = `${state.remoteUserName} (Câmera)`;
-    } else if (localScreenActive) {
+    } else {
       otherStream = session.localStream;
       otherTarget = "local-screen";
       otherLabel = "Você (Tela)";
-    }
-  } else if (effectiveFocused === "remote-camera") {
-    if (remoteScreenActive) {
-      otherStream = session.remoteStream;
-      otherTarget = "remote-screen";
-      otherLabel = `${state.remoteUserName} (Tela)`;
-    } else if (localScreenActive) {
-      otherStream = session.localStream;
-      otherTarget = "local-screen";
-      otherLabel = "Você (Tela)";
-    } else if (localCameraActive) {
-      otherStream = session.localCameraStream;
-      otherTarget = "local-camera";
-      otherLabel = "Você (Câmera)";
     }
   }
 

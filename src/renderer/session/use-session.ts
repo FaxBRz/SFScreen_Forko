@@ -618,7 +618,18 @@ export const useSession = (): SessionModel => {
       onConnectionState: (connectionState) => {
         if (connectionState === 'failed') {
           recordDiagnostic('connection-failed');
+          setRemoteStream(undefined);
+          setRemoteCameraStream(undefined);
+          setRemoteMediaPhase('stopped');
+          setRemoteAudioPhase('unavailable');
           dispatch({ type: 'failed', message: 'A conexão WebRTC falhou pela interface Tailscale.' });
+        } else if (connectionState === 'closed' || connectionState === 'disconnected') {
+          recordDiagnostic('session-closed');
+          setRemoteStream(undefined);
+          setRemoteCameraStream(undefined);
+          setRemoteMediaPhase('stopped');
+          setRemoteAudioPhase('unavailable');
+          dispatch({ type: 'closed' });
         }
         if (connectionState === 'connected') {
           void window.sfscreen.getTailscaleStatus().then((status) => {

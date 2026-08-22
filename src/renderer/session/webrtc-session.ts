@@ -358,6 +358,9 @@ export class WebRtcSession {
       if (this.confirmed) this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'security-confirmed' });
       this.events.onChannelOpen();
     };
+    channel.onclose = () => {
+      this.events.onConnectionState('closed');
+    };
     channel.onmessage = (event) => {
       const message = parseControlMessage(event.data);
       if (message) this.events.onControlMessage(message);

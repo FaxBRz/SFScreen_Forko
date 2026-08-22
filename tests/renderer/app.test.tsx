@@ -778,6 +778,25 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(hangupBtns[0]);
     expect(connectedSession.close).toHaveBeenCalledOnce();
   });
+
+  it('renders local screenshare in full stage when alone or when peer disconnects', () => {
+    const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({
+      phase: 'idle',
+      mediaPhase: 'sharing',
+      selectedSource: { id: 'screen:1', name: 'Monitor 1', thumbnailDataUrl: 'data:image/png;base64,' },
+    }));
+    current.localStream = fakeStream;
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // Should state that "Você está apresentando"
+    expect(screen.getByText(/Você está apresentando/i)).toBeTruthy();
+
+    // No PiP and no "Parar de ver" remote viewer button
+    expect(screen.queryByText(/Parar de ver/i)).toBeNull();
+    expect(screen.queryByTitle(/Fechar miniatura flutuante/i)).toBeNull();
+  });
 });
 
 
