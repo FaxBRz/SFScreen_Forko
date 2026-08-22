@@ -807,8 +807,8 @@ button:disabled {
 }
 
 .main-stage-box.is-active-stream {
-  border: 2px solid rgba(35, 165, 90, 0.75);
-  box-shadow: 0 0 24px rgba(35, 165, 90, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }
 
 .main-stage-box.is-idle-stream {
@@ -910,22 +910,22 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(88, 101, 242, 0.18);
-  border: 1px solid rgba(88, 101, 242, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #c4c9ff;
+  color: #dbdee1;
   cursor: pointer;
   transition: all 0.12s ease;
 }
 
 .stage-layout-mode-btn:hover,
 .stage-layout-mode-btn.is-active {
-  background: #5865f2;
+  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
-  border-color: #5865f2;
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .stage-layout-mode-btn svg {
@@ -935,8 +935,8 @@ button:disabled {
 
 /* ─── Main Stage Grid Layout (Top & Bottom Mode for 2 Screens) ─── */
 .main-stage-box.is-grid-layout {
-  border: 2px solid rgba(88, 101, 242, 0.5);
-  box-shadow: 0 0 24px rgba(88, 101, 242, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }
 
 .main-stage-grid {
@@ -966,35 +966,34 @@ button:disabled {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  background: #0a0d0c;
-  border-radius: 14px;
+  background: #0b0c10;
+  border-radius: 12px;
   overflow: hidden;
-  border: 1.5px solid rgba(35, 165, 90, 0.35);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 48px rgba(35, 165, 90, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1), border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .stage-grid-tile:hover {
-  transform: scale(1.008);
-  border-color: #23a55a;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7), 0 0 24px rgba(35, 165, 90, 0.3);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
 }
 
 .stage-grid-tile.is-focused-tile {
-  border-color: rgba(88, 101, 242, 0.85);
-  box-shadow: 0 0 24px rgba(88, 101, 242, 0.25);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
 }
 
-/* ─── Grid Tile Ambient Aurora Mesh ─── */
+/* ─── Grid Tile Ambient Background ─── */
 .grid-tile-ambient-bg {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  background: radial-gradient(ellipse at 50% 50%, rgba(35, 165, 90, 0.14) 0%, rgba(13, 26, 19, 0.45) 50%, #080c0a 100%);
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.015) 0%, transparent 70%);
 }
 
 /* ─── Grid Tile Header Bar ─── */
@@ -1146,29 +1145,29 @@ button:disabled {
 }
 
 .tile-avatar-ring {
-  width: 140px;
-  height: 140px;
+  width: 130px;
+  height: 130px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.04);
-  border: 3.5px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(255, 255, 255, 0.1);
   display: grid;
   place-items: center;
-  box-shadow: 0 0 32px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   transition: all 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
 .tile-avatar-ring.is-self {
-  border-color: #23a55a;
-  box-shadow: 0 0 36px rgba(35, 165, 90, 0.35);
+  border-color: rgba(35, 165, 90, 0.35);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
 .tile-avatar-inner {
-  width: 122px;
-  height: 122px;
+  width: 114px;
+  height: 114px;
   border-radius: 50%;
   background: #1b1e24;
   color: #f2f3f5;
-  font-size: 3rem;
+  font-size: 2.8rem;
   font-weight: 800;
   display: grid;
   place-items: center;
@@ -1182,7 +1181,7 @@ button:disabled {
 }
 
 .tile-avatar-name {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #f2f3f5;
   letter-spacing: 0.02em;
@@ -1210,10 +1209,9 @@ button:disabled {
   max-width: 440px;
   min-width: 260px;
   height: 100%;
-  background: rgba(14, 17, 23, 0.94);
-  backdrop-filter: blur(16px);
-  border: 1.5px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
+  background: #111318;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1221,8 +1219,8 @@ button:disabled {
   padding: 12px 14px;
   box-sizing: border-box;
   flex-shrink: 0;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 24px rgba(255, 255, 255, 0.02);
-  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
   user-select: none;
   position: relative;
   cursor: default;
@@ -1233,16 +1231,16 @@ button:disabled {
 }
 
 .tile-side-avatar-box.is-self {
-  border-color: rgba(35, 165, 90, 0.35);
+  border-color: rgba(255, 255, 255, 0.07);
 }
 
 .tile-side-avatar-box:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
 }
 
 .tile-side-avatar-box.is-clickable:hover {
-  border-color: rgba(35, 165, 90, 0.55);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .grid-tile-nonsharing-content {
@@ -1304,11 +1302,11 @@ button:disabled {
   width: clamp(84px, 10vw, 136px);
   height: clamp(84px, 10vw, 136px);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.04);
-  border: 3.5px solid #23a55a;
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(255, 255, 255, 0.1);
   display: grid;
   place-items: center;
-  box-shadow: 0 0 32px rgba(35, 165, 90, 0.45), inset 0 0 18px rgba(35, 165, 90, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
   flex-shrink: 0;
 }
 
@@ -1382,10 +1380,10 @@ button:disabled {
   justify-content: center;
   overflow: hidden;
   position: relative;
-  border-radius: 12px;
-  background: #080b0e;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+  border-radius: 10px;
+  background: #08090d;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 /* ─── Cinematic Ambient Backdrop for Screenshare Video (Eliminates Black Bars) ─── */
@@ -1433,12 +1431,12 @@ button:disabled {
   width: 100%;
   height: 100%;
   min-height: 140px;
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
   position: relative;
   background: #090a0d;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  border: 1.5px solid rgba(35, 165, 90, 0.4);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .tile-camera-video {
@@ -1449,7 +1447,7 @@ button:disabled {
 }
 
 .is-focused-subtile {
-  box-shadow: 0 0 0 2px #23a55a, 0 8px 24px rgba(35, 165, 90, 0.25) !important;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.25), 0 6px 20px rgba(0, 0, 0, 0.5) !important;
 }
 
 /* ─── Grid Tile Footer Bar ─── */
@@ -2140,9 +2138,9 @@ button:disabled {
   aspect-ratio: 16 / 10;
   border-radius: 10px;
   overflow: hidden;
-  border: 2px solid #5865f2;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   background: #111215;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
   z-index: 40;
   cursor: grab;
   display: grid;
@@ -2188,14 +2186,15 @@ button:disabled {
 
 .stage-pip-card:hover {
   transform: translateY(-3px) scale(1.02);
-  border-color: #23a55a;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75);
 }
 
 .stage-pip-card.is-dragging {
   cursor: grabbing !important;
   transform: scale(1.04);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 24px rgba(88, 101, 242, 0.45);
-  border-color: #5865f2;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.85);
+  border-color: rgba(255, 255, 255, 0.35);
   opacity: 0.95;
   transition: transform 0.08s ease, box-shadow 0.08s ease !important;
 }
