@@ -918,44 +918,55 @@ button:disabled {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 16px;
   z-index: 2;
+  user-select: none;
 }
 
 .tile-avatar-ring {
-  width: 76px;
-  height: 76px;
+  width: 140px;
+  height: 140px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 2.5px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+  border: 3.5px solid rgba(255, 255, 255, 0.15);
   display: grid;
   place-items: center;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 32px rgba(0, 0, 0, 0.7);
+  transition: all 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
 .tile-avatar-ring.is-self {
   border-color: #23a55a;
-  box-shadow: 0 0 24px rgba(35, 165, 90, 0.3);
+  box-shadow: 0 0 36px rgba(35, 165, 90, 0.35);
 }
 
 .tile-avatar-inner {
-  width: 64px;
-  height: 64px;
+  width: 122px;
+  height: 122px;
   border-radius: 50%;
   background: #1b1e24;
   color: #f2f3f5;
-  font-size: 1.5rem;
+  font-size: 3rem;
   font-weight: 800;
   display: grid;
   place-items: center;
   user-select: none;
+  overflow: hidden;
+}
+
+.tile-avatar-inner.is-self {
+  background: #121f17;
+  color: #23a55a;
 }
 
 .tile-avatar-name {
-  font-size: 0.9rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: #f2f3f5;
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
+
 
 /* ─── Grid Tile Footer Bar ─── */
 .grid-tile-footer-bar {

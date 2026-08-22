@@ -1809,29 +1809,33 @@ export const App = (): ReactElement => {
                         <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-mini is-self" />
                         <span>{state.localUserName} (Você)</span>
                       </span>
-                      <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
+                      {state.mediaPhase === "sharing" && (
+                        <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
+                      )}
                       <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
                       <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
                         {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
                       </span>
-                      <span className="tile-icon-badge" title="Transmissão de tela"><ScreenCastIcon /></span>
+                      <span className={`tile-icon-badge ${state.mediaPhase !== "sharing" ? "is-muted" : ""}`} title="Transmissão de tela"><ScreenCastIcon /></span>
                     </div>
                     <div className="tile-header-right">
-                      <div className="tile-live-badge">
-                        <span className="tile-live-dot" />
-                        <span>AO VIVO</span>
-                      </div>
+                      {state.mediaPhase === "sharing" && (
+                        <div className="tile-live-badge">
+                          <span className="tile-live-dot" />
+                          <span>AO VIVO</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   {/* Video & Center Area */}
                   <div className="grid-tile-video-wrapper">
-                    {!isWindowFocused ? (
+                    {!isWindowFocused && state.mediaPhase === "sharing" ? (
                       <div className="grid-tile-paused-state">
                         <EcoZapIcon />
                         <p>Sua transmissão está ligada, porém pausamos a renderização para reduzir consumos.</p>
                       </div>
-                    ) : session.localStream ? (
+                    ) : state.mediaPhase === "sharing" && session.localStream ? (
                       <div className="tile-video-inner-box">
                         <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
                       </div>
@@ -1890,7 +1894,9 @@ export const App = (): ReactElement => {
                         <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-mini" />
                         <span>{state.remoteUserName}</span>
                       </span>
-                      <span className="tile-res-pill">1080p · 60 FPS</span>
+                      {state.remoteMediaPhase === "sharing" && (
+                        <span className="tile-res-pill">1080p · 60 FPS</span>
+                      )}
                       <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
                       <button
                         className={`tile-icon-badge is-btn ${remoteMuted ? "is-muted" : "is-active"}`}
@@ -1903,19 +1909,21 @@ export const App = (): ReactElement => {
                       >
                         {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
                       </button>
-                      <span className="tile-icon-badge" title="Transmissão"><ScreenCastIcon /></span>
+                      <span className={`tile-icon-badge ${state.remoteMediaPhase !== "sharing" ? "is-muted" : ""}`} title="Transmissão"><ScreenCastIcon /></span>
                     </div>
                     <div className="tile-header-right">
-                      <div className="tile-live-badge">
-                        <span className="tile-live-dot" />
-                        <span>AO VIVO</span>
-                      </div>
+                      {state.remoteMediaPhase === "sharing" && (
+                        <div className="tile-live-badge">
+                          <span className="tile-live-dot" />
+                          <span>AO VIVO</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   {/* Video & Center Area */}
                   <div className="grid-tile-video-wrapper">
-                    {session.remoteStream ? (
+                    {state.remoteMediaPhase === "sharing" && session.remoteStream ? (
                       <div className="tile-video-inner-box">
                         <Video
                           stream={session.remoteStream}
@@ -1933,6 +1941,7 @@ export const App = (): ReactElement => {
                       </div>
                     )}
                   </div>
+
 
 
                   {/* Footer Bar */}
