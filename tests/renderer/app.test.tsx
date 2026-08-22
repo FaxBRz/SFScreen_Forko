@@ -224,6 +224,23 @@ describe('SFScreen Discord layout', () => {
     expect(screen.queryByText('1', { selector: '.dock-badge' })).toBeNull();
   });
 
+  it('renders alone notice at the bottom of message list when chat has messages and user is alone', () => {
+    const current = model(readyState({
+      phase: 'idle',
+      chatPanelOpen: true,
+      chatMessages: [
+        { id: 'msg-1', senderName: 'Alex', text: 'Mensagem antiga', timestamp: Date.now() - 5000 },
+        { id: 'msg-2', senderName: 'Você', text: 'Resposta', timestamp: Date.now() },
+      ],
+    }));
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    const notice = screen.getByText(/Você está sozinho na chamada/i);
+    expect(notice).toBeTruthy();
+    expect(notice.classList.contains('is-bottom-notice')).toBe(true);
+  });
+
   it('automatically opens chat panel when window is widescreen/maximized', () => {
     const current = model(readyState({ chatPanelOpen: false }));
     vi.mocked(useSession).mockReturnValue(current);

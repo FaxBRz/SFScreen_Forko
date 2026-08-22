@@ -1826,6 +1826,14 @@ export const App = (): ReactElement => {
     prevChatCountRef.current = state.chatMessages.length;
   }, [state.chatMessages.length]);
 
+  useEffect(() => {
+    if (state.chatPanelOpen) {
+      if (typeof chatMessagesEndRef.current?.scrollIntoView === "function") {
+        chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+  }, [state.chatMessages.length, isConnected, state.chatPanelOpen]);
+
 
   const userManuallyToggledChatRef = useRef(false);
 
@@ -3514,7 +3522,7 @@ export const App = (): ReactElement => {
             </div>
 
             <div className="chat-messages-container">
-              {!isConnected && (
+              {state.chatMessages.length === 0 && !isConnected && (
                 <div className="chat-notice">
                   Você está sozinho na chamada. As mensagens serão entregues assim que um participante se conectar.
                 </div>
@@ -3546,6 +3554,11 @@ export const App = (): ReactElement => {
                   </div>
                 </div>
               ))}
+              {state.chatMessages.length > 0 && !isConnected && (
+                <div className="chat-notice is-bottom-notice">
+                  Você está sozinho na chamada. As mensagens serão entregues assim que um participante se conectar.
+                </div>
+              )}
               <div ref={chatMessagesEndRef} />
             </div>
 
