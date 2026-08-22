@@ -3262,19 +3262,6 @@ export const App = (): ReactElement => {
                 </button>
               )}
 
-              {/* Speaker Volume/Mute Button in Dock */}
-              {remoteSharing && (
-                <button
-                  className={`dock-icon-btn ${remoteMuted ? "is-muted" : ""}`}
-                  type="button"
-                  onClick={() => setRemoteMuted((v) => !v)}
-                  title={remoteMuted ? `Ativar áudio de ${state.remoteUserName}` : `Silenciar áudio de ${state.remoteUserName}`}
-                  aria-label={remoteMuted ? "Ativar áudio" : "Silenciar áudio"}
-                >
-                  {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
-                </button>
-              )}
-
               {/* Camera Toggle Button in Dock */}
               <button
                 className={`dock-icon-btn is-camera-btn ${session.cameraActive ? "is-camera-on" : ""}`}
