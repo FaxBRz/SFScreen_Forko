@@ -1471,239 +1471,235 @@ const SettingsModal = ({
   );
 };
 
-/* ─── Stream Start Sound Synthesizer (Discord-style Chime) ─── */
+/* ─── Web Audio Notification Synthesizer with Distinct Acoustic Signatures ─── */
 let audioContextInstance: AudioContext | null = null;
 
+const getAudioContext = (): AudioContext | null => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return null;
+    if (!audioContextInstance) {
+      audioContextInstance = new AudioContextClass();
+    }
+    if (audioContextInstance.state === "suspended") {
+      void audioContextInstance.resume();
+    }
+    return audioContextInstance;
+  } catch {
+    return null;
+  }
+};
+
+/* 1. 🚀 Stream Start: Upbeat Major Arpeggio Fanfare (Broadcasting Live) */
 const playStreamStartSound = (): void => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!audioContextInstance) {
-      audioContextInstance = new AudioContextClass();
-    }
-    if (audioContextInstance.state === "suspended") {
-      void audioContextInstance.resume();
-    }
-
-    const now = audioContextInstance.currentTime;
-    const notes = [
-      { freq: 440.00, start: 0.00, dur: 0.12, gain: 0.10 }, // A4
-      { freq: 554.37, start: 0.08, dur: 0.15, gain: 0.12 }, // C#5
-      { freq: 659.25, start: 0.16, dur: 0.26, gain: 0.14 }, // E5
-      { freq: 880.00, start: 0.22, dur: 0.42, gain: 0.16 }, // A5
-    ];
-
-    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
-      if (!audioContextInstance) return;
-      const osc = audioContextInstance.createOscillator();
-      const gainNode = audioContextInstance.createGain();
-
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, now + start);
-
-      gainNode.gain.setValueAtTime(0, now + start);
-      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.015);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
-
-      osc.connect(gainNode);
-      gainNode.connect(audioContextInstance.destination);
-
-      osc.start(now + start);
-      osc.stop(now + start + dur);
-    });
-  } catch {
-    // Ignored in restricted environments
-  }
-};
-
-const playStreamStopSound = (): void => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!audioContextInstance) {
-      audioContextInstance = new AudioContextClass();
-    }
-    if (audioContextInstance.state === "suspended") {
-      void audioContextInstance.resume();
-    }
-
-    const now = audioContextInstance.currentTime;
-    const notes = [
-      { freq: 880.00, start: 0.00, dur: 0.10, gain: 0.12 }, // A5
-      { freq: 659.25, start: 0.07, dur: 0.12, gain: 0.11 }, // E5
-      { freq: 440.00, start: 0.14, dur: 0.24, gain: 0.09 }, // A4
-    ];
-
-    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
-      if (!audioContextInstance) return;
-      const osc = audioContextInstance.createOscillator();
-      const gainNode = audioContextInstance.createGain();
-
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, now + start);
-
-      gainNode.gain.setValueAtTime(0, now + start);
-      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.015);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
-
-      osc.connect(gainNode);
-      gainNode.connect(audioContextInstance.destination);
-
-      osc.start(now + start);
-      osc.stop(now + start + dur);
-    });
-  } catch {
-    // Ignored in restricted environments
-  }
-};
-
-/* ─── Discord-style User Join Sound ─── */
-const playUserJoinSound = (): void => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
-    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
-    const now = audioContextInstance.currentTime;
-    const notes = [
-      { freq: 440.00, start: 0.00, dur: 0.12, gain: 0.12 }, // A4
-      { freq: 587.33, start: 0.09, dur: 0.28, gain: 0.15 }, // D5
-    ];
-    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
-      if (!audioContextInstance) return;
-      const osc = audioContextInstance.createOscillator();
-      const gainNode = audioContextInstance.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, now + start);
-      gainNode.gain.setValueAtTime(0, now + start);
-      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.015);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
-      osc.connect(gainNode);
-      gainNode.connect(audioContextInstance.destination);
-      osc.start(now + start);
-      osc.stop(now + start + dur);
-    });
-  } catch {
-    // Ignored in restricted environments
-  }
-};
-
-/* ─── Discord-style User Leave Sound ─── */
-const playUserLeaveSound = (): void => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
-    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
-    const now = audioContextInstance.currentTime;
-    const notes = [
-      { freq: 587.33, start: 0.00, dur: 0.10, gain: 0.13 }, // D5
-      { freq: 440.00, start: 0.08, dur: 0.24, gain: 0.10 }, // A4
-    ];
-    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
-      if (!audioContextInstance) return;
-      const osc = audioContextInstance.createOscillator();
-      const gainNode = audioContextInstance.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, now + start);
-      gainNode.gain.setValueAtTime(0, now + start);
-      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.015);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
-      osc.connect(gainNode);
-      gainNode.connect(audioContextInstance.destination);
-      osc.start(now + start);
-      osc.stop(now + start + dur);
-    });
-  } catch {
-    // Ignored in restricted environments
-  }
-};
-
-/* ─── Discord-style Chat Message Sound ─── */
-const playChatMessageSound = (): void => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
-    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
-    const now = audioContextInstance.currentTime;
-    const osc = audioContextInstance.createOscillator();
-    const gainNode = audioContextInstance.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(880, now);
-    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(0.12, now + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const notes = [
+    { freq: 523.25, start: 0.00, dur: 0.10, gain: 0.10, type: "sine" as OscillatorType }, // C5
+    { freq: 659.25, start: 0.07, dur: 0.12, gain: 0.12, type: "triangle" as OscillatorType }, // E5
+    { freq: 783.99, start: 0.14, dur: 0.16, gain: 0.14, type: "sine" as OscillatorType }, // G5
+    { freq: 1046.50, start: 0.20, dur: 0.35, gain: 0.16, type: "sine" as OscillatorType }, // C6
+    { freq: 2093.00, start: 0.21, dur: 0.25, gain: 0.04, type: "triangle" as OscillatorType }, // C7 shimmer
+  ];
+  notes.forEach(({ freq, start, dur, gain: noteGain, type }) => {
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now + start);
+    gainNode.gain.setValueAtTime(0, now + start);
+    gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.012);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
     osc.connect(gainNode);
-    gainNode.connect(audioContextInstance.destination);
-    osc.start(now);
-    osc.stop(now + 0.16);
-  } catch {
-    // Ignored in restricted environments
-  }
+    gainNode.connect(ctx.destination);
+    osc.start(now + start);
+    osc.stop(now + start + dur);
+  });
 };
 
-/* ─── Discord-style Camera On Sound (Crisp Ascending Chime) ─── */
+/* 2. ⏹️ Stream Stop: Smooth Power-Down Pitch Sweep to Deep Low-End Finish */
+const playStreamStopSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Descending slide
+  const osc = ctx.createOscillator();
+  const gainNode = ctx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(784.00, now); // G5
+  osc.frequency.exponentialRampToValueAtTime(196.00, now + 0.22); // G3
+  gainNode.gain.setValueAtTime(0, now);
+  gainNode.gain.linearRampToValueAtTime(0.14, now + 0.015);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.26);
+  osc.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.26);
+
+  // Sub-bass soft landing thump
+  const subOsc = ctx.createOscillator();
+  const subGain = ctx.createGain();
+  subOsc.type = "sine";
+  subOsc.frequency.setValueAtTime(120, now + 0.12);
+  subOsc.frequency.exponentialRampToValueAtTime(60, now + 0.32);
+  subGain.gain.setValueAtTime(0, now + 0.12);
+  subGain.gain.linearRampToValueAtTime(0.12, now + 0.14);
+  subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+  subOsc.connect(subGain);
+  subGain.connect(ctx.destination);
+  subOsc.start(now + 0.12);
+  subOsc.stop(now + 0.32);
+};
+
+/* 3. 👋 User Join: Discord Iconic Two-Tone Crystal Doorbell Chime (F#5 -> B5) */
+const playUserJoinSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const notes = [
+    { freq: 739.99, start: 0.00, dur: 0.12, gain: 0.13 }, // F#5
+    { freq: 987.77, start: 0.09, dur: 0.38, gain: 0.16 }, // B5
+    { freq: 1975.53, start: 0.09, dur: 0.25, gain: 0.05 }, // B6 harmonic overtone
+  ];
+  notes.forEach(({ freq, start, dur, gain: noteGain }) => {
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, now + start);
+    gainNode.gain.setValueAtTime(0, now + start);
+    gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.008);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    osc.start(now + start);
+    osc.stop(now + start + dur);
+  });
+};
+
+/* 4. 🚪 User Leave: Warm Subdued Double Woodblock / Knock (E4 -> A3) */
+const playUserLeaveSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const taps = [
+    { freq: 329.63, start: 0.00, dur: 0.08, gain: 0.15 }, // E4 knock
+    { freq: 220.00, start: 0.09, dur: 0.14, gain: 0.13 }, // A3 knock
+  ];
+  taps.forEach(({ freq, start, dur, gain: tapGain }) => {
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, now + start);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.7, now + start + dur);
+    gainNode.gain.setValueAtTime(0, now + start);
+    gainNode.gain.linearRampToValueAtTime(tapGain, now + start + 0.004);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    osc.start(now + start);
+    osc.stop(now + start + dur);
+  });
+};
+
+/* 5. 💬 Chat Message: Discord Iconic Crisp Bubbly Pop / Droplet */
+const playChatMessageSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Main bubble pitch blip (1100Hz -> 2200Hz)
+  const osc = ctx.createOscillator();
+  const gainNode = ctx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(1100, now);
+  osc.frequency.exponentialRampToValueAtTime(2200, now + 0.045);
+  gainNode.gain.setValueAtTime(0, now);
+  gainNode.gain.linearRampToValueAtTime(0.14, now + 0.004);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+  osc.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.09);
+
+  // Tiny crystalline ping
+  const ping = ctx.createOscillator();
+  const pingGain = ctx.createGain();
+  ping.type = "sine";
+  ping.frequency.setValueAtTime(2600, now + 0.02);
+  pingGain.gain.setValueAtTime(0, now + 0.02);
+  pingGain.gain.linearRampToValueAtTime(0.06, now + 0.025);
+  pingGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+  ping.connect(pingGain);
+  pingGain.connect(ctx.destination);
+  ping.start(now + 0.02);
+  ping.stop(now + 0.08);
+};
+
+/* 6. 📷 Camera On: Mechanical Shutter Click + High Tech Dual Chirp */
 const playCameraOnSound = (): void => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
-    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
-    const now = audioContextInstance.currentTime;
-    const notes = [
-      { freq: 493.88, start: 0.00, dur: 0.09, gain: 0.11 }, // B4
-      { freq: 659.25, start: 0.06, dur: 0.20, gain: 0.14 }, // E5
-    ];
-    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
-      if (!audioContextInstance) return;
-      const osc = audioContextInstance.createOscillator();
-      const gainNode = audioContextInstance.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, now + start);
-      gainNode.gain.setValueAtTime(0, now + start);
-      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.012);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
-      osc.connect(gainNode);
-      gainNode.connect(audioContextInstance.destination);
-      osc.start(now + start);
-      osc.stop(now + start + dur);
-    });
-  } catch {
-    // Ignored in restricted environments
-  }
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Mechanical aperture tick
+  const clickOsc = ctx.createOscillator();
+  const clickGain = ctx.createGain();
+  clickOsc.type = "square";
+  clickOsc.frequency.setValueAtTime(1800, now);
+  clickGain.gain.setValueAtTime(0, now);
+  clickGain.gain.linearRampToValueAtTime(0.06, now + 0.002);
+  clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
+  clickOsc.connect(clickGain);
+  clickGain.connect(ctx.destination);
+  clickOsc.start(now);
+  clickOsc.stop(now + 0.018);
+
+  // High optical chirplet (C6 -> E6)
+  const notes = [
+    { freq: 1046.50, start: 0.02, dur: 0.07, gain: 0.12 }, // C6
+    { freq: 1318.51, start: 0.07, dur: 0.18, gain: 0.15 }, // E6
+  ];
+  notes.forEach(({ freq, start, dur, gain: noteGain }) => {
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, now + start);
+    gainNode.gain.setValueAtTime(0, now + start);
+    gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.005);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    osc.start(now + start);
+    osc.stop(now + start + dur);
+  });
 };
 
-/* ─── Discord-style Camera Off Sound (Gentle Descending Tone) ─── */
+/* 7. 🚫 Camera Off: Mechanical Shutter Snap / Lens Cap Closure */
 const playCameraOffSound = (): void => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
-    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
-    const now = audioContextInstance.currentTime;
-    const notes = [
-      { freq: 659.25, start: 0.00, dur: 0.08, gain: 0.12 }, // E5
-      { freq: 440.00, start: 0.05, dur: 0.18, gain: 0.09 }, // A4
-    ];
-    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
-      if (!audioContextInstance) return;
-      const osc = audioContextInstance.createOscillator();
-      const gainNode = audioContextInstance.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, now + start);
-      gainNode.gain.setValueAtTime(0, now + start);
-      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.012);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
-      osc.connect(gainNode);
-      gainNode.connect(audioContextInstance.destination);
-      osc.start(now + start);
-      osc.stop(now + start + dur);
-    });
-  } catch {
-    // Ignored in restricted environments
-  }
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Dual mechanical snap (descending latch clicks)
+  const clicks = [
+    { freq: 1200, start: 0.00, dur: 0.035, gain: 0.10 },
+    { freq: 600, start: 0.03, dur: 0.05, gain: 0.08 },
+  ];
+  clicks.forEach(({ freq, start, dur, gain: clickGainVal }) => {
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, now + start);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.4, now + start + dur);
+    gainNode.gain.setValueAtTime(0, now + start);
+    gainNode.gain.linearRampToValueAtTime(clickGainVal, now + start + 0.003);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    osc.start(now + start);
+    osc.stop(now + start + dur);
+  });
 };
 
 /* ─── Main Application Component ─── */
