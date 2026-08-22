@@ -967,6 +967,110 @@ button:disabled {
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
 
+/* ─── Grid Tile Split Layout (Left Avatar Box + Right Screenshare) ─── */
+.grid-tile-split-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  padding: 44px 20px 44px 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.tile-side-avatar-box {
+  width: clamp(200px, 20vw, 300px);
+  height: 100%;
+  max-height: 100%;
+  background: rgba(14, 17, 23, 0.88);
+  backdrop-filter: blur(12px);
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 24px rgba(255, 255, 255, 0.02);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.tile-side-avatar-box.is-self {
+  border-color: rgba(35, 165, 90, 0.35);
+}
+
+.tile-side-avatar-box:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+}
+
+.tile-side-avatar-ring {
+  width: clamp(80px, 9.5vw, 126px);
+  height: clamp(80px, 9.5vw, 126px);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 3px solid #23a55a;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 28px rgba(35, 165, 90, 0.4), inset 0 0 16px rgba(35, 165, 90, 0.2);
+  flex-shrink: 0;
+}
+
+.tile-side-avatar-inner {
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
+  border-radius: 50%;
+  background: #1b1e24;
+  color: #f2f3f5;
+  font-size: 2.2rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  user-select: none;
+  overflow: hidden;
+}
+
+.tile-side-avatar-inner.is-self {
+  background: #121f17;
+  color: #23a55a;
+}
+
+.tile-side-name {
+  font-size: clamp(0.95rem, 1.15vw, 1.25rem);
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.tile-side-subtitle {
+  font-size: clamp(0.72rem, 0.85vw, 0.88rem);
+  font-weight: 600;
+  color: #23a55a;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+.tile-screenshare-box {
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  border-radius: 10px;
+}
+
+
 
 /* ─── Grid Tile Footer Bar ─── */
 .grid-tile-footer-bar {

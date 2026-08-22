@@ -1836,8 +1836,17 @@ export const App = (): ReactElement => {
                         <p>Sua transmissão está ligada, porém pausamos a renderização para reduzir consumos.</p>
                       </div>
                     ) : state.mediaPhase === "sharing" && session.localStream ? (
-                      <div className="tile-video-inner-box">
-                        <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
+                      <div className="grid-tile-split-content">
+                        <div className="tile-side-avatar-box is-self">
+                          <div className="tile-side-avatar-ring is-self">
+                            <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-side-avatar-inner is-self" />
+                          </div>
+                          <span className="tile-side-name">{state.localUserName}</span>
+                          <span className="tile-side-subtitle">Compartilhando a tela</span>
+                        </div>
+                        <div className="tile-screenshare-box">
+                          <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
+                        </div>
                       </div>
                     ) : (
                       <div className="tile-center-profile-box">
@@ -1894,7 +1903,7 @@ export const App = (): ReactElement => {
                         <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-mini" />
                         <span>{state.remoteUserName}</span>
                       </span>
-                      {state.remoteMediaPhase === "sharing" && (
+                      {session.remoteStream && (
                         <span className="tile-res-pill">1080p · 60 FPS</span>
                       )}
                       <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
@@ -1909,10 +1918,10 @@ export const App = (): ReactElement => {
                       >
                         {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
                       </button>
-                      <span className={`tile-icon-badge ${state.remoteMediaPhase !== "sharing" ? "is-muted" : ""}`} title="Transmissão"><ScreenCastIcon /></span>
+                      <span className={`tile-icon-badge ${!session.remoteStream ? "is-muted" : ""}`} title="Transmissão"><ScreenCastIcon /></span>
                     </div>
                     <div className="tile-header-right">
-                      {state.remoteMediaPhase === "sharing" && (
+                      {session.remoteStream && (
                         <div className="tile-live-badge">
                           <span className="tile-live-dot" />
                           <span>AO VIVO</span>
@@ -1923,14 +1932,23 @@ export const App = (): ReactElement => {
 
                   {/* Video & Center Area */}
                   <div className="grid-tile-video-wrapper">
-                    {state.remoteMediaPhase === "sharing" && session.remoteStream ? (
-                      <div className="tile-video-inner-box">
-                        <Video
-                          stream={session.remoteStream}
-                          muted={remoteMuted}
-                          volume={remoteVolume}
-                          className="stage-video is-contain"
-                        />
+                    {session.remoteStream ? (
+                      <div className="grid-tile-split-content">
+                        <div className="tile-side-avatar-box">
+                          <div className="tile-side-avatar-ring">
+                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-side-avatar-inner" />
+                          </div>
+                          <span className="tile-side-name">{state.remoteUserName}</span>
+                          <span className="tile-side-subtitle">Compartilhando a tela</span>
+                        </div>
+                        <div className="tile-screenshare-box">
+                          <Video
+                            stream={session.remoteStream}
+                            muted={remoteMuted}
+                            volume={remoteVolume}
+                            className="stage-video is-contain"
+                          />
+                        </div>
                       </div>
                     ) : (
                       <div className="tile-center-profile-box">
