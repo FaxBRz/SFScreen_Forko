@@ -1,4 +1,4 @@
-import { serializeControlMessage, parseControlMessage, type AudioState, type ChatMessagePayload, type SessionControlMessage, type VideoState } from '../../shared/session/media-control';
+import { serializeControlMessage, parseControlMessage, type AudioState, type CameraState, type ChatMessagePayload, type SessionControlMessage, type VideoState } from '../../shared/session/media-control';
 import { filterTailscaleCandidates, tailscaleStunUrl } from '../../shared/session/network';
 import { sessionLifetimeMs, sessionProtocolVersion, type CandidateData, type SessionDescription } from '../../shared/session/types';
 import type { WebRtcMetrics } from '../../shared/diagnostics';
@@ -8,6 +8,7 @@ export interface WebRtcSessionEvents {
   onControlMessage: (message: SessionControlMessage) => void;
   onConnectionState: (state: RTCPeerConnectionState) => void;
   onRemoteStream: (stream: MediaStream, trackKind: 'video' | 'audio') => void;
+  onRemoteCameraStream?: (stream: MediaStream) => void;
 }
 
 const fingerprint = (sdp: string): string => {
@@ -55,9 +56,12 @@ export class WebRtcSession {
   private peer?: RTCPeerConnection;
   private channel?: RTCDataChannel;
   private videoSender?: RTCRtpSender;
+  private cameraSender?: RTCRtpSender;
   private audioSender?: RTCRtpSender;
   private videoPlaceholder?: { stream: MediaStream; track: MediaStreamTrack };
+  private cameraPlaceholder?: { stream: MediaStream; track: MediaStreamTrack };
   private readonly remoteTracks = new Map<string, MediaStreamTrack>();
+  private readonly remoteCameraTracks = new Map<string, MediaStreamTrack>();
   private readonly candidates: CandidateData[] = [];
   private confirmed = false;
   private previousOutbound?: { bytes: number; at: number };
@@ -71,12 +75,18 @@ export class WebRtcSession {
     nonce: string,
     initialVideoTrack?: MediaStreamTrack,
     initialAudioTrack?: MediaStreamTrack,
+    initialCameraTrack?: MediaStreamTrack,
   ): Promise<SessionDescription> {
     const peer = this.createPeer(stunServerIp);
     this.attachChannel(peer.createDataChannel('sfscreen-diagnostics', { ordered: true }));
     const videoTransceiver = peer.addTransceiver(initialVideoTrack ?? 'video', { direction: 'sendrecv' });
     preferVp8(videoTransceiver);
     this.videoSender = videoTransceiver.sender;
+
+    const cameraTransceiver = peer.addTransceiver(initialCameraTrack ?? 'video', { direction: 'sendrecv' });
+    preferVp8(cameraTransceiver);
+    this.cameraSender = cameraTransceiver.sender;
+
     this.audioSender = peer.addTransceiver(initialAudioTrack ?? 'audio', { direction: 'sendrecv' }).sender;
     const offer = await peer.createOffer();
     if (!offer.sdp) throw new Error('A oferta WebRTC não contém SDP.');
@@ -89,12 +99,19 @@ export class WebRtcSession {
     const peer = this.createPeer(stunServerIp);
     await this.applyDescription(offer);
 
-    const videoTransceiver = peer.getTransceivers().find((transceiver) => transceiver.receiver.track.kind === 'video');
-    if (videoTransceiver) {
-      videoTransceiver.direction = 'sendrecv';
-      preferVp8(videoTransceiver);
-      this.videoSender = videoTransceiver.sender;
+    const videoTransceivers = peer.getTransceivers().filter((transceiver) => transceiver.receiver.track.kind === 'video');
+    if (videoTransceivers[0]) {
+      videoTransceivers[0].direction = 'sendrecv';
+      preferVp8(videoTransceivers[0]);
+      this.videoSender = videoTransceivers[0].sender;
       await this.videoSender.replaceTrack(this.ensureVideoPlaceholder());
+    }
+
+    if (videoTransceivers[1]) {
+      videoTransceivers[1].direction = 'sendrecv';
+      preferVp8(videoTransceivers[1]);
+      this.cameraSender = videoTransceivers[1].sender;
+      await this.cameraSender.replaceTrack(this.ensureCameraPlaceholder());
     }
 
     const audioTransceiver = peer.getTransceivers().find((transceiver) => transceiver.receiver.track.kind === 'audio');
@@ -138,6 +155,10 @@ export class WebRtcSession {
 
   sendVideoState(state: VideoState): void {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'video-state', state });
+  }
+
+  sendCameraState(state: CameraState): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'camera-state', state });
   }
 
   sendAudioState(state: AudioState): void {
@@ -186,6 +207,32 @@ export class WebRtcSession {
     await this.videoSender?.replaceTrack(null);
   }
 
+  async replaceCameraTrack(track: MediaStreamTrack, maxBitrate = 2_500_000, maxFramerate = 30): Promise<void> {
+    if (!this.cameraSender) return;
+    track.contentHint = 'motion';
+    if (this.cameraSender.track !== track) await this.cameraSender.replaceTrack(track);
+    try {
+      const parameters = this.cameraSender.getParameters();
+      if (parameters.encodings && parameters.encodings[0]) {
+        parameters.encodings[0].maxBitrate = maxBitrate;
+        parameters.encodings[0].maxFramerate = maxFramerate;
+        await this.cameraSender.setParameters(parameters);
+      }
+    } catch {
+      // Ignored
+    }
+  }
+
+  async parkCameraTrack(): Promise<void> {
+    if (!this.cameraSender) return;
+    const placeholder = this.ensureCameraPlaceholder();
+    if (this.cameraSender.track !== placeholder) await this.cameraSender.replaceTrack(placeholder);
+  }
+
+  async removeCameraTrack(): Promise<void> {
+    await this.cameraSender?.replaceTrack(null);
+  }
+
   async replaceAudioTrack(track: MediaStreamTrack): Promise<void> {
     if (!this.audioSender) throw new Error('O canal de áudio não foi negociado.');
     if (this.audioSender.track !== track) await this.audioSender.replaceTrack(track);
@@ -227,11 +274,16 @@ export class WebRtcSession {
     this.peer?.close();
     this.peer = undefined;
     this.videoSender = undefined;
+    this.cameraSender = undefined;
     this.audioSender = undefined;
     this.videoPlaceholder?.stream.getTracks().forEach((track) => track.stop());
     this.videoPlaceholder = undefined;
+    this.cameraPlaceholder?.stream.getTracks().forEach((track) => track.stop());
+    this.cameraPlaceholder = undefined;
     this.remoteTracks.forEach((track) => track.stop());
     this.remoteTracks.clear();
+    this.remoteCameraTracks.forEach((track) => track.stop());
+    this.remoteCameraTracks.clear();
     this.candidates.length = 0;
     this.confirmed = false;
     this.previousOutbound = undefined;
@@ -244,10 +296,25 @@ export class WebRtcSession {
     peer.onconnectionstatechange = () => this.events.onConnectionState(peer.connectionState);
     peer.ondatachannel = (event) => this.attachChannel(event.channel);
     peer.ontrack = (event) => {
-      if (event.track.kind !== 'video' && event.track.kind !== 'audio') return;
-      this.remoteTracks.set(event.track.id, event.track);
-      event.track.onended = () => this.remoteTracks.delete(event.track.id);
-      this.events.onRemoteStream(new MediaStream(Array.from(this.remoteTracks.values())), event.track.kind);
+      if (event.track.kind === 'audio') {
+        this.remoteTracks.set(event.track.id, event.track);
+        event.track.onended = () => this.remoteTracks.delete(event.track.id);
+        this.events.onRemoteStream(new MediaStream(Array.from(this.remoteTracks.values())), 'audio');
+        return;
+      }
+      if (event.track.kind === 'video') {
+        const transceivers = peer.getTransceivers().filter((t) => t.receiver.track.kind === 'video');
+        const isCamera = event.transceiver === transceivers[1];
+        if (isCamera) {
+          this.remoteCameraTracks.set(event.track.id, event.track);
+          event.track.onended = () => this.remoteCameraTracks.delete(event.track.id);
+          this.events.onRemoteCameraStream?.(new MediaStream(Array.from(this.remoteCameraTracks.values())));
+        } else {
+          this.remoteTracks.set(event.track.id, event.track);
+          event.track.onended = () => this.remoteTracks.delete(event.track.id);
+          this.events.onRemoteStream(new MediaStream(Array.from(this.remoteTracks.values())), 'video');
+        }
+      }
     };
     this.peer = peer;
     return peer;
@@ -260,12 +327,29 @@ export class WebRtcSession {
     canvas.height = 9;
     const context = canvas.getContext('2d');
     context?.fillRect(0, 0, canvas.width, canvas.height);
-    const stream = canvas.captureStream(1);
+    const stream = canvas.captureStream ? canvas.captureStream(1) : new MediaStream();
     const track = stream.getVideoTracks()[0];
     if (!track) throw new Error('Não foi possível criar a faixa de espera do WebRTC.');
     track.enabled = false;
     this.videoPlaceholder = { stream, track };
     return track;
+  }
+
+  private ensureCameraPlaceholder(): MediaStreamTrack {
+    if (this.cameraPlaceholder?.track.readyState === 'live') return this.cameraPlaceholder.track;
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 9;
+    const context = canvas.getContext('2d');
+    context?.fillRect(0, 0, canvas.width, canvas.height);
+    const stream = canvas.captureStream ? canvas.captureStream(1) : new MediaStream();
+    const track = stream.getVideoTracks()[0];
+    if (track) {
+      track.enabled = false;
+      this.cameraPlaceholder = { stream, track };
+      return track;
+    }
+    return this.ensureVideoPlaceholder();
   }
 
   private attachChannel(channel: RTCDataChannel): void {

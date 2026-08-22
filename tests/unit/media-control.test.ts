@@ -8,6 +8,12 @@ describe('media control protocol', () => {
     expect(parseControlMessage(serializeControlMessage(message))).toEqual(message);
   });
 
+  it('round-trips camera states and rejects invalid camera state', () => {
+    const message = { protocolVersion: sessionProtocolVersion, type: 'camera-state' as const, state: 'active' as const };
+    expect(parseControlMessage(serializeControlMessage(message))).toEqual(message);
+    expect(parseControlMessage(JSON.stringify({ protocolVersion: sessionProtocolVersion, type: 'camera-state', state: 'unsupported' }))).toBeUndefined();
+  });
+
   it('round-trips audio states and rejects invalid audio state', () => {
     const message = { protocolVersion: sessionProtocolVersion, type: 'audio-state' as const, state: 'active' as const };
     expect(parseControlMessage(serializeControlMessage(message))).toEqual(message);

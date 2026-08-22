@@ -918,6 +918,13 @@ const SettingsModal = ({
                 <span className="card-value">VP8 (WebRTC Hardware Accel)</span>
               </div>
               <div className="setting-card">
+                <span className="card-key">Câmera WebRTC</span>
+                <span className="card-value status-highlight">
+                  <span className={`status-dot ${session.cameraActive ? "is-online" : "is-offline"}`} />
+                  {session.cameraActive ? "Câmera Ativa (720p · 30 FPS)" : "Câmera Desativada"}
+                </span>
+              </div>
+              <div className="setting-card">
                 <span className="card-key">Isolamento de Áudio</span>
                 <span className="card-value status-highlight">
                   <span className="status-dot is-online" />

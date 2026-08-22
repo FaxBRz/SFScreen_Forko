@@ -484,6 +484,8 @@ export const useSession = (): SessionModel => {
   const close = useCallback(async (): Promise<void> => {
     simulatedStreamCleanupRef.current?.();
     simulatedStreamCleanupRef.current = null;
+    simulatedCameraCleanupRef.current?.();
+    simulatedCameraCleanupRef.current = null;
     setIsSimulatedPeer(false);
     controllerRef.current?.close();
     controllerRef.current = undefined;
@@ -491,6 +493,7 @@ export const useSession = (): SessionModel => {
     localConfirmedRef.current = false;
     remoteConfirmedRef.current = false;
     setRemoteStream(undefined);
+    setRemoteCameraStream(undefined);
     setRemoteMediaPhase('stopped');
     setRemoteMediaError(undefined);
     setRemoteAudioPhase('unavailable');
@@ -516,6 +519,13 @@ export const useSession = (): SessionModel => {
           if (localConfirmedRef.current) {
             recordDiagnostic('verified');
             dispatch({ type: 'connected' });
+            if (localCameraStreamRef.current) {
+              const camTrack = localCameraStreamRef.current.getVideoTracks().find((track) => track.readyState === 'live');
+              if (camTrack) {
+                void controller.replaceCameraTrack(camTrack);
+                controller.sendCameraState('active');
+              }
+            }
           }
           return;
         }
@@ -531,24 +541,32 @@ export const useSession = (): SessionModel => {
           dispatch({ type: 'delete-chat-message', id: message.messageId });
           return;
         }
+        if (message.type === 'camera-state') {
+          if (message.state === 'stopped' || message.state === 'failed') {
+            setRemoteCameraStream(undefined);
+          }
+          return;
+        }
         if (message.type === 'audio-state') {
-
           setRemoteAudioPhase(message.state);
           setRemoteAudioError(message.state === 'failed' ? 'O áudio remoto não ficou disponível.' : undefined);
           return;
         }
-        if (message.state === 'active') {
-          setRemoteMediaPhase('sharing');
-          setRemoteMediaError(undefined);
-        } else if (message.state === 'starting') {
-          setRemoteMediaPhase('starting');
-          setRemoteMediaError(undefined);
-        } else if (message.state === 'failed') {
-          setRemoteMediaPhase('failed');
-          setRemoteMediaError('A outra pessoa não conseguiu iniciar o compartilhamento.');
-        } else {
-          setRemoteMediaPhase('stopped');
-          setRemoteMediaError(undefined);
+        if (message.type === 'video-state') {
+          if (message.state === 'active') {
+            setRemoteMediaPhase('sharing');
+            setRemoteMediaError(undefined);
+          } else if (message.state === 'starting') {
+            setRemoteMediaPhase('starting');
+            setRemoteMediaError(undefined);
+          } else if (message.state === 'failed') {
+            setRemoteMediaPhase('failed');
+            setRemoteMediaError('A outra pessoa não conseguiu iniciar o compartilhamento.');
+          } else {
+            setRemoteMediaPhase('stopped');
+            setRemoteMediaError(undefined);
+          }
+          return;
         }
       },
       onConnectionState: (connectionState) => {
@@ -566,6 +584,10 @@ export const useSession = (): SessionModel => {
       onRemoteStream: (stream, trackKind) => {
         if (trackKind === 'video') recordDiagnostic('remote-video-track');
         setRemoteStream(stream);
+      },
+      onRemoteCameraStream: (stream) => {
+        recordDiagnostic('remote-video-track');
+        setRemoteCameraStream(stream);
       },
     });
     controllerRef.current = controller;
@@ -822,6 +844,7 @@ recordDiagnostic('audio-unavailable');
 
       const videoTrack = localStreamRef.current?.getVideoTracks().find((track) => track.readyState === 'live');
       const audioTrack = state.includeSystemAudio ? localStreamRef.current?.getAudioTracks().find((track) => track.readyState === 'live') : undefined;
+      const cameraTrack = localCameraStreamRef.current?.getVideoTracks().find((track) => track.readyState === 'live');
 
       const controller = createController();
       const offer = await controller.createOffer(
@@ -831,6 +854,7 @@ recordDiagnostic('audio-unavailable');
         crypto.randomUUID(),
         videoTrack,
         audioTrack,
+        cameraTrack,
       );
       const result = await window.sfscreen.hostSession(offer);
       if (!result.ok) throw new Error(result.error.message);
@@ -876,6 +900,13 @@ recordDiagnostic('audio-unavailable');
       dispatch({ type: 'connected' });
       if (localStreamRef.current) {
         void activatePreparedStream(localStreamRef.current);
+      }
+      if (localCameraStreamRef.current) {
+        const camTrack = localCameraStreamRef.current.getVideoTracks().find((track) => track.readyState === 'live');
+        if (camTrack) {
+          void controllerRef.current?.replaceCameraTrack(camTrack);
+          controllerRef.current?.sendCameraState('active');
+        }
       }
     }
   }, [activatePreparedStream, recordDiagnostic]);
@@ -1013,38 +1044,71 @@ recordDiagnostic('audio-unavailable');
     dispatch({ type: 'toggle-chat-panel', open });
   }, []);
 
+  const stopCamera = useCallback(async (): Promise<void> => {
+    if (localCameraStreamRef.current) {
+      localCameraStreamRef.current.getTracks().forEach((t) => t.stop());
+      localCameraStreamRef.current = undefined;
+    }
+    setLocalCameraStream(undefined);
+    setCameraActive(false);
+    if (controllerRef.current) {
+      await controllerRef.current.parkCameraTrack();
+      controllerRef.current.sendCameraState('stopped');
+    }
+  }, []);
+
   const toggleCamera = useCallback(async (): Promise<void> => {
     if (cameraActive) {
-      if (localCameraStreamRef.current) {
-        localCameraStreamRef.current.getTracks().forEach((t) => t.stop());
-        localCameraStreamRef.current = undefined;
-      }
-      setLocalCameraStream(undefined);
-      setCameraActive(false);
+      await stopCamera();
       return;
     }
 
     try {
+      let stream: MediaStream | undefined;
       if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 } },
-        });
-        localCameraStreamRef.current = stream;
-        setLocalCameraStream(stream);
-        setCameraActive(true);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              frameRate: { ideal: 30, max: 60 },
+            },
+          });
+        } catch {
+          const sim = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
+          stream = sim.stream;
+        }
       } else {
-        const { stream } = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
+        const sim = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
+        stream = sim.stream;
+      }
+
+      if (stream) {
+        const camTrack = stream.getVideoTracks()[0];
+        if (camTrack) {
+          camTrack.onended = () => {
+            if (localCameraStreamRef.current === stream) {
+              void stopCamera();
+            }
+          };
+        }
+
         localCameraStreamRef.current = stream;
         setLocalCameraStream(stream);
         setCameraActive(true);
+
+        if (controllerRef.current && camTrack) {
+          await controllerRef.current.replaceCameraTrack(camTrack);
+          controllerRef.current.sendCameraState('active');
+        }
       }
     } catch {
-      const { stream } = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
-      localCameraStreamRef.current = stream;
-      setLocalCameraStream(stream);
+      const sim = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
+      localCameraStreamRef.current = sim.stream;
+      setLocalCameraStream(sim.stream);
       setCameraActive(true);
     }
-  }, [cameraActive, state.localUserAvatar, state.localUserName]);
+  }, [cameraActive, state.localUserAvatar, state.localUserName, stopCamera]);
 
   const simulatePeer = useCallback((enable?: boolean): void => {
     const shouldEnable = enable !== undefined ? enable : !isSimulatedPeer;

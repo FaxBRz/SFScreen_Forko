@@ -2,6 +2,7 @@ import { sessionProtocolVersion } from './types';
 
 export type VideoState = 'starting' | 'active' | 'stopped' | 'failed';
 export type AudioState = 'unavailable' | 'starting' | 'active' | 'stopped' | 'failed';
+export type CameraState = 'starting' | 'active' | 'stopped' | 'failed';
 
 export interface ChatMessagePayload {
   id: string;
@@ -16,6 +17,7 @@ export type SessionControlMessage =
   | { protocolVersion: typeof sessionProtocolVersion; type: 'chat-message'; message: ChatMessagePayload }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'delete-chat-message'; messageId: string }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'video-state'; state: VideoState }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'camera-state'; state: CameraState }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'audio-state'; state: AudioState };
 
 export const serializeControlMessage = (message: SessionControlMessage): string => JSON.stringify(message);
@@ -57,6 +59,7 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
       }
     }
     if (control.type === 'video-state' && (control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'video-state', state: control.state };
+    if (control.type === 'camera-state' && (control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'camera-state', state: control.state };
     if (control.type === 'audio-state' && (control.state === 'unavailable' || control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'audio-state', state: control.state };
   } catch {
     return undefined;
