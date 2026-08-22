@@ -2719,7 +2719,6 @@ export const App = (): ReactElement => {
                         }}
                         role="button"
                         tabIndex={0}
-                        title="Clique para focar nesta transmissão de tela"
                       >
                         <div className="screenshare-header-overlay">
                           <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
@@ -2751,7 +2750,6 @@ export const App = (): ReactElement => {
                       }}
                       role="button"
                       tabIndex={0}
-                      title="Clique para focar na câmera"
                     >
                       <div className="tile-side-avatar-box is-standalone-centered is-camera-active is-self">
                         <div className="tile-camera-feed-wrap">
@@ -2824,7 +2822,6 @@ export const App = (): ReactElement => {
                         } : (e) => e.stopPropagation()}
                         role={session.remoteCameraStream ? "button" : undefined}
                         tabIndex={session.remoteCameraStream ? 0 : undefined}
-                        title={session.remoteCameraStream ? `Clique para focar na câmera de ${state.remoteUserName}` : undefined}
                       >
                         <div className={`card-ambient-backdrop ${!state.remoteUserAvatar ? "is-fallback" : ""}`}>
                           {state.remoteUserAvatar && (
@@ -2849,7 +2846,7 @@ export const App = (): ReactElement => {
                         </div>
 
                         <div className="card-inner-footer">
-                          <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
+                          <div className="tile-footer-pill is-camera">
                             <CameraIcon />
                             <span>{state.remoteUserName}</span>
                             <span className={`camera-status-dot ${session.remoteCameraStream ? "is-online" : "is-offline"}`} />
@@ -2867,7 +2864,6 @@ export const App = (): ReactElement => {
                         }}
                         role="button"
                         tabIndex={0}
-                        title="Clique para focar nesta transmissão de tela"
                       >
                         <div className="screenshare-header-overlay">
                           <span className="tile-res-pill">
@@ -2897,7 +2893,6 @@ export const App = (): ReactElement => {
                       }}
                       role="button"
                       tabIndex={0}
-                      title={`Clique para focar na câmera de ${state.remoteUserName}`}
                     >
                       <div className="tile-side-avatar-box is-standalone-centered is-camera-active">
                         <div className="tile-camera-feed-wrap">
@@ -2905,7 +2900,7 @@ export const App = (): ReactElement => {
                         </div>
 
                         <div className="card-inner-footer">
-                          <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
+                          <div className="tile-footer-pill is-camera">
                             <CameraIcon />
                             <span>{state.remoteUserName}</span>
                             <span className="camera-status-dot is-online" />
@@ -2929,7 +2924,7 @@ export const App = (): ReactElement => {
                       </div>
 
                       <div className="card-inner-footer">
-                        <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
+                        <div className="tile-footer-pill is-camera">
                           <CameraIcon />
                           <span>{state.remoteUserName}</span>
                           <span className={`camera-status-dot ${session.remoteCameraStream ? "is-online" : "is-offline"}`} />
@@ -2956,7 +2951,6 @@ export const App = (): ReactElement => {
                 onMouseUp={handleVideoMouseUp}
                 onWheel={handleVideoWheel}
                 onDoubleClick={handleVideoDoubleClick}
-                title={dualSharing && zoomLevel === 1 ? "Clique na tela para alternar para o Modo Grade" : undefined}
                 style={{
                   cursor: isPanning ? "grabbing" : zoomLevel > 1 ? "grab" : dualSharing ? "pointer" : "default",
                 }}

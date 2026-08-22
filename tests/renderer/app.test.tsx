@@ -436,9 +436,8 @@ describe('SFScreen Discord layout', () => {
     expect(screen.getAllByText(/Você/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Alex (Simulado)').length).toBeGreaterThanOrEqual(1);
 
-
     // Click on Alex's screenshare tile to focus
-    const tiles = screen.getAllByTitle(/Clique para focar nesta transmissão de tela/i);
+    const tiles = document.querySelectorAll('.tile-screenshare-box');
     fireEvent.click(tiles[1]);
 
     // Focuses on Alex
@@ -551,7 +550,7 @@ describe('SFScreen Discord layout', () => {
     const gridBtn = screen.getAllByRole('button', { name: /modo grade/i })[0];
     fireEvent.click(gridBtn);
 
-    const tiles = screen.getAllByTitle(/Clique para focar nesta transmissão de tela/i);
+    const tiles = document.querySelectorAll('.tile-screenshare-box');
 
     // Right-click on Tile 2 (Alex / Remote screen)
     fireEvent.contextMenu(tiles[1], { clientX: 300, clientY: 300 });
@@ -598,15 +597,15 @@ describe('SFScreen Discord layout', () => {
     vi.mocked(useSession).mockReturnValue(current);
     render(<App />);
 
-    // Initially in Focus Mode, stage video has title to switch to grid
-    const stageViewport = screen.getByTitle(/Clique na tela para alternar para o Modo Grade/i);
+    // Initially in Focus Mode, stage video switches to grid on click
+    const stageViewport = document.querySelector('.stage-video-viewport')!;
     expect(stageViewport).toBeTruthy();
 
     // 1 click on stage video -> switches to Grid Mode
     fireEvent.click(stageViewport);
 
     // Now in Grid Mode, both screenshare boxes exist
-    const screenshares = screen.getAllByTitle(/Clique para focar nesta transmissão de tela/i);
+    const screenshares = document.querySelectorAll('.tile-screenshare-box');
     expect(screenshares).toHaveLength(2);
 
     // 1 click on Tile 2 Screenshare -> switches back to Focus Mode focusing Tile 2 (Alex)
@@ -644,7 +643,7 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(viewport);
 
     // Should STILL be in Focus mode, NOT switched to Grid mode
-    expect(screen.queryAllByTitle(/Clique para focar nesta transmissão de tela/i)).toHaveLength(0);
+    expect(document.querySelectorAll('.tile-screenshare-box')).toHaveLength(0);
     expect(screen.getByText(/Alex \(Simulado\) está apresentando/i)).toBeTruthy();
   });
 
@@ -670,7 +669,7 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(gridBtn);
 
     // Click on camera/avatar box of local user
-    const cameraBoxes = screen.getAllByTitle(/Clique para focar na câmera/i);
+    const cameraBoxes = document.querySelectorAll('.tile-side-avatar-box.is-camera-active');
     expect(cameraBoxes).toHaveLength(2);
 
     fireEvent.click(cameraBoxes[0]);
