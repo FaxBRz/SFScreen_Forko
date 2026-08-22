@@ -2167,7 +2167,7 @@ export const App = (): ReactElement => {
                     <div className="grid-tile-split-content">
                       {/* Left Avatar Card with Ambient Backdrop */}
                       <div
-                        className={`tile-side-avatar-box is-self ${session.cameraActive && session.localCameraStream ? "is-clickable" : ""}`}
+                        className={`tile-side-avatar-box is-self ${session.cameraActive && session.localCameraStream ? "is-camera-active is-clickable" : ""}`}
                         onClick={session.cameraActive && session.localCameraStream ? () => {
                           setFocused("local-camera");
                           setLayoutMode("focus");
@@ -2251,7 +2251,7 @@ export const App = (): ReactElement => {
                       tabIndex={0}
                       title="Clique para focar na câmera"
                     >
-                      <div className="tile-side-avatar-box is-standalone-centered is-self">
+                      <div className="tile-side-avatar-box is-standalone-centered is-camera-active is-self">
                         <div className="tile-camera-feed-wrap">
                           <Video stream={session.localCameraStream} muted volume={0} className="tile-camera-video" />
                         </div>
@@ -2315,7 +2315,7 @@ export const App = (): ReactElement => {
                     <div className="grid-tile-split-content">
                       {/* Participant Card / Camera on the Left with Ambient Backdrop */}
                       <div
-                        className={`tile-side-avatar-box ${session.remoteCameraStream ? "is-clickable" : ""} ${focused === "remote-camera" ? "is-focused-subtile" : ""}`}
+                        className={`tile-side-avatar-box ${session.remoteCameraStream ? "is-camera-active is-clickable" : ""} ${focused === "remote-camera" ? "is-focused-subtile" : ""}`}
                         onClick={session.remoteCameraStream ? () => {
                           setFocused("remote-camera");
                           setLayoutMode("focus");
@@ -2397,7 +2397,7 @@ export const App = (): ReactElement => {
                       tabIndex={0}
                       title={`Clique para focar na câmera de ${state.remoteUserName}`}
                     >
-                      <div className="tile-side-avatar-box is-standalone-centered">
+                      <div className="tile-side-avatar-box is-standalone-centered is-camera-active">
                         <div className="tile-camera-feed-wrap">
                           <Video stream={session.remoteCameraStream} muted volume={0} className="tile-camera-video" />
                         </div>

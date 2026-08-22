@@ -1302,14 +1302,18 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .tile-side-avatar-box.is-standalone-centered {
   margin: 0 auto;
-  max-width: 440px;
+  max-width: 100%;
   width: 100%;
   height: 100%;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .tile-side-avatar-ring {
@@ -1432,16 +1436,54 @@ button:disabled {
 }
 
 /* ─── Camera Feed in Participant Card ─── */
+.tile-side-avatar-box.is-camera-active {
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #000;
+  border-radius: 10px;
+}
+
+.tile-side-avatar-box.is-camera-active .card-inner-body {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  display: flex;
+}
+
+.tile-side-avatar-box.is-camera-active .tile-camera-feed-wrap {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: #000;
+}
+
+.tile-side-avatar-box.is-camera-active .tile-camera-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tile-side-avatar-box.is-camera-active .card-inner-footer {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: auto;
+  z-index: 10;
+  pointer-events: none;
+}
+
 .tile-camera-feed-wrap {
   width: 100%;
   height: 100%;
-  min-height: 140px;
   border-radius: 8px;
   overflow: hidden;
   position: relative;
-  background: #090a0d;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #000;
 }
 
 .tile-camera-video {
