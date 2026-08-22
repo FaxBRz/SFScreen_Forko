@@ -380,6 +380,7 @@ export interface SessionModel {
   toggleSessionModal: (open?: boolean) => void;
   toggleChatPanel: (open?: boolean) => void;
   simulatePeer: (enable?: boolean) => void;
+  getMetrics: () => Promise<WebRtcMetrics>;
 }
 
 
@@ -1154,6 +1155,19 @@ recordDiagnostic('audio-unavailable');
     });
   }, [isSimulatedPeer]);
 
+  const getMetrics = useCallback(async (): Promise<WebRtcMetrics> => {
+    if (controllerRef.current) {
+      try {
+        const metrics = await controllerRef.current.getMetrics();
+        metricsRef.current = metrics;
+        return metrics;
+      } catch {
+        return metricsRef.current;
+      }
+    }
+    return metricsRef.current;
+  }, []);
+
   return {
     state,
     joinCode,
@@ -1196,6 +1210,7 @@ recordDiagnostic('audio-unavailable');
     toggleSessionModal,
     toggleChatPanel,
     simulatePeer,
+    getMetrics,
   };
 };
 

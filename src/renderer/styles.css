@@ -573,28 +573,47 @@ button:disabled {
   height: 14px;
 }
 
-/* ─── Discord-Style Voice Connection Popover Panel ─── */
+/* ─── Discord-Style Voice Connection Popover Panel (Subindo acima da barra de voz) ─── */
+.sidebar-voice-connected-wrap {
+  position: relative;
+  width: 100%;
+}
+
 .voice-popover-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 120;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(2px);
-  display: grid;
-  place-items: center;
+  z-index: 110;
+  background: transparent;
 }
 
 .voice-popover-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
   width: 320px;
+  max-width: calc(100vw - 24px);
   background: #18191f;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75), 0 0 1px rgba(255, 255, 255, 0.15);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  animation: popoverFadeIn 0.15s ease forwards;
+  z-index: 115;
+  animation: voicePopoverSlideUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: bottom left;
+}
+
+@keyframes voicePopoverSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .voice-popover-header {
