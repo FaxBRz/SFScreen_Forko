@@ -1496,11 +1496,11 @@ const playStreamStartSound = (): void => {
   if (!ctx) return;
   const now = ctx.currentTime;
   const notes = [
-    { freq: 523.25, start: 0.00, dur: 0.10, gain: 0.10, type: "sine" as OscillatorType }, // C5
-    { freq: 659.25, start: 0.07, dur: 0.12, gain: 0.12, type: "triangle" as OscillatorType }, // E5
-    { freq: 783.99, start: 0.14, dur: 0.16, gain: 0.14, type: "sine" as OscillatorType }, // G5
-    { freq: 1046.50, start: 0.20, dur: 0.35, gain: 0.16, type: "sine" as OscillatorType }, // C6
-    { freq: 2093.00, start: 0.21, dur: 0.25, gain: 0.04, type: "triangle" as OscillatorType }, // C7 shimmer
+    { freq: 523.25, start: 0.00, dur: 0.10, gain: 0.115, type: "sine" as OscillatorType }, // C5
+    { freq: 659.25, start: 0.07, dur: 0.12, gain: 0.138, type: "triangle" as OscillatorType }, // E5
+    { freq: 783.99, start: 0.14, dur: 0.16, gain: 0.161, type: "sine" as OscillatorType }, // G5
+    { freq: 1046.50, start: 0.20, dur: 0.35, gain: 0.184, type: "sine" as OscillatorType }, // C6
+    { freq: 2093.00, start: 0.21, dur: 0.25, gain: 0.046, type: "triangle" as OscillatorType }, // C7 shimmer
   ];
   notes.forEach(({ freq, start, dur, gain: noteGain, type }) => {
     const osc = ctx.createOscillator();
@@ -1530,7 +1530,7 @@ const playStreamStopSound = (): void => {
   osc.frequency.setValueAtTime(784.00, now); // G5
   osc.frequency.exponentialRampToValueAtTime(196.00, now + 0.22); // G3
   gainNode.gain.setValueAtTime(0, now);
-  gainNode.gain.linearRampToValueAtTime(0.14, now + 0.015);
+  gainNode.gain.linearRampToValueAtTime(0.161, now + 0.015);
   gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.26);
   osc.connect(gainNode);
   gainNode.connect(ctx.destination);
@@ -1544,7 +1544,7 @@ const playStreamStopSound = (): void => {
   subOsc.frequency.setValueAtTime(120, now + 0.12);
   subOsc.frequency.exponentialRampToValueAtTime(60, now + 0.32);
   subGain.gain.setValueAtTime(0, now + 0.12);
-  subGain.gain.linearRampToValueAtTime(0.12, now + 0.14);
+  subGain.gain.linearRampToValueAtTime(0.138, now + 0.14);
   subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
   subOsc.connect(subGain);
   subGain.connect(ctx.destination);
@@ -1558,9 +1558,9 @@ const playUserJoinSound = (): void => {
   if (!ctx) return;
   const now = ctx.currentTime;
   const notes = [
-    { freq: 739.99, start: 0.00, dur: 0.12, gain: 0.13 }, // F#5
-    { freq: 987.77, start: 0.09, dur: 0.38, gain: 0.16 }, // B5
-    { freq: 1975.53, start: 0.09, dur: 0.25, gain: 0.05 }, // B6 harmonic overtone
+    { freq: 739.99, start: 0.00, dur: 0.12, gain: 0.150 }, // F#5
+    { freq: 987.77, start: 0.09, dur: 0.38, gain: 0.184 }, // B5
+    { freq: 1975.53, start: 0.09, dur: 0.25, gain: 0.058 }, // B6 harmonic overtone
   ];
   notes.forEach(({ freq, start, dur, gain: noteGain }) => {
     const osc = ctx.createOscillator();
@@ -1583,8 +1583,8 @@ const playUserLeaveSound = (): void => {
   if (!ctx) return;
   const now = ctx.currentTime;
   const taps = [
-    { freq: 329.63, start: 0.00, dur: 0.08, gain: 0.15 }, // E4 knock
-    { freq: 220.00, start: 0.09, dur: 0.14, gain: 0.13 }, // A3 knock
+    { freq: 329.63, start: 0.00, dur: 0.08, gain: 0.173 }, // E4 knock
+    { freq: 220.00, start: 0.09, dur: 0.14, gain: 0.150 }, // A3 knock
   ];
   taps.forEach(({ freq, start, dur, gain: tapGain }) => {
     const osc = ctx.createOscillator();
@@ -1615,7 +1615,7 @@ const playChatMessageSound = (): void => {
   osc.frequency.setValueAtTime(1100, now);
   osc.frequency.exponentialRampToValueAtTime(2200, now + 0.045);
   gainNode.gain.setValueAtTime(0, now);
-  gainNode.gain.linearRampToValueAtTime(0.14, now + 0.004);
+  gainNode.gain.linearRampToValueAtTime(0.161, now + 0.004);
   gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
   osc.connect(gainNode);
   gainNode.connect(ctx.destination);
@@ -1628,7 +1628,7 @@ const playChatMessageSound = (): void => {
   ping.type = "sine";
   ping.frequency.setValueAtTime(2600, now + 0.02);
   pingGain.gain.setValueAtTime(0, now + 0.02);
-  pingGain.gain.linearRampToValueAtTime(0.06, now + 0.025);
+  pingGain.gain.linearRampToValueAtTime(0.069, now + 0.025);
   pingGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
   ping.connect(pingGain);
   pingGain.connect(ctx.destination);
@@ -1648,7 +1648,7 @@ const playCameraOnSound = (): void => {
   clickOsc.type = "square";
   clickOsc.frequency.setValueAtTime(1800, now);
   clickGain.gain.setValueAtTime(0, now);
-  clickGain.gain.linearRampToValueAtTime(0.06, now + 0.002);
+  clickGain.gain.linearRampToValueAtTime(0.069, now + 0.002);
   clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
   clickOsc.connect(clickGain);
   clickGain.connect(ctx.destination);
@@ -1657,8 +1657,8 @@ const playCameraOnSound = (): void => {
 
   // High optical chirplet (C6 -> E6)
   const notes = [
-    { freq: 1046.50, start: 0.02, dur: 0.07, gain: 0.12 }, // C6
-    { freq: 1318.51, start: 0.07, dur: 0.18, gain: 0.15 }, // E6
+    { freq: 1046.50, start: 0.02, dur: 0.07, gain: 0.138 }, // C6
+    { freq: 1318.51, start: 0.07, dur: 0.18, gain: 0.173 }, // E6
   ];
   notes.forEach(({ freq, start, dur, gain: noteGain }) => {
     const osc = ctx.createOscillator();
@@ -1683,8 +1683,8 @@ const playCameraOffSound = (): void => {
 
   // Dual mechanical snap (descending latch clicks)
   const clicks = [
-    { freq: 1200, start: 0.00, dur: 0.035, gain: 0.10 },
-    { freq: 600, start: 0.03, dur: 0.05, gain: 0.08 },
+    { freq: 1200, start: 0.00, dur: 0.035, gain: 0.115 },
+    { freq: 600, start: 0.03, dur: 0.05, gain: 0.092 },
   ];
   clicks.forEach(({ freq, start, dur, gain: clickGainVal }) => {
     const osc = ctx.createOscillator();

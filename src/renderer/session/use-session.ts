@@ -444,6 +444,8 @@ export const useSession = (): SessionModel => {
   const [cameraActive, setCameraActive] = useState(false);
   const localCameraStreamRef = useRef<MediaStream | undefined>(undefined);
   const simulatedCameraCleanupRef = useRef<(() => void) | null>(null);
+  const remoteCameraStateRef = useRef<CameraState>('stopped');
+  const rawRemoteCameraStreamRef = useRef<MediaStream | undefined>(undefined);
 
   const [remoteStream, setRemoteStream] = useState<MediaStream | undefined>(undefined);
   const [remoteMediaPhase, setRemoteMediaPhase] = useState<MediaPhase>('stopped');
@@ -540,6 +542,8 @@ export const useSession = (): SessionModel => {
     remoteConfirmedRef.current = false;
     setRemoteStream(undefined);
     setRemoteCameraStream(undefined);
+    remoteCameraStateRef.current = 'stopped';
+    rawRemoteCameraStreamRef.current = undefined;
     setRemoteMediaPhase('stopped');
     setRemoteMediaError(undefined);
     setRemoteAudioPhase('unavailable');
@@ -552,6 +556,8 @@ export const useSession = (): SessionModel => {
 
   const createController = useCallback((): WebRtcSession => {
     controllerRef.current?.close();
+    remoteCameraStateRef.current = 'stopped';
+    rawRemoteCameraStreamRef.current = undefined;
     const controller = new WebRtcSession({
       onChannelOpen: () => {
         recordDiagnostic('channel-open');
@@ -588,7 +594,12 @@ export const useSession = (): SessionModel => {
           return;
         }
         if (message.type === 'camera-state') {
-          if (message.state === 'stopped' || message.state === 'failed') {
+          remoteCameraStateRef.current = message.state;
+          if (message.state === 'active') {
+            if (rawRemoteCameraStreamRef.current) {
+              setRemoteCameraStream(rawRemoteCameraStreamRef.current);
+            }
+          } else {
             setRemoteCameraStream(undefined);
           }
           return;
@@ -620,6 +631,8 @@ export const useSession = (): SessionModel => {
           recordDiagnostic('connection-failed');
           setRemoteStream(undefined);
           setRemoteCameraStream(undefined);
+          remoteCameraStateRef.current = 'stopped';
+          rawRemoteCameraStreamRef.current = undefined;
           setRemoteMediaPhase('stopped');
           setRemoteAudioPhase('unavailable');
           dispatch({ type: 'failed', message: 'A conexão WebRTC falhou pela interface Tailscale.' });
@@ -627,6 +640,8 @@ export const useSession = (): SessionModel => {
           recordDiagnostic('session-closed');
           setRemoteStream(undefined);
           setRemoteCameraStream(undefined);
+          remoteCameraStateRef.current = 'stopped';
+          rawRemoteCameraStreamRef.current = undefined;
           setRemoteMediaPhase('stopped');
           setRemoteAudioPhase('unavailable');
           dispatch({ type: 'closed' });
@@ -644,7 +659,10 @@ export const useSession = (): SessionModel => {
       },
       onRemoteCameraStream: (stream) => {
         recordDiagnostic('remote-video-track');
-        setRemoteCameraStream(stream);
+        rawRemoteCameraStreamRef.current = stream;
+        if (remoteCameraStateRef.current === 'active') {
+          setRemoteCameraStream(stream);
+        }
       },
     });
     controllerRef.current = controller;
