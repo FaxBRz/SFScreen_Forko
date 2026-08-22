@@ -374,7 +374,7 @@ describe('SFScreen Discord layout', () => {
 
     // Both tiles rendered side by side
     expect(screen.getAllByText(/Clique para focar/i).length).toBe(2);
-    expect(screen.getByText(/Você \(Você\)/i)).toBeTruthy();
+    expect(screen.getAllByText(/Você/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Alex (Simulado)').length).toBeGreaterThanOrEqual(1);
 
 

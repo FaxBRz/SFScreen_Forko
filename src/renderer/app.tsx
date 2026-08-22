@@ -1807,10 +1807,6 @@ export const App = (): ReactElement => {
                       <div className="tile-side-avatar-box is-self">
                         <div className="card-inner-header">
                           <div className="card-header-pills">
-                            <span className="tile-user-pill">
-                              <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-mini is-self" />
-                              <span>{state.localUserName} (Você)</span>
-                            </span>
                             <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
                             <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
                             <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
@@ -1862,10 +1858,6 @@ export const App = (): ReactElement => {
                     <div className="grid-tile-nonsharing-content">
                       <div className="card-inner-header">
                         <div className="card-header-pills">
-                          <span className="tile-user-pill">
-                            <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-mini is-self" />
-                            <span>{state.localUserName} (Você)</span>
-                          </span>
                           <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
                           <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
                             {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
@@ -1926,10 +1918,6 @@ export const App = (): ReactElement => {
                       <div className="tile-side-avatar-box">
                         <div className="card-inner-header">
                           <div className="card-header-pills">
-                            <span className="tile-user-pill">
-                              <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-mini" />
-                              <span>{state.remoteUserName}</span>
-                            </span>
                             <span className="tile-res-pill">1080p · 60 FPS</span>
                             <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
                             <button
@@ -1953,7 +1941,7 @@ export const App = (): ReactElement => {
 
                         <div className="card-inner-body">
                           <div className="tile-side-avatar-ring">
-                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-side-avatar-inner" />
+                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-inner" />
                           </div>
                           <span className="tile-side-name">{state.remoteUserName}</span>
                           <span className="tile-side-subtitle">Compartilhando a tela</span>
@@ -1987,10 +1975,6 @@ export const App = (): ReactElement => {
                     <div className="grid-tile-nonsharing-content">
                       <div className="card-inner-header">
                         <div className="card-header-pills">
-                          <span className="tile-user-pill">
-                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-mini" />
-                            <span>{state.remoteUserName}</span>
-                          </span>
                           <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
                           <button
                             className={`tile-icon-badge is-btn ${remoteMuted ? "is-muted" : "is-active"}`}
