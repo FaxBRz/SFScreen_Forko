@@ -485,6 +485,260 @@ button:disabled {
 }
 
 
+/* ─── Discord-Style "Voz Conectada" Widget in Sidebar ─── */
+.sidebar-voice-connected-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #111217;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sidebar-voice-connected-bar:hover {
+  background: #181920;
+  border-color: rgba(35, 165, 90, 0.3);
+}
+
+.voice-connected-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.voice-signal-icon-box {
+  color: #23a55a;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.voice-signal-icon-box svg {
+  width: 18px;
+  height: 18px;
+}
+
+.voice-connected-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.voice-connected-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #23a55a;
+  letter-spacing: -0.01em;
+}
+
+.voice-connected-sub {
+  font-size: 0.65rem;
+  color: #6d7380;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.voice-connected-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.voice-hangup-mini-btn {
+  background: transparent;
+  color: #949ba4;
+  border: none;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.12s ease;
+}
+
+.voice-hangup-mini-btn:hover {
+  color: #ff7b7f;
+  background: rgba(218, 55, 60, 0.15);
+}
+
+.voice-hangup-mini-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ─── Discord-Style Voice Connection Popover Panel ─── */
+.voice-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+}
+
+.voice-popover-panel {
+  width: 320px;
+  background: #18191f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: popoverFadeIn 0.15s ease forwards;
+}
+
+.voice-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 8px;
+}
+
+.voice-popover-header h4 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #f2f3f5;
+  letter-spacing: -0.01em;
+}
+
+.voice-popover-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.voice-ping-graph-box {
+  display: flex;
+  gap: 6px;
+  height: 80px;
+  background: #0f1015;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 8px 10px 4px 6px;
+}
+
+.voice-ping-axis-y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  color: #6d7380;
+  font-weight: 600;
+  padding-right: 4px;
+}
+
+.voice-ping-svg-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.voice-ping-svg {
+  width: 100%;
+  height: 52px;
+}
+
+.voice-ping-axis-x {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.58rem;
+  color: #6d7380;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.voice-popover-node-name {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.voice-popover-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.74rem;
+  color: #949ba4;
+}
+
+.voice-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.voice-stat-row strong {
+  color: #f2f3f5;
+  font-weight: 700;
+}
+
+.voice-popover-guidelines {
+  margin: 0;
+  font-size: 0.68rem;
+  color: #6d7380;
+  line-height: 1.35;
+}
+
+.voice-guide-link {
+  color: #5865f2;
+  cursor: pointer;
+}
+
+.voice-popover-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.voice-action-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.voice-action-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.voice-popover-security-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #23a55a;
+  background: rgba(35, 165, 90, 0.08);
+  border: 1px solid rgba(35, 165, 90, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.voice-popover-security-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
 .sidebar-footer {
   margin-top: auto;
   display: flex;
@@ -1176,10 +1430,42 @@ button:disabled {
   filter: drop-shadow(0 8px 32px rgba(0, 0, 0, 0.7));
 }
 
+/* ─── Screenshare Header Overlay (Resolution & AO VIVO) ─── */
+.screenshare-header-overlay {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+  pointer-events: none;
+}
 
+/* ─── Camera Feed in Participant Card ─── */
+.tile-camera-feed-wrap {
+  width: 100%;
+  height: 100%;
+  min-height: 140px;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  background: #090a0d;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border: 1.5px solid rgba(35, 165, 90, 0.4);
+}
 
+.tile-camera-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 
-
+.is-focused-subtile {
+  box-shadow: 0 0 0 2px #23a55a, 0 8px 24px rgba(35, 165, 90, 0.25) !important;
+}
 
 /* ─── Grid Tile Footer Bar ─── */
 .grid-tile-footer-bar {
@@ -1206,6 +1492,18 @@ button:disabled {
   font-size: 0.7rem;
   font-weight: 600;
   color: #949ba4;
+  cursor: default;
+}
+
+.tile-footer-pill.is-btn {
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tile-footer-pill.is-btn:hover {
+  background: rgba(20, 22, 28, 0.95);
+  border-color: rgba(35, 165, 90, 0.4);
+  color: #fff;
 }
 
 .tile-footer-pill svg {
@@ -1222,9 +1520,17 @@ button:disabled {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  background: #6d7380;
+  margin-left: 2px;
+}
+
+.camera-status-dot.is-online {
   background: #23a55a;
   box-shadow: 0 0 6px #23a55a;
-  margin-left: 2px;
+}
+
+.camera-status-dot.is-offline {
+  background: #6d7380;
 }
 
 .grid-tile-overlay-hint {
@@ -2460,8 +2766,14 @@ button:disabled {
   color: #fff;
 }
 
-.dock-icon-btn.is-active {
+.dock-icon-btn.is-active, .dock-icon-btn.is-camera-on {
   background: #23a55a;
+  color: #0b150f;
+  box-shadow: 0 0 14px rgba(35, 165, 90, 0.4);
+}
+
+.dock-icon-btn.is-camera-on:hover {
+  background: #2dc46c;
   color: #0b150f;
 }
 

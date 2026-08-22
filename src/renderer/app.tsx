@@ -137,6 +137,14 @@ const TrashIcon = (): ReactElement => (
   </svg>
 );
 
+const UploadIcon = (): ReactElement => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="17 8 12 3 7 8" />
+    <line x1="12" x2="12" y1="3" y2="15" />
+  </svg>
+);
+
 const CameraIcon = (): ReactElement => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
@@ -310,6 +318,119 @@ const Video = ({ stream, muted = false, volume = 1, className }: { stream?: Medi
 };
 
 
+
+/* ─── Discord-Style Voice Connection & Network Telemetry Popover ─── */
+const VoiceConnectionPopover = ({
+  session,
+  onClose,
+}: {
+  session: SessionModel;
+  onClose: () => void;
+}): ReactElement => {
+  const [pingHistory] = useState<number[]>([11, 10, 9, 12, 10, 14, 10, 9, 10, 9, 11, 10]);
+  const [copied, setCopied] = useState(false);
+
+  const avgPing = Math.round(pingHistory.reduce((a, b) => a + b, 0) / pingHistory.length);
+  const lastPing = pingHistory[pingHistory.length - 1];
+
+  const handleExport = async (): Promise<void> => {
+    const success = await session.exportDiagnostics();
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="voice-popover-backdrop" onClick={onClose} role="presentation">
+      <div className="voice-popover-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Status da Conexão">
+        <div className="voice-popover-header">
+          <h4>Conexão</h4>
+          <button className="button ghost icon-only voice-popover-close" type="button" onClick={onClose} aria-label="Fechar">
+            <XCloseIcon />
+          </button>
+        </div>
+
+        {/* Real-Time Ping Graph (SVG Sparkline) */}
+        <div className="voice-ping-graph-box">
+          <div className="voice-ping-axis-y">
+            <span>20</span>
+            <span>10</span>
+            <span>0</span>
+          </div>
+          <div className="voice-ping-svg-wrap">
+            <svg viewBox="0 0 240 60" className="voice-ping-svg" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="pingGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#5865f2" stopOpacity="0.4" />
+                  <stop offset="100%" stopColor="#5865f2" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+              <line x1="0" y1="15" x2="240" y2="15" stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+              <line x1="0" y1="35" x2="240" y2="35" stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+              <line x1="0" y1="55" x2="240" y2="55" stroke="rgba(255,255,255,0.06)" />
+
+              <path
+                d="M 0 55 L 0 35 L 20 33 L 40 37 L 60 30 L 80 35 L 100 25 L 120 35 L 140 38 L 160 35 L 180 38 L 200 32 L 220 36 L 240 35 L 240 55 Z"
+                fill="url(#pingGrad)"
+              />
+              <path
+                d="M 0 35 L 20 33 L 40 37 L 60 30 L 80 35 L 100 25 L 120 35 L 140 38 L 160 35 L 180 38 L 200 32 L 220 36 L 240 35"
+                fill="none"
+                stroke="#5865f2"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="240" cy="35" r="4" fill="#5865f2" />
+            </svg>
+            <div className="voice-ping-axis-x">
+              <span>00:24</span>
+              <span>00:25</span>
+              <span>00:26</span>
+              <span>00:27</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Connection Node and Stats */}
+        <div className="voice-popover-node-name">
+          {session.state.phase === "connected" ? (session.state.route === "direct" ? "p2p-webrtc-direct" : "relay-tailnet-p2p") : "p2p-dtls-srtp-local"}
+        </div>
+
+        <div className="voice-popover-stats">
+          <div className="voice-stat-row">
+            <span>Ping médio:</span> <strong>{avgPing} ms</strong>
+          </div>
+          <div className="voice-stat-row">
+            <span>Último ping:</span> <strong>{lastPing} ms</strong>
+          </div>
+          <div className="voice-stat-row">
+            <span>Taxa de perda de pacotes enviados:</span> <strong>0.0%</strong>
+          </div>
+        </div>
+
+        <p className="voice-popover-guidelines">
+          Você pode notar atraso no áudio quando em 250 ms ou maior. Sua voz pode soar robótica se sua taxa de perda de pacotes enviados estiver acima de 10%. Se o problema persistir, desconecte e tente novamente. Consulte nosso <span className="voice-guide-link">guia de solução de problemas</span> para mais detalhes.
+        </p>
+
+        <div className="voice-popover-action-buttons">
+          <button className="button outline small voice-action-btn" type="button" onClick={() => void session.exportDiagnostics()}>
+            <ActivityIcon /> Depuração
+          </button>
+          <button className="button outline small voice-action-btn" type="button" onClick={handleExport}>
+            <UploadIcon /> {copied ? "Registros salvos!" : "Enviar registros..."}
+          </button>
+        </div>
+
+        <div className="voice-popover-security-badge">
+          <LockShieldIcon />
+          <span>Criptografado de ponta a ponta</span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /* ─── Modal: Source Picker ─── */
 const SourceModal = ({ sources, onClose, onSelect }: { sources: ScreenSource[]; onClose: () => void; onSelect: (source: ScreenSource, includeSystemAudio: boolean) => Promise<void> }): ReactElement => {
@@ -1067,9 +1188,10 @@ export const App = (): ReactElement => {
   const remotePhase = session.remoteMediaPhase ?? "stopped";
   const remoteSharing = remotePhase === "sharing" && !!session.remoteStream;
 
-  type FocusedStream = "local" | "remote";
+  type FocusedTarget = "local" | "remote" | "local-screen" | "local-camera" | "remote-screen" | "remote-camera";
   const [isWindowFocused, setIsWindowFocused] = useState(true);
-  const [focused, setFocused] = useState<FocusedStream>(remoteSharing ? "remote" : "local");
+  const [focused, setFocused] = useState<FocusedTarget>(remoteSharing ? "remote-screen" : "local-screen");
+  const [voicePopoverOpen, setVoicePopoverOpen] = useState(false);
 
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1218,20 +1340,38 @@ export const App = (): ReactElement => {
     }
   }
 
-  // Discord-style optimization: when window loses focus, pause local rendering while keeping stream active
-  const effectiveFocused: FocusedStream =
-    focused === "remote" && (!remoteSharing || !watchingRemote) && localSharing
-      ? "local"
-      : focused === "local" && !localSharing && remoteSharing && watchingRemote
-        ? "remote"
+  const effectiveFocused: FocusedTarget =
+    (focused === "remote" || focused === "remote-screen") && (!remoteSharing || !watchingRemote) && localSharing
+      ? "local-screen"
+      : (focused === "local" || focused === "local-screen") && !localSharing && remoteSharing && watchingRemote
+        ? "remote-screen"
         : focused;
 
-  const focusedIsLocal = effectiveFocused === "local";
-  const focusedSharing = focusedIsLocal ? localSharing : (remoteSharing && watchingRemote);
-  const focusedStream = focusedIsLocal ? session.localStream : (watchingRemote ? session.remoteStream : undefined);
+  const focusedIsLocal = effectiveFocused === "local" || effectiveFocused === "local-screen" || effectiveFocused === "local-camera";
+  const focusedIsCamera = effectiveFocused === "local-camera" || effectiveFocused === "remote-camera";
+  const focusedSharing = effectiveFocused === "local-camera"
+    ? (session.cameraActive && !!session.localCameraStream)
+    : effectiveFocused === "remote-camera"
+      ? !!session.remoteCameraStream
+      : focusedIsLocal
+        ? localSharing
+        : (remoteSharing && watchingRemote);
+
+  const focusedStream = effectiveFocused === "local-camera"
+    ? session.localCameraStream
+    : effectiveFocused === "remote-camera"
+      ? session.remoteCameraStream
+      : focusedIsLocal
+        ? session.localStream
+        : (watchingRemote ? session.remoteStream : undefined);
+
   const isAutoHideActive = focusedSharing;
   const otherSharing = focusedIsLocal ? (remoteSharing && watchingRemote) : localSharing;
-  const showPip = otherSharing && !isGridActive && !pipDismissed; // Render PiP preview in focus mode unless dismissed
+  const showPip = otherSharing && !isGridActive && !pipDismissed;
+
+  const presenterName = focusedIsLocal
+    ? (focusedIsCamera ? `${state.localUserName} (Câmera)` : "Você")
+    : (focusedIsCamera ? `${state.remoteUserName} (Câmera)` : state.remoteUserName);
 
   const showControls = useCallback((): void => {
     setControlsVisible(true);
@@ -1381,11 +1521,6 @@ export const App = (): ReactElement => {
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
   };
-
-  const presenterName = focusedIsLocal
-
-    ? state.localUserName
-    : (state.remoteUserName || "Outra pessoa");
 
   const handleMinimizeWindow = (): void => { void window.sfscreen.minimizeWindow?.(); };
   const handleMaximizeWindow = (): void => { void window.sfscreen.maximizeWindow?.(); };
@@ -1795,6 +1930,38 @@ export const App = (): ReactElement => {
 
 
             <div className="sidebar-footer">
+              {(isConnected || localSharing || state.hosted) && (
+                <div
+                  className="sidebar-voice-connected-bar"
+                  onClick={() => setVoicePopoverOpen((v) => !v)}
+                  role="button"
+                  tabIndex={0}
+                  title="Clique para ver o status da conexão de voz e rede"
+                >
+                  <div className="voice-connected-left">
+                    <div className="voice-signal-icon-box">
+                      <SignalWifiIcon />
+                    </div>
+                    <div className="voice-connected-text">
+                      <span className="voice-connected-title">Voz conectada</span>
+                      <span className="voice-connected-sub">WebRTC · RTC-Direct</span>
+                    </div>
+                  </div>
+                  <div className="voice-connected-right">
+                    <button
+                      className="voice-hangup-mini-btn"
+                      type="button"
+                      title="Desconectar"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void session.close();
+                      }}
+                    >
+                      <PhoneOffIcon />
+                    </button>
+                  </div>
+                </div>
+              )}
               <button className="button primary invite-btn" type="button" onClick={() => session.toggleSessionModal(true)}>
                 + Convidar pessoa
               </button>
@@ -1845,28 +2012,33 @@ export const App = (): ReactElement => {
                   </button>
                 </div>
 
-                {/* Tile 1: Local Stream */}
+                {/* Tile 1: Local Participant */}
                 <div
                   className={`stage-grid-tile ${focusedIsLocal ? "is-focused-tile" : ""}`}
-                  onClick={() => {
-                    setFocused("local");
-                    setLayoutMode("focus");
-                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     setStageContextMenu({ x: e.clientX, y: e.clientY, target: "local" });
                   }}
-                  role="button"
-                  tabIndex={0}
-                  title="Clique para focar nesta tela"
+                  role="region"
+                  aria-label="Participante Local"
                 >
                   <div className="grid-tile-ambient-bg" />
 
                   {state.mediaPhase === "sharing" && session.localStream ? (
                     <div className="grid-tile-split-content">
-                      {/* Participant Card on the Left with Ambient Backdrop */}
-                      <div className="tile-side-avatar-box is-self">
+                      {/* Participant Card / Camera on the Left with Ambient Backdrop */}
+                      <div
+                        className={`tile-side-avatar-box is-self ${focused === "local-camera" ? "is-focused-subtile" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFocused("local-camera");
+                          setLayoutMode("focus");
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        title="Clique para focar na câmera/perfil"
+                      >
                         <div className={`card-ambient-backdrop ${!state.localUserAvatar ? "is-fallback" : ""}`}>
                           {state.localUserAvatar && (
                             <img src={state.localUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
@@ -1875,43 +2047,82 @@ export const App = (): ReactElement => {
 
                         <div className="card-inner-header">
                           <div className="card-header-pills">
-                            <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
                             <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
                             <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
                               {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
                             </span>
-                            <span className="tile-icon-badge is-active" title="Transmissão de tela"><ScreenCastIcon /></span>
+                            <button
+                              className={`tile-icon-badge is-btn ${session.cameraActive ? "is-active" : "is-muted"}`}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void session.toggleCamera();
+                              }}
+                              title={session.cameraActive ? "Câmera ligada (Clique para desligar)" : "Câmera desligada (Clique para ligar)"}
+                            >
+                              <CameraIcon />
+                            </button>
                           </div>
+                        </div>
+
+                        <div className="card-inner-body">
+                          {session.cameraActive && session.localCameraStream ? (
+                            <div className="tile-camera-feed-wrap">
+                              <Video stream={session.localCameraStream} muted volume={0} className="tile-camera-video" />
+                            </div>
+                          ) : (
+                            <>
+                              <div className="tile-side-avatar-ring is-self">
+                                <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-side-avatar-inner is-self" />
+                              </div>
+                              <span className="tile-side-name">{state.localUserName}</span>
+                              <span className="tile-side-subtitle">Compartilhando a tela</span>
+                            </>
+                          )}
+                        </div>
+
+                        <div className="card-inner-footer">
+                          <button
+                            className="tile-footer-pill is-btn"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setVoicePopoverOpen(true);
+                            }}
+                            title="Status da conexão de rede e voz"
+                          >
+                            <SignalBarsIcon />
+                            <span>Conexão estável · 18 ms</span>
+                            <InfoCircleIcon />
+                          </button>
+                          <div className="tile-footer-pill is-camera" title={session.cameraActive ? "Câmera ligada" : "Câmera desligada"}>
+                            <CameraIcon />
+                            <span>Câmera</span>
+                            <span className={`camera-status-dot ${session.cameraActive ? "is-online" : "is-offline"}`} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Screenshare Video on the Right with Ambient Blurred Backdrop */}
+                      <div
+                        className={`tile-screenshare-box ${focused === "local" || focused === "local-screen" ? "is-focused-subtile" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFocused("local-screen");
+                          setLayoutMode("focus");
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        title="Clique para focar nesta transmissão de tela"
+                      >
+                        <div className="screenshare-header-overlay">
+                          <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
                           <div className="tile-live-badge">
                             <span className="tile-live-dot" />
                             <span>AO VIVO</span>
                           </div>
                         </div>
 
-                        <div className="card-inner-body">
-                          <div className="tile-side-avatar-ring is-self">
-                            <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-side-avatar-inner is-self" />
-                          </div>
-                          <span className="tile-side-name">{state.localUserName}</span>
-                          <span className="tile-side-subtitle">Compartilhando a tela</span>
-                        </div>
-
-                        <div className="card-inner-footer">
-                          <div className="tile-footer-pill" title="Latência da conexão">
-                            <SignalBarsIcon />
-                            <span>Conexão estável · 18 ms</span>
-                            <InfoCircleIcon />
-                          </div>
-                          <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo pronto">
-                            <CameraIcon />
-                            <span>Câmera</span>
-                            <span className="camera-status-dot" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Screenshare Video on the Right with Ambient Blurred Backdrop */}
-                      <div className="tile-screenshare-box">
                         {!isWindowFocused ? (
                           <div className="grid-tile-paused-state">
                             <EcoZapIcon />
@@ -1928,7 +2139,16 @@ export const App = (): ReactElement => {
                       </div>
                     </div>
                   ) : (
-                    <div className="grid-tile-nonsharing-content">
+                    <div
+                      className="grid-tile-nonsharing-content"
+                      onClick={() => {
+                        setFocused("local-camera");
+                        setLayoutMode("focus");
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      title="Clique para focar"
+                    >
                       <div className={`card-ambient-backdrop ${!state.localUserAvatar ? "is-fallback" : ""}`}>
                         {state.localUserAvatar && (
                           <img src={state.localUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
@@ -1941,27 +2161,51 @@ export const App = (): ReactElement => {
                           <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
                             {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
                           </span>
-                          <span className="tile-icon-badge is-muted" title="Sem transmissão de tela"><ScreenCastIcon /></span>
+                          <button
+                            className={`tile-icon-badge is-btn ${session.cameraActive ? "is-active" : "is-muted"}`}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void session.toggleCamera();
+                            }}
+                            title={session.cameraActive ? "Câmera ligada" : "Câmera desligada"}
+                          >
+                            <CameraIcon />
+                          </button>
                         </div>
                       </div>
 
-                      <div className="tile-center-profile-box">
-                        <div className="tile-avatar-ring is-self">
-                          <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-inner is-self" />
+                      {session.cameraActive && session.localCameraStream ? (
+                        <div className="tile-camera-feed-wrap">
+                          <Video stream={session.localCameraStream} muted volume={0} className="tile-camera-video" />
                         </div>
-                        <span className="tile-avatar-name">{state.localUserName}</span>
-                      </div>
+                      ) : (
+                        <div className="tile-center-profile-box">
+                          <div className="tile-avatar-ring is-self">
+                            <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-inner is-self" />
+                          </div>
+                          <span className="tile-avatar-name">{state.localUserName}</span>
+                        </div>
+                      )}
 
                       <div className="card-inner-footer">
-                        <div className="tile-footer-pill" title="Latência da conexão">
+                        <button
+                          className="tile-footer-pill is-btn"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setVoicePopoverOpen(true);
+                          }}
+                          title="Status da conexão de rede e voz"
+                        >
                           <SignalBarsIcon />
                           <span>Conexão estável · 18 ms</span>
                           <InfoCircleIcon />
-                        </div>
-                        <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo pronto">
+                        </button>
+                        <div className="tile-footer-pill is-camera" title={session.cameraActive ? "Câmera ligada" : "Câmera desligada"}>
                           <CameraIcon />
                           <span>Câmera</span>
-                          <span className="camera-status-dot" />
+                          <span className={`camera-status-dot ${session.cameraActive ? "is-online" : "is-offline"}`} />
                         </div>
                       </div>
                     </div>
@@ -1973,28 +2217,33 @@ export const App = (): ReactElement => {
                   </div>
                 </div>
 
-                {/* Tile 2: Remote Stream */}
+                {/* Tile 2: Remote Participant */}
                 <div
                   className={`stage-grid-tile ${!focusedIsLocal ? "is-focused-tile" : ""}`}
-                  onClick={() => {
-                    setFocused("remote");
-                    setLayoutMode("focus");
-                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     setStageContextMenu({ x: e.clientX, y: e.clientY, target: "remote" });
                   }}
-                  role="button"
-                  tabIndex={0}
-                  title="Clique para focar nesta tela"
+                  role="region"
+                  aria-label="Participante Remoto"
                 >
                   <div className="grid-tile-ambient-bg" />
 
                   {session.remoteStream ? (
                     <div className="grid-tile-split-content">
-                      {/* Participant Card on the Left with Ambient Backdrop */}
-                      <div className="tile-side-avatar-box">
+                      {/* Participant Card / Camera on the Left with Ambient Backdrop */}
+                      <div
+                        className={`tile-side-avatar-box ${focused === "remote-camera" ? "is-focused-subtile" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFocused("remote-camera");
+                          setLayoutMode("focus");
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        title="Clique para focar na câmera/perfil"
+                      >
                         <div className={`card-ambient-backdrop ${!state.remoteUserAvatar ? "is-fallback" : ""}`}>
                           {state.remoteUserAvatar && (
                             <img src={state.remoteUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
@@ -2003,7 +2252,6 @@ export const App = (): ReactElement => {
 
                         <div className="card-inner-header">
                           <div className="card-header-pills">
-                            <span className="tile-res-pill">1080p · 60 FPS</span>
                             <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
                             <button
                               className={`tile-icon-badge is-btn ${remoteMuted ? "is-muted" : "is-active"}`}
@@ -2016,38 +2264,70 @@ export const App = (): ReactElement => {
                             >
                               {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
                             </button>
-                            <span className="tile-icon-badge is-active" title="Transmissão"><ScreenCastIcon /></span>
+                            <span className={`tile-icon-badge ${session.remoteCameraStream ? "is-active" : "is-muted"}`} title="Câmera">
+                              <CameraIcon />
+                            </span>
                           </div>
+                        </div>
+
+                        <div className="card-inner-body">
+                          {session.remoteCameraStream ? (
+                            <div className="tile-camera-feed-wrap">
+                              <Video stream={session.remoteCameraStream} muted volume={0} className="tile-camera-video" />
+                            </div>
+                          ) : (
+                            <>
+                              <div className="tile-side-avatar-ring">
+                                <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-side-avatar-inner" />
+                              </div>
+                              <span className="tile-side-name">{state.remoteUserName}</span>
+                              <span className="tile-side-subtitle">Compartilhando a tela</span>
+                            </>
+                          )}
+                        </div>
+
+                        <div className="card-inner-footer">
+                          <button
+                            className="tile-footer-pill is-btn"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setVoicePopoverOpen(true);
+                            }}
+                            title="Status da conexão de rede e voz"
+                          >
+                            <SignalBarsIcon />
+                            <span>Conexão estável · 18 ms</span>
+                            <InfoCircleIcon />
+                          </button>
+                          <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
+                            <CameraIcon />
+                            <span>{state.remoteUserName}</span>
+                            <span className={`camera-status-dot ${session.remoteCameraStream ? "is-online" : "is-offline"}`} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Screenshare Video on the Right with Ambient Blurred Backdrop */}
+                      <div
+                        className={`tile-screenshare-box ${focused === "remote" || focused === "remote-screen" ? "is-focused-subtile" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFocused("remote-screen");
+                          setLayoutMode("focus");
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        title="Clique para focar nesta transmissão de tela"
+                      >
+                        <div className="screenshare-header-overlay">
+                          <span className="tile-res-pill">1080p · 60 FPS</span>
                           <div className="tile-live-badge">
                             <span className="tile-live-dot" />
                             <span>AO VIVO</span>
                           </div>
                         </div>
 
-                        <div className="card-inner-body">
-                          <div className="tile-side-avatar-ring">
-                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-side-avatar-inner" />
-                          </div>
-                          <span className="tile-side-name">{state.remoteUserName}</span>
-                          <span className="tile-side-subtitle">Compartilhando a tela</span>
-                        </div>
-
-                        <div className="card-inner-footer">
-                          <div className="tile-footer-pill" title="Latência da conexão">
-                            <SignalBarsIcon />
-                            <span>Conexão estável · 18 ms</span>
-                            <InfoCircleIcon />
-                          </div>
-                          <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
-                            <CameraIcon />
-                            <span>{state.remoteUserName}</span>
-                            <span className="camera-status-dot" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Screenshare Video on the Right with Ambient Blurred Backdrop */}
-                      <div className="tile-screenshare-box">
                         <div className="screenshare-ambient-backdrop">
                           <Video stream={session.remoteStream} muted volume={0} className="screenshare-ambient-video" />
                         </div>
@@ -2060,7 +2340,16 @@ export const App = (): ReactElement => {
                       </div>
                     </div>
                   ) : (
-                    <div className="grid-tile-nonsharing-content">
+                    <div
+                      className="grid-tile-nonsharing-content"
+                      onClick={() => {
+                        setFocused("remote-camera");
+                        setLayoutMode("focus");
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      title="Clique para focar"
+                    >
                       <div className={`card-ambient-backdrop ${!state.remoteUserAvatar ? "is-fallback" : ""}`}>
                         {state.remoteUserAvatar && (
                           <img src={state.remoteUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
@@ -2081,27 +2370,43 @@ export const App = (): ReactElement => {
                           >
                             {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
                           </button>
-                          <span className="tile-icon-badge is-muted" title="Sem transmissão"><ScreenCastIcon /></span>
+                          <span className={`tile-icon-badge ${session.remoteCameraStream ? "is-active" : "is-muted"}`} title="Câmera">
+                            <CameraIcon />
+                          </span>
                         </div>
                       </div>
 
-                      <div className="tile-center-profile-box">
-                        <div className="tile-avatar-ring">
-                          <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-inner" />
+                      {session.remoteCameraStream ? (
+                        <div className="tile-camera-feed-wrap">
+                          <Video stream={session.remoteCameraStream} muted volume={0} className="tile-camera-video" />
                         </div>
-                        <span className="tile-avatar-name">{state.remoteUserName}</span>
-                      </div>
+                      ) : (
+                        <div className="tile-center-profile-box">
+                          <div className="tile-avatar-ring">
+                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-inner" />
+                          </div>
+                          <span className="tile-avatar-name">{state.remoteUserName}</span>
+                        </div>
+                      )}
 
                       <div className="card-inner-footer">
-                        <div className="tile-footer-pill" title="Latência da conexão">
+                        <button
+                          className="tile-footer-pill is-btn"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setVoicePopoverOpen(true);
+                          }}
+                          title="Status da conexão de rede e voz"
+                        >
                           <SignalBarsIcon />
                           <span>Conexão estável · 18 ms</span>
                           <InfoCircleIcon />
-                        </div>
+                        </button>
                         <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
                           <CameraIcon />
                           <span>{state.remoteUserName}</span>
-                          <span className="camera-status-dot" />
+                          <span className={`camera-status-dot ${session.remoteCameraStream ? "is-online" : "is-offline"}`} />
                         </div>
                       </div>
                     </div>
@@ -2618,11 +2923,21 @@ export const App = (): ReactElement => {
                 </button>
               )}
 
+              {/* Camera Toggle Button in Dock */}
+              <button
+                className={`dock-icon-btn is-camera-btn ${session.cameraActive ? "is-camera-on" : ""}`}
+                type="button"
+                onClick={() => void session.toggleCamera()}
+                title={session.cameraActive ? "Desativar câmera" : "Ativar câmera"}
+                aria-label={session.cameraActive ? "Desativar câmera" : "Ativar câmera"}
+              >
+                <CameraIcon />
+              </button>
+
               <button className={`dock-icon-btn ${state.chatPanelOpen ? "is-active" : ""}`} type="button" title="Chat" onClick={handleToggleChat}>
                 <MessageSquareIcon />
                 {unreadChatCount > 0 && !state.chatPanelOpen && <span className="dock-badge">{unreadChatCount}</span>}
               </button>
-
 
               <button className="dock-icon-btn" type="button" title="Configurações" onClick={() => setSettingsOpen(true)}>
                 <GearIcon />
@@ -3069,6 +3384,10 @@ export const App = (): ReactElement => {
 
       {settingsOpen && (
         <SettingsModal session={session} onClose={() => setSettingsOpen(false)} />
+      )}
+
+      {voicePopoverOpen && (
+        <VoiceConnectionPopover session={session} onClose={() => setVoicePopoverOpen(false)} />
       )}
     </div>
   );

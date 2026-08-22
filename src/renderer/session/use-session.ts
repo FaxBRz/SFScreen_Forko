@@ -237,6 +237,103 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
   return { stream, stop };
 };
 
+const createSimulatedCameraStream = (name: string, avatarUrl?: string): { stream: MediaStream; stop: () => void } => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 640;
+  canvas.height = 480;
+  const ctx = canvas.getContext('2d');
+
+  let intervalId: number | null = null;
+  let t = 0;
+
+  const stream = canvas.captureStream ? canvas.captureStream(30) : new MediaStream();
+  const videoTrack = stream.getVideoTracks()[0] as (MediaStreamTrack & { requestFrame?: () => void }) | undefined;
+
+  let loadedAvatarImg: HTMLImageElement | null = null;
+  if (avatarUrl) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { loadedAvatarImg = img; };
+    img.src = avatarUrl;
+  }
+
+  const renderFrame = () => {
+    if (!ctx) return;
+    t += 0.04;
+
+    const grad = ctx.createRadialGradient(320, 240, 50, 320, 240, 320);
+    grad.addColorStop(0, '#1a2920');
+    grad.addColorStop(1, '#0b100d');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 640, 480);
+
+    for (let p = 0; p < 8; p++) {
+      const px = (p * 80 + Math.sin(t + p) * 40) % 640;
+      const py = (p * 60 + Math.cos(t * 0.8 + p) * 30 + 100) % 480;
+      ctx.beginPath();
+      ctx.arc(px, py, 14 + Math.sin(t + p) * 6, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(35, 165, 90, ${0.04 + Math.sin(t + p) * 0.02})`;
+      ctx.fill();
+    }
+
+    const avatarY = 220 + Math.sin(t * 1.5) * 6;
+    const avatarRadius = 70;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(320, avatarY, avatarRadius + 4, 0, Math.PI * 2);
+    ctx.strokeStyle = '#23a55a';
+    ctx.lineWidth = 4;
+    ctx.shadowColor = '#23a55a';
+    ctx.shadowBlur = 16;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(320, avatarY, avatarRadius, 0, Math.PI * 2);
+    ctx.clip();
+
+    if (loadedAvatarImg && loadedAvatarImg.complete) {
+      ctx.drawImage(loadedAvatarImg, 320 - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
+    } else {
+      ctx.fillStyle = '#17241c';
+      ctx.fillRect(320 - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
+      ctx.fillStyle = '#23a55a';
+      ctx.font = 'bold 54px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText((name || 'A').slice(0, 1).toUpperCase(), 320, avatarY);
+    }
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    ctx.beginPath();
+    ctx.roundRect(320 - 90, 330, 180, 32, 16);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(35, 165, 90, 0.4)';
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`📷 ${name}`, 320, 346);
+
+    videoTrack?.requestFrame?.();
+  };
+
+  renderFrame();
+  intervalId = window.setInterval(renderFrame, 1000 / 30);
+
+  const stop = () => {
+    if (intervalId !== null) window.clearInterval(intervalId);
+    stream.getTracks().forEach((track) => track.stop());
+  };
+
+  return { stream, stop };
+};
+
 export type StreamResolution = '720p' | '1080p' | '1440p';
 export type StreamFps = 30 | 60;
 
@@ -250,6 +347,9 @@ export interface SessionModel {
   fps: StreamFps;
   localStream?: MediaStream;
   remoteStream?: MediaStream;
+  localCameraStream?: MediaStream;
+  remoteCameraStream?: MediaStream;
+  cameraActive: boolean;
   remoteMediaPhase?: MediaPhase;
   remoteMediaError?: string;
   remoteAudioPhase?: AudioPhase;
@@ -259,6 +359,7 @@ export interface SessionModel {
   setResolution: (resolution: StreamResolution) => void;
   setFps: (fps: StreamFps) => void;
   toggleSystemAudio: () => Promise<void>;
+  toggleCamera: () => Promise<void>;
   refresh: () => Promise<TailscaleStatus | undefined>;
   openSourcePicker: () => Promise<void>;
   closeSourcePicker: () => void;
@@ -292,7 +393,11 @@ export const useSession = (): SessionModel => {
   const resolutionRef = useRef<StreamResolution>('1080p');
   const fpsRef = useRef<StreamFps>(60);
   const [localStream, setLocalStream] = useState<MediaStream | undefined>(undefined);
-
+  const [localCameraStream, setLocalCameraStream] = useState<MediaStream | undefined>(undefined);
+  const [remoteCameraStream, setRemoteCameraStream] = useState<MediaStream | undefined>(undefined);
+  const [cameraActive, setCameraActive] = useState(false);
+  const localCameraStreamRef = useRef<MediaStream | undefined>(undefined);
+  const simulatedCameraCleanupRef = useRef<(() => void) | null>(null);
 
   const [remoteStream, setRemoteStream] = useState<MediaStream | undefined>(undefined);
   const [remoteMediaPhase, setRemoteMediaPhase] = useState<MediaPhase>('stopped');
@@ -908,13 +1013,49 @@ recordDiagnostic('audio-unavailable');
     dispatch({ type: 'toggle-chat-panel', open });
   }, []);
 
+  const toggleCamera = useCallback(async (): Promise<void> => {
+    if (cameraActive) {
+      if (localCameraStreamRef.current) {
+        localCameraStreamRef.current.getTracks().forEach((t) => t.stop());
+        localCameraStreamRef.current = undefined;
+      }
+      setLocalCameraStream(undefined);
+      setCameraActive(false);
+      return;
+    }
+
+    try {
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 } },
+        });
+        localCameraStreamRef.current = stream;
+        setLocalCameraStream(stream);
+        setCameraActive(true);
+      } else {
+        const { stream } = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
+        localCameraStreamRef.current = stream;
+        setLocalCameraStream(stream);
+        setCameraActive(true);
+      }
+    } catch {
+      const { stream } = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
+      localCameraStreamRef.current = stream;
+      setLocalCameraStream(stream);
+      setCameraActive(true);
+    }
+  }, [cameraActive, state.localUserAvatar, state.localUserName]);
+
   const simulatePeer = useCallback((enable?: boolean): void => {
     const shouldEnable = enable !== undefined ? enable : !isSimulatedPeer;
     if (!shouldEnable) {
       simulatedStreamCleanupRef.current?.();
       simulatedStreamCleanupRef.current = null;
+      simulatedCameraCleanupRef.current?.();
+      simulatedCameraCleanupRef.current = null;
       setIsSimulatedPeer(false);
       setRemoteStream(undefined);
+      setRemoteCameraStream(undefined);
       setRemoteMediaPhase('stopped');
       setRemoteAudioPhase('unavailable');
       dispatch({ type: 'closed' });
@@ -922,10 +1063,14 @@ recordDiagnostic('audio-unavailable');
     }
 
     simulatedStreamCleanupRef.current?.();
+    simulatedCameraCleanupRef.current?.();
     const { stream, stop } = createSimulatedScreenStream();
+    const simCam = createSimulatedCameraStream('Alex (Simulado)');
     simulatedStreamCleanupRef.current = stop;
+    simulatedCameraCleanupRef.current = simCam.stop;
     setIsSimulatedPeer(true);
     setRemoteStream(stream);
+    setRemoteCameraStream(simCam.stream);
     setRemoteMediaPhase('sharing');
     setRemoteAudioPhase('active');
     dispatch({ type: 'connected', route: 'direct' });
@@ -935,7 +1080,7 @@ recordDiagnostic('audio-unavailable');
       message: {
         id: crypto.randomUUID(),
         senderName: 'Alex (Simulado)',
-        text: 'Olá! Sou o participante simulado. Você pode testar compartilhar sua tela, alternar o foco no PiP, minimizar/mudar de janela para testar economia de RAM, ou trocar a qualidade!',
+        text: 'Olá! Sou o participante simulado. Você pode testar ligar sua câmera, focar na câmera ou na tela separadamente, e verificar a telemetria de rede!',
         timestamp: Date.now(),
       },
     });
@@ -950,6 +1095,9 @@ recordDiagnostic('audio-unavailable');
     fps,
     localStream,
     remoteStream,
+    localCameraStream,
+    remoteCameraStream,
+    cameraActive,
     remoteMediaPhase,
     remoteMediaError,
     remoteAudioPhase,
@@ -959,6 +1107,7 @@ recordDiagnostic('audio-unavailable');
     setResolution,
     setFps,
     toggleSystemAudio,
+    toggleCamera,
     refresh,
     openSourcePicker,
     closeSourcePicker: () => setSourcePickerOpen(false),

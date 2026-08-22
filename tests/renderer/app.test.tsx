@@ -24,10 +24,14 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   fps: 60,
   localStream: undefined,
   remoteStream: undefined,
+  localCameraStream: undefined,
+  remoteCameraStream: undefined,
+  cameraActive: false,
   setJoinCode: vi.fn(),
   setResolution: vi.fn(),
   setFps: vi.fn(),
   toggleSystemAudio: vi.fn(async () => undefined),
+  toggleCamera: vi.fn(async () => undefined),
   refresh: vi.fn(async () => state.tailscale),
   openSourcePicker: vi.fn(async () => undefined),
   closeSourcePicker: vi.fn(),
@@ -44,6 +48,7 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   isSimulatedPeer: false,
 
   setUserName: vi.fn(),
+  setUserAvatar: vi.fn(),
   sendChatMessage: vi.fn(),
   deleteChatMessage: vi.fn(),
   toggleSessionModal: vi.fn(),
@@ -378,8 +383,8 @@ describe('SFScreen Discord layout', () => {
     expect(screen.getAllByText('Alex (Simulado)').length).toBeGreaterThanOrEqual(1);
 
 
-    // Click on Alex's tile to focus
-    const tiles = screen.getAllByTitle(/Clique para focar nesta tela/i);
+    // Click on Alex's screenshare tile to focus
+    const tiles = screen.getAllByTitle(/Clique para focar nesta transmissão de tela/i);
     fireEvent.click(tiles[1]);
 
     // Focuses on Alex
@@ -492,8 +497,7 @@ describe('SFScreen Discord layout', () => {
     const gridBtn = screen.getAllByRole('button', { name: /modo grade/i })[0];
     fireEvent.click(gridBtn);
 
-
-    const tiles = screen.getAllByTitle(/Clique para focar nesta tela/i);
+    const tiles = screen.getAllByTitle(/Clique para focar nesta transmissão de tela/i);
 
     // Right-click on Tile 2 (Alex / Remote screen)
     fireEvent.contextMenu(tiles[1], { clientX: 300, clientY: 300 });
@@ -547,12 +551,12 @@ describe('SFScreen Discord layout', () => {
     // 1 click on stage video -> switches to Grid Mode
     fireEvent.click(stageViewport);
 
-    // Now in Grid Mode, both tiles exist
-    const tiles = screen.getAllByTitle(/Clique para focar nesta tela/i);
-    expect(tiles).toHaveLength(2);
+    // Now in Grid Mode, both screenshare boxes exist
+    const screenshares = screen.getAllByTitle(/Clique para focar nesta transmissão de tela/i);
+    expect(screenshares).toHaveLength(2);
 
-    // 1 click on Tile 2 -> switches back to Focus Mode focusing Tile 2 (Alex)
-    fireEvent.click(tiles[1]);
+    // 1 click on Tile 2 Screenshare -> switches back to Focus Mode focusing Tile 2 (Alex)
+    fireEvent.click(screenshares[1]);
 
     expect(screen.getByText(/Alex \(Simulado\) está apresentando/i)).toBeTruthy();
   });
@@ -586,8 +590,67 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(viewport);
 
     // Should STILL be in Focus mode, NOT switched to Grid mode
-    expect(screen.queryAllByTitle(/Clique para focar nesta tela/i)).toHaveLength(0);
+    expect(screen.queryAllByTitle(/Clique para focar nesta transmissão de tela/i)).toHaveLength(0);
     expect(screen.getByText(/Alex \(Simulado\) está apresentando/i)).toBeTruthy();
+  });
+
+  it('allows focusing on camera and screenshare independently in grid mode', () => {
+    const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({
+      phase: 'connected',
+      mediaPhase: 'sharing',
+      remoteUserName: 'Alex (Simulado)',
+      selectedSource: { id: 'screen:1', name: 'Monitor 1', thumbnailDataUrl: 'data:image/png;base64,' },
+    }));
+    current.localStream = fakeStream;
+    current.remoteStream = fakeStream;
+    current.localCameraStream = fakeStream;
+    current.cameraActive = true;
+    current.remoteMediaPhase = 'sharing';
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // Switch to Grid Mode
+    const gridBtn = screen.getAllByRole('button', { name: /modo grade/i })[0];
+    fireEvent.click(gridBtn);
+
+    // Click on camera/avatar box of local user
+    const cameraBoxes = screen.getAllByTitle(/Clique para focar na câmera\/perfil/i);
+    expect(cameraBoxes).toHaveLength(2);
+
+    fireEvent.click(cameraBoxes[0]);
+
+    // Focuses local camera
+    expect(screen.getByText(/Você \(Câmera\) está apresentando/i)).toBeTruthy();
+  });
+
+  it('toggles camera via dock button and opens Discord-style network telemetry popover', async () => {
+    const current = model(readyState({
+      phase: 'connected',
+      remoteUserName: 'Alex (Simulado)',
+    }));
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // Camera toggle button exists in dock
+    const camBtn = screen.getByLabelText(/Ativar câmera/i);
+    expect(camBtn).toBeTruthy();
+
+    fireEvent.click(camBtn);
+    expect(current.toggleCamera).toHaveBeenCalled();
+
+    // Click on "Voz conectada" widget in sidebar
+    const voiceWidget = screen.getByText(/Voz conectada/i);
+    expect(voiceWidget).toBeTruthy();
+
+    fireEvent.click(voiceWidget);
+
+    // Popover is open
+    expect(screen.getByText(/Ping médio:/i)).toBeTruthy();
+    expect(screen.getByText(/Último ping:/i)).toBeTruthy();
+    expect(screen.getByText(/Criptografado de ponta a ponta/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Depuração/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Enviar registros.../i })).toBeTruthy();
   });
 
   it('allows dismissing the PiP floating preview card by clicking its close button', () => {
