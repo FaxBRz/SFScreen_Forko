@@ -1781,7 +1781,6 @@ export const App = (): ReactElement => {
                     <FocusViewIcon />
                     <span>Modo Foco</span>
                   </button>
-
                 </div>
 
                 {/* Tile 1: Local Stream */}
@@ -1802,75 +1801,100 @@ export const App = (): ReactElement => {
                 >
                   <div className="grid-tile-ambient-bg" />
 
-                  {/* Header Bar */}
-                  <div className="grid-tile-header-bar">
-                    <div className="tile-header-left">
-                      <span className="tile-user-pill">
-                        <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-mini is-self" />
-                        <span>{state.localUserName} (Você)</span>
-                      </span>
-                      {state.mediaPhase === "sharing" && (
-                        <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
-                      )}
-                      <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
-                      <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
-                        {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
-                      </span>
-                      <span className={`tile-icon-badge ${state.mediaPhase !== "sharing" ? "is-muted" : ""}`} title="Transmissão de tela"><ScreenCastIcon /></span>
-                    </div>
-                    <div className="tile-header-right">
-                      {state.mediaPhase === "sharing" && (
-                        <div className="tile-live-badge">
-                          <span className="tile-live-dot" />
-                          <span>AO VIVO</span>
+                  {state.mediaPhase === "sharing" && session.localStream ? (
+                    <div className="grid-tile-split-content">
+                      {/* Participant Card on the Left */}
+                      <div className="tile-side-avatar-box is-self">
+                        <div className="card-inner-header">
+                          <div className="card-header-pills">
+                            <span className="tile-user-pill">
+                              <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-mini is-self" />
+                              <span>{state.localUserName} (Você)</span>
+                            </span>
+                            <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
+                            <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
+                            <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
+                              {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
+                            </span>
+                            <span className="tile-icon-badge is-active" title="Transmissão de tela"><ScreenCastIcon /></span>
+                          </div>
+                          <div className="tile-live-badge">
+                            <span className="tile-live-dot" />
+                            <span>AO VIVO</span>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Video & Center Area */}
-                  <div className="grid-tile-video-wrapper">
-                    {!isWindowFocused && state.mediaPhase === "sharing" ? (
-                      <div className="grid-tile-paused-state">
-                        <EcoZapIcon />
-                        <p>Sua transmissão está ligada, porém pausamos a renderização para reduzir consumos.</p>
-                      </div>
-                    ) : state.mediaPhase === "sharing" && session.localStream ? (
-                      <div className="grid-tile-split-content">
-                        <div className="tile-side-avatar-box is-self">
+                        <div className="card-inner-body">
                           <div className="tile-side-avatar-ring is-self">
                             <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-side-avatar-inner is-self" />
                           </div>
                           <span className="tile-side-name">{state.localUserName}</span>
                           <span className="tile-side-subtitle">Compartilhando a tela</span>
                         </div>
-                        <div className="tile-screenshare-box">
-                          <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
+
+                        <div className="card-inner-footer">
+                          <div className="tile-footer-pill" title="Latência da conexão">
+                            <SignalBarsIcon />
+                            <span>Conexão estável · 18 ms</span>
+                            <InfoCircleIcon />
+                          </div>
+                          <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo pronto">
+                            <CameraIcon />
+                            <span>Câmera</span>
+                            <span className="camera-status-dot" />
+                          </div>
                         </div>
                       </div>
-                    ) : (
+
+                      {/* Screenshare Video on the Right */}
+                      <div className="tile-screenshare-box">
+                        {!isWindowFocused ? (
+                          <div className="grid-tile-paused-state">
+                            <EcoZapIcon />
+                            <p>Sua transmissão está ligada, porém pausamos a renderização para reduzir consumos.</p>
+                          </div>
+                        ) : (
+                          <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid-tile-nonsharing-content">
+                      <div className="card-inner-header">
+                        <div className="card-header-pills">
+                          <span className="tile-user-pill">
+                            <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-mini is-self" />
+                            <span>{state.localUserName} (Você)</span>
+                          </span>
+                          <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
+                          <span className={`tile-icon-badge ${!state.includeSystemAudio ? "is-muted" : ""}`} title="Áudio da Transmissão">
+                            {state.includeSystemAudio ? <SpeakerOnIcon /> : <SpeakerMuteIcon />}
+                          </span>
+                          <span className="tile-icon-badge is-muted" title="Sem transmissão de tela"><ScreenCastIcon /></span>
+                        </div>
+                      </div>
+
                       <div className="tile-center-profile-box">
                         <div className="tile-avatar-ring is-self">
                           <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="tile-avatar-inner is-self" />
                         </div>
                         <span className="tile-avatar-name">{state.localUserName}</span>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Footer Bar */}
-                  <div className="grid-tile-footer-bar">
-                    <div className="tile-footer-pill" title="Latência da conexão">
-                      <SignalBarsIcon />
-                      <span>Conexão estável · 18 ms</span>
-                      <InfoCircleIcon />
+                      <div className="card-inner-footer">
+                        <div className="tile-footer-pill" title="Latência da conexão">
+                          <SignalBarsIcon />
+                          <span>Conexão estável · 18 ms</span>
+                          <InfoCircleIcon />
+                        </div>
+                        <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo pronto">
+                          <CameraIcon />
+                          <span>Câmera</span>
+                          <span className="camera-status-dot" />
+                        </div>
+                      </div>
                     </div>
-                    <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo pronto">
-                      <CameraIcon />
-                      <span>Câmera</span>
-                      <span className="camera-status-dot" />
-                    </div>
-                  </div>
+                  )}
 
                   <div className="grid-tile-overlay-hint">
                     <FocusViewIcon />
@@ -1896,85 +1920,114 @@ export const App = (): ReactElement => {
                 >
                   <div className="grid-tile-ambient-bg" />
 
-                  {/* Header Bar */}
-                  <div className="grid-tile-header-bar">
-                    <div className="tile-header-left">
-                      <span className="tile-user-pill">
-                        <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-mini" />
-                        <span>{state.remoteUserName}</span>
-                      </span>
-                      {session.remoteStream && (
-                        <span className="tile-res-pill">1080p · 60 FPS</span>
-                      )}
-                      <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
-                      <button
-                        className={`tile-icon-badge is-btn ${remoteMuted ? "is-muted" : "is-active"}`}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRemoteMuted((v) => !v);
-                        }}
-                        title={remoteMuted ? `Ativar som de ${state.remoteUserName}` : `Silenciar áudio de ${state.remoteUserName}`}
-                      >
-                        {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
-                      </button>
-                      <span className={`tile-icon-badge ${!session.remoteStream ? "is-muted" : ""}`} title="Transmissão"><ScreenCastIcon /></span>
-                    </div>
-                    <div className="tile-header-right">
-                      {session.remoteStream && (
-                        <div className="tile-live-badge">
-                          <span className="tile-live-dot" />
-                          <span>AO VIVO</span>
+                  {session.remoteStream ? (
+                    <div className="grid-tile-split-content">
+                      {/* Participant Card on the Left */}
+                      <div className="tile-side-avatar-box">
+                        <div className="card-inner-header">
+                          <div className="card-header-pills">
+                            <span className="tile-user-pill">
+                              <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-mini" />
+                              <span>{state.remoteUserName}</span>
+                            </span>
+                            <span className="tile-res-pill">1080p · 60 FPS</span>
+                            <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
+                            <button
+                              className={`tile-icon-badge is-btn ${remoteMuted ? "is-muted" : "is-active"}`}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRemoteMuted((v) => !v);
+                              }}
+                              title={remoteMuted ? `Ativar som de ${state.remoteUserName}` : `Silenciar áudio de ${state.remoteUserName}`}
+                            >
+                              {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
+                            </button>
+                            <span className="tile-icon-badge is-active" title="Transmissão"><ScreenCastIcon /></span>
+                          </div>
+                          <div className="tile-live-badge">
+                            <span className="tile-live-dot" />
+                            <span>AO VIVO</span>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Video & Center Area */}
-                  <div className="grid-tile-video-wrapper">
-                    {session.remoteStream ? (
-                      <div className="grid-tile-split-content">
-                        <div className="tile-side-avatar-box">
+                        <div className="card-inner-body">
                           <div className="tile-side-avatar-ring">
                             <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-side-avatar-inner" />
                           </div>
                           <span className="tile-side-name">{state.remoteUserName}</span>
                           <span className="tile-side-subtitle">Compartilhando a tela</span>
                         </div>
-                        <div className="tile-screenshare-box">
-                          <Video
-                            stream={session.remoteStream}
-                            muted={remoteMuted}
-                            volume={remoteVolume}
-                            className="stage-video is-contain"
-                          />
+
+                        <div className="card-inner-footer">
+                          <div className="tile-footer-pill" title="Latência da conexão">
+                            <SignalBarsIcon />
+                            <span>Conexão estável · 18 ms</span>
+                            <InfoCircleIcon />
+                          </div>
+                          <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
+                            <CameraIcon />
+                            <span>{state.remoteUserName}</span>
+                            <span className="camera-status-dot" />
+                          </div>
                         </div>
                       </div>
-                    ) : (
+
+                      {/* Screenshare Video on the Right */}
+                      <div className="tile-screenshare-box">
+                        <Video
+                          stream={session.remoteStream}
+                          muted={remoteMuted}
+                          volume={remoteVolume}
+                          className="stage-video is-contain"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid-tile-nonsharing-content">
+                      <div className="card-inner-header">
+                        <div className="card-header-pills">
+                          <span className="tile-user-pill">
+                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-mini" />
+                            <span>{state.remoteUserName}</span>
+                          </span>
+                          <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
+                          <button
+                            className={`tile-icon-badge is-btn ${remoteMuted ? "is-muted" : "is-active"}`}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRemoteMuted((v) => !v);
+                            }}
+                            title={remoteMuted ? `Ativar som de ${state.remoteUserName}` : `Silenciar áudio de ${state.remoteUserName}`}
+                          >
+                            {remoteMuted ? <SpeakerMuteIcon /> : <SpeakerOnIcon />}
+                          </button>
+                          <span className="tile-icon-badge is-muted" title="Sem transmissão"><ScreenCastIcon /></span>
+                        </div>
+                      </div>
+
                       <div className="tile-center-profile-box">
                         <div className="tile-avatar-ring">
                           <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-inner" />
                         </div>
                         <span className="tile-avatar-name">{state.remoteUserName}</span>
                       </div>
-                    )}
-                  </div>
 
-
-
-                  {/* Footer Bar */}
-                  <div className="grid-tile-footer-bar">
-                    <div className="tile-footer-pill" title="Latência da conexão">
-                      <SignalBarsIcon />
-                      <span>Conexão estável · 18 ms</span>
-                      <InfoCircleIcon />
+                      <div className="card-inner-footer">
+                        <div className="tile-footer-pill" title="Latência da conexão">
+                          <SignalBarsIcon />
+                          <span>Conexão estável · 18 ms</span>
+                          <InfoCircleIcon />
+                        </div>
+                        <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
+                          <CameraIcon />
+                          <span>{state.remoteUserName}</span>
+                          <span className="camera-status-dot" />
+                        </div>
+                      </div>
                     </div>
-                    <div className="tile-footer-pill is-camera" title="Dispositivo de vídeo">
-                      <CameraIcon />
-                      <span>{state.remoteUserName}</span>
-                      <span className="camera-status-dot" />
-                    </div>
-                  </div>
+                  )}
 
                   <div className="grid-tile-overlay-hint">
                     <FocusViewIcon />
