@@ -644,54 +644,94 @@ const SettingsModal = ({
 
           {activeTab === "profile" && (
             <form onSubmit={handleSaveProfile} className="settings-form">
-              <div className="profile-preview-card">
-                <div className="profile-avatar-wrapper" onClick={() => fileInputRef.current?.click()} title="Clique para alterar a foto">
-                  <UserAvatar name={name} avatar={avatar} isSelf className="profile-avatar-big" />
-                  <div className="profile-avatar-overlay">
-                    <CameraIcon />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                style={{ display: "none" }}
+                onChange={handleAvatarFileChange}
+              />
+
+              {/* Discord-Style Profile Banner & Live Card */}
+              <div className="discord-profile-card">
+                {/* Banner Top */}
+                <div className="discord-profile-banner">
+                  <div className="discord-profile-banner-ambient">
+                    {avatar && <img src={avatar} alt="" aria-hidden="true" />}
+                  </div>
+                  <div className="discord-profile-banner-badge">
+                    <span className="live-dot" />
+                    <span>{state.role === "host" ? "Host da Sessão" : "Conectado"}</span>
                   </div>
                 </div>
-                <div className="profile-details-col">
-                  <strong>{name || "Seu Nome"}</strong>
-                  <p className="modal-subtext">Sua foto e nome ficam visíveis na chamada e no modo grade.</p>
-                  <div className="profile-photo-buttons">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
-                      style={{ display: "none" }}
-                      onChange={handleAvatarFileChange}
-                    />
-                    <button
-                      type="button"
-                      className="button outline small"
+
+                {/* Avatar & Main Profile Header */}
+                <div className="discord-profile-body">
+                  <div className="discord-profile-avatar-row">
+                    <div
+                      className="discord-profile-avatar-box"
                       onClick={() => fileInputRef.current?.click()}
+                      title="Clique para alterar a foto de perfil"
+                      role="button"
+                      tabIndex={0}
                     >
-                      <CameraIcon /> Alterar foto
-                    </button>
-                    {avatar && (
+                      <UserAvatar name={name} avatar={avatar} isSelf className="discord-profile-avatar-img" />
+                      <div className="discord-avatar-edit-overlay">
+                        <CameraIcon />
+                        <span>Trocar</span>
+                      </div>
+                      <span className="avatar-online-status-dot" title="Online" />
+                    </div>
+
+                    <div className="discord-profile-actions">
                       <button
                         type="button"
-                        className="button ghost small is-danger"
-                        onClick={() => setAvatar(undefined)}
+                        className="button outline small profile-action-btn"
+                        onClick={() => fileInputRef.current?.click()}
                       >
-                        <TrashIcon /> Remover
+                        <CameraIcon /> Alterar foto
                       </button>
-                    )}
+                      {avatar && (
+                        <button
+                          type="button"
+                          className="button ghost small is-danger profile-action-btn"
+                          onClick={() => setAvatar(undefined)}
+                        >
+                          <TrashIcon /> Remover
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Profile Details Preview */}
+                  <div className="discord-profile-info-block">
+                    <h3 className="discord-profile-name-title">{name || "Seu Nome"}</h3>
+                    <div className="discord-profile-badge-row">
+                      <span className="discord-profile-tag">Você</span>
+                      <span className="discord-profile-subtext">Foto e nome visíveis na chamada e no modo grade</span>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              {/* Input Field Section */}
               <div className="setting-field">
-                <label className="code-label" htmlFor="settings-name-input">Nome de exibição</label>
+                <div className="setting-field-header">
+                  <label className="code-label" htmlFor="settings-name-input">Nome de exibição</label>
+                  <span className="char-counter">{name.length}/32</span>
+                </div>
                 <input
                   id="settings-name-input"
                   className="text-input"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   maxLength={32}
-                  placeholder="Ex: Rafael, Lucas, etc."
+                  placeholder="Ex: Xexo, Alex, etc."
+                  autoComplete="off"
                 />
+                <p className="setting-field-hint">Como as outras pessoas verão você durante as transmissões e no chat.</p>
               </div>
+
               <div className="settings-actions-footer">
                 <button className="button ghost" type="button" onClick={onClose}>Cancelar</button>
                 <button className="button primary" type="submit" disabled={!name.trim()}>Salvar alterações</button>
