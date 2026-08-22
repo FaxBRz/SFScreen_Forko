@@ -1516,7 +1516,67 @@ const playChatMessageSound = (): void => {
   }
 };
 
+/* ─── Discord-style Camera On Sound (Crisp Ascending Chime) ─── */
+const playCameraOnSound = (): void => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
+    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
+    const now = audioContextInstance.currentTime;
+    const notes = [
+      { freq: 493.88, start: 0.00, dur: 0.09, gain: 0.11 }, // B4
+      { freq: 659.25, start: 0.06, dur: 0.20, gain: 0.14 }, // E5
+    ];
+    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
+      if (!audioContextInstance) return;
+      const osc = audioContextInstance.createOscillator();
+      const gainNode = audioContextInstance.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now + start);
+      gainNode.gain.setValueAtTime(0, now + start);
+      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.012);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      osc.connect(gainNode);
+      gainNode.connect(audioContextInstance.destination);
+      osc.start(now + start);
+      osc.stop(now + start + dur);
+    });
+  } catch {
+    // Ignored in restricted environments
+  }
+};
 
+/* ─── Discord-style Camera Off Sound (Gentle Descending Tone) ─── */
+const playCameraOffSound = (): void => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!audioContextInstance) audioContextInstance = new AudioContextClass();
+    if (audioContextInstance.state === "suspended") void audioContextInstance.resume();
+    const now = audioContextInstance.currentTime;
+    const notes = [
+      { freq: 659.25, start: 0.00, dur: 0.08, gain: 0.12 }, // E5
+      { freq: 440.00, start: 0.05, dur: 0.18, gain: 0.09 }, // A4
+    ];
+    notes.forEach(({ freq, start, dur, gain: noteGain }) => {
+      if (!audioContextInstance) return;
+      const osc = audioContextInstance.createOscillator();
+      const gainNode = audioContextInstance.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now + start);
+      gainNode.gain.setValueAtTime(0, now + start);
+      gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.012);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      osc.connect(gainNode);
+      gainNode.connect(audioContextInstance.destination);
+      osc.start(now + start);
+      osc.stop(now + start + dur);
+    });
+  } catch {
+    // Ignored in restricted environments
+  }
+};
 
 /* ─── Main Application Component ─── */
 export const App = (): ReactElement => {
@@ -1691,6 +1751,23 @@ export const App = (): ReactElement => {
     }
     prevRemoteSharingRef.current = remoteSharing;
   }, [remoteSharing]);
+
+  const prevCameraActiveRef = useRef(session.cameraActive);
+  const isInitialCameraMountRef = useRef(true);
+
+  useEffect(() => {
+    if (isInitialCameraMountRef.current) {
+      isInitialCameraMountRef.current = false;
+      prevCameraActiveRef.current = session.cameraActive;
+      return;
+    }
+    if (!prevCameraActiveRef.current && session.cameraActive) {
+      playCameraOnSound();
+    } else if (prevCameraActiveRef.current && !session.cameraActive) {
+      playCameraOffSound();
+    }
+    prevCameraActiveRef.current = session.cameraActive;
+  }, [session.cameraActive]);
 
   type StageLayoutMode = "focus" | "grid";
   const [layoutMode, setLayoutMode] = useState<StageLayoutMode>("focus");
