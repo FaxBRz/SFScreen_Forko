@@ -9,7 +9,7 @@ import {
 
 import { formatSessionCode } from "../shared/session/code";
 import type { ScreenSource } from "../shared/screen-source";
-import { type SessionModel, useSession } from "./session/use-session";
+import { type SessionModel, type StreamFps, type StreamResolution, useSession } from "./session/use-session";
 
 /* ─── Vector Icons (Sleek, Minimalist, No Emojis) ─── */
 const BrandIcon = (): ReactElement => (
@@ -487,7 +487,24 @@ const VoiceConnectionPopover = ({
 
 /* ─── Modal: Source Picker ─── */
 const SourceModal = ({ sources, onClose, onSelect }: { sources: ScreenSource[]; onClose: () => void; onSelect: (source: ScreenSource, includeSystemAudio: boolean) => Promise<void> }): ReactElement => {
-  const [includeSystemAudio, setIncludeSystemAudio] = useState(false);
+  const [includeSystemAudio, setIncludeSystemAudio] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("sfscreen_include_system_audio");
+      return saved !== null ? saved === "true" : false;
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleAudio = (checked: boolean): void => {
+    setIncludeSystemAudio(checked);
+    try {
+      localStorage.setItem("sfscreen_include_system_audio", String(checked));
+    } catch {
+      // Ignored
+    }
+  };
+
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="source-modal" role="dialog" aria-modal="true" aria-labelledby="source-title">
@@ -517,7 +534,7 @@ const SourceModal = ({ sources, onClose, onSelect }: { sources: ScreenSource[]; 
               type="checkbox"
               className="switch-toggle-input"
               checked={includeSystemAudio}
-              onChange={(event) => setIncludeSystemAudio(event.target.checked)}
+              onChange={(event) => handleToggleAudio(event.target.checked)}
               aria-label="Compartilhar áudio do sistema"
             />
             <div className={`switch-toggle-track ${includeSystemAudio ? "is-checked" : ""}`}>
@@ -735,6 +752,98 @@ const SettingsModal = ({
   const [avatar, setAvatar] = useState<string | undefined>(state.localUserAvatar);
   const [copiedDiag, setCopiedDiag] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Estados de Configuração da Simulação (Modo de Teste)
+  const [simScreen, setSimScreen] = useState(() => {
+    try {
+      const saved = localStorage.getItem("sfscreen_sim_screen");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+  const [simScreenRes, setSimScreenRes] = useState<StreamResolution>(() => {
+    try {
+      return (localStorage.getItem("sfscreen_sim_screen_res") as StreamResolution) || "1080p";
+    } catch {
+      return "1080p";
+    }
+  });
+  const [simScreenFps, setSimScreenFps] = useState<StreamFps>(() => {
+    try {
+      const saved = localStorage.getItem("sfscreen_sim_screen_fps");
+      return saved === "30" ? 30 : 60;
+    } catch {
+      return 60;
+    }
+  });
+
+  const [simCamera, setSimCamera] = useState(() => {
+    try {
+      const saved = localStorage.getItem("sfscreen_sim_camera");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+  const [simCameraRes, setSimCameraRes] = useState<"480p" | "720p" | "1080p">(() => {
+    try {
+      return (localStorage.getItem("sfscreen_sim_camera_res") as "480p" | "720p" | "1080p") || "720p";
+    } catch {
+      return "720p";
+    }
+  });
+  const [simCameraFps, setSimCameraFps] = useState<30 | 60>(() => {
+    try {
+      const saved = localStorage.getItem("sfscreen_sim_camera_fps");
+      return saved === "60" ? 60 : 30;
+    } catch {
+      return 30;
+    }
+  });
+
+  const [simChat, setSimChat] = useState(() => {
+    try {
+      const saved = localStorage.getItem("sfscreen_sim_chat");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+  const [simChatMsg, setSimChatMsg] = useState(() => {
+    try {
+      return localStorage.getItem("sfscreen_sim_chat_msg") || "Olá! Sou o participante simulado. Você pode testar ligar sua câmera, focar na câmera ou na tela separadamente, e verificar a telemetria de rede!";
+    } catch {
+      return "Olá! Sou o participante simulado. Você pode testar ligar sua câmera, focar na câmera ou na tela separadamente, e verificar a telemetria de rede!";
+    }
+  });
+
+  const handleStartOrUpdateSimulation = (): void => {
+    try {
+      localStorage.setItem("sfscreen_sim_screen", String(simScreen));
+      localStorage.setItem("sfscreen_sim_screen_res", simScreenRes);
+      localStorage.setItem("sfscreen_sim_screen_fps", String(simScreenFps));
+      localStorage.setItem("sfscreen_sim_camera", String(simCamera));
+      localStorage.setItem("sfscreen_sim_camera_res", simCameraRes);
+      localStorage.setItem("sfscreen_sim_camera_fps", String(simCameraFps));
+      localStorage.setItem("sfscreen_sim_chat", String(simChat));
+      localStorage.setItem("sfscreen_sim_chat_msg", simChatMsg);
+    } catch {
+      // Ignored
+    }
+
+    session.simulatePeer({
+      enableScreen: simScreen,
+      screenResolution: simScreenRes,
+      screenFps: simScreenFps,
+      enableCamera: simCamera,
+      cameraResolution: simCameraRes,
+      cameraFps: simCameraFps,
+      sendChatMessage: simChat,
+      chatMessageText: simChatMsg,
+    });
+    onClose();
+  };
 
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const file = e.target.files?.[0];
@@ -1007,36 +1116,211 @@ const SettingsModal = ({
           )}
 
           {activeTab === "testing" && (
-            <div className="settings-info-grid">
-              <div className="setting-card full-span">
-                <span className="card-key">Simulador de Chamada e Transmissão Remota</span>
-                <p className="modal-subtext" style={{ marginTop: "4px" }}>
-                  Gera uma transmissão sintetizada em tempo real (1080p · 60 FPS com áudio, relógio e animação de latência) para você testar todas as funcionalidades de compartilhamento duplo, Picture-in-Picture (PiP), modo tela cheia, controles de áudio e otimizações de foco sem precisar de um segundo computador.
+            <div className="settings-test-container">
+              <div className="settings-test-header">
+                <div className="settings-test-title-row">
+                  <div className="settings-test-badge">
+                    <ActivityIcon />
+                    <span>Ambiente de Simulação</span>
+                  </div>
+                </div>
+                <p className="modal-subtext">
+                  Configure detalhadamente o comportamento de Alex (participante simulado) para testar compartilhamento de tela, webcam, resoluções e chat sem precisar de um segundo dispositivo.
                 </p>
-                <div style={{ marginTop: "14px", display: "flex", gap: "10px" }}>
-                  {session.isSimulatedPeer ? (
+              </div>
+
+              <div className="test-config-section">
+                {/* 1. Compartilhamento de Tela */}
+                <div className="test-card-box">
+                  <div className="test-card-header-row">
+                    <div className="test-card-label-col">
+                      <div className="test-card-icon-title">
+                        <MonitorIcon />
+                        <strong>Alex irá compartilhar tela?</strong>
+                      </div>
+                      <span className="test-card-desc">Gera uma transmissão de tela animada em tempo real com relógio de milissegundos e áudio sintetizado.</span>
+                    </div>
+                    <div className="switch-toggle-wrapper">
+                      <input
+                        type="checkbox"
+                        className="switch-toggle-input"
+                        checked={simScreen}
+                        onChange={(e) => setSimScreen(e.target.checked)}
+                        aria-label="Alex compartilhar tela"
+                      />
+                      <div className={`switch-toggle-track ${simScreen ? "is-checked" : ""}`}>
+                        <div className="switch-toggle-thumb" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {simScreen && (
+                    <div className="test-suboptions-grid">
+                      <div className="test-suboption-field">
+                        <label className="test-suboption-label">Qualidade da Tela (Resolução)</label>
+                        <div className="test-pills-row">
+                          {(["720p", "1080p", "1440p"] as const).map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              className={`test-pill-opt ${simScreenRes === r ? "is-active" : ""}`}
+                              onClick={() => setSimScreenRes(r)}
+                            >
+                              {r === "720p" ? "720p (HD)" : r === "1080p" ? "1080p (Full HD)" : "1440p (2K)"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="test-suboption-field">
+                        <label className="test-suboption-label">Taxa de Quadros da Tela</label>
+                        <div className="test-pills-row">
+                          {([30, 60] as const).map((f) => (
+                            <button
+                              key={f}
+                              type="button"
+                              className={`test-pill-opt ${simScreenFps === f ? "is-active" : ""}`}
+                              onClick={() => setSimScreenFps(f)}
+                            >
+                              {f} FPS
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Câmera */}
+                <div className="test-card-box">
+                  <div className="test-card-header-row">
+                    <div className="test-card-label-col">
+                      <div className="test-card-icon-title">
+                        <CameraIcon />
+                        <strong>Alex irá ficar com câmera ligada?</strong>
+                      </div>
+                      <span className="test-card-desc">Gera um feed de webcam com avatar animado e indicador de status.</span>
+                    </div>
+                    <div className="switch-toggle-wrapper">
+                      <input
+                        type="checkbox"
+                        className="switch-toggle-input"
+                        checked={simCamera}
+                        onChange={(e) => setSimCamera(e.target.checked)}
+                        aria-label="Alex câmera ligada"
+                      />
+                      <div className={`switch-toggle-track ${simCamera ? "is-checked" : ""}`}>
+                        <div className="switch-toggle-thumb" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {simCamera && (
+                    <div className="test-suboptions-grid">
+                      <div className="test-suboption-field">
+                        <label className="test-suboption-label">Qualidade da Câmera (Resolução)</label>
+                        <div className="test-pills-row">
+                          {(["480p", "720p", "1080p"] as const).map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              className={`test-pill-opt ${simCameraRes === r ? "is-active" : ""}`}
+                              onClick={() => setSimCameraRes(r)}
+                            >
+                              {r === "480p" ? "480p (SD)" : r === "720p" ? "720p (HD)" : "1080p (Full HD)"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="test-suboption-field">
+                        <label className="test-suboption-label">Taxa de Quadros da Câmera</label>
+                        <div className="test-pills-row">
+                          {([30, 60] as const).map((f) => (
+                            <button
+                              key={f}
+                              type="button"
+                              className={`test-pill-opt ${simCameraFps === f ? "is-active" : ""}`}
+                              onClick={() => setSimCameraFps(f)}
+                            >
+                              {f} FPS
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Mensagem no Chat */}
+                <div className="test-card-box">
+                  <div className="test-card-header-row">
+                    <div className="test-card-label-col">
+                      <div className="test-card-icon-title">
+                        <MessageSquareIcon />
+                        <strong>Alex vai enviar uma mensagem no chat?</strong>
+                      </div>
+                      <span className="test-card-desc">Simula o recebimento automático de mensagem com notificação sonora.</span>
+                    </div>
+                    <div className="switch-toggle-wrapper">
+                      <input
+                        type="checkbox"
+                        className="switch-toggle-input"
+                        checked={simChat}
+                        onChange={(e) => setSimChat(e.target.checked)}
+                        aria-label="Alex enviar mensagem no chat"
+                      />
+                      <div className={`switch-toggle-track ${simChat ? "is-checked" : ""}`}>
+                        <div className="switch-toggle-thumb" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {simChat && (
+                    <div className="test-suboptions-grid" style={{ marginTop: "10px" }}>
+                      <div className="test-suboption-field" style={{ width: "100%" }}>
+                        <label className="test-suboption-label">Qual mensagem Alex deve enviar?</label>
+                        <input
+                          className="text-input"
+                          value={simChatMsg}
+                          onChange={(e) => setSimChatMsg(e.target.value)}
+                          placeholder="Digite a mensagem de teste de Alex..."
+                          style={{ width: "100%" }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Ações da Simulação */}
+              <div className="test-actions-footer">
+                {session.isSimulatedPeer ? (
+                  <>
                     <button
-                      className="button ghost"
+                      className="button ghost is-danger"
                       type="button"
-                      onClick={() => {
-                        session.simulatePeer(false);
-                      }}
+                      onClick={() => session.simulatePeer(false)}
                     >
-                      Encerrar Participante Simulado
+                      Encerrar Simulação
                     </button>
-                  ) : (
                     <button
                       className="button primary"
                       type="button"
-                      onClick={() => {
-                        session.simulatePeer(true);
-                        onClose();
-                      }}
+                      onClick={handleStartOrUpdateSimulation}
                     >
-                      Iniciar Participante Simulado (Alex)
+                      Atualizar Simulação Ativa
                     </button>
-                  )}
-                </div>
+                  </>
+                ) : (
+                  <button
+                    className="button primary"
+                    type="button"
+                    onClick={handleStartOrUpdateSimulation}
+                  >
+                    Iniciar Participante Simulado (Alex)
+                  </button>
+                )}
               </div>
             </div>
           )}

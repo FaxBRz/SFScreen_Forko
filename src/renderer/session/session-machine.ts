@@ -83,6 +83,15 @@ export const getSavedUserAvatar = (): string | undefined => {
   return undefined;
 };
 
+export const getSavedSystemAudio = (): boolean => {
+  try {
+    const saved = localStorage.getItem('sfscreen_include_system_audio');
+    return saved !== null ? saved === 'true' : false;
+  } catch {
+    return false;
+  }
+};
+
 export const initialSessionState: SessionUiState = {
   phase: 'checking',
   tailscale: emptyStatus,
@@ -91,7 +100,7 @@ export const initialSessionState: SessionUiState = {
   remoteConfirmed: false,
   route: 'unknown',
   mediaPhase: 'unselected',
-  includeSystemAudio: false,
+  includeSystemAudio: getSavedSystemAudio(),
   audioPhase: 'unavailable',
   localUserName: getSavedUserName(),
   localUserAvatar: getSavedUserAvatar(),
@@ -169,6 +178,11 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
     case 'route':
       return { ...state, route: action.route };
     case 'source-selected':
+      try {
+        localStorage.setItem('sfscreen_include_system_audio', String(action.includeSystemAudio));
+      } catch {
+        // Ignored
+      }
       return {
         ...state,
         selectedSource: action.source,

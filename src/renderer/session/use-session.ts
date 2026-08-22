@@ -59,21 +59,28 @@ const captureErrorMessage = (error: unknown, state: import('../../shared/screen-
   return errorMessage(error);
 };
 
-const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void } => {
+const createSimulatedScreenStream = (
+  resolution: StreamResolution = '1080p',
+  fps: StreamFps = 60
+): { stream: MediaStream; stop: () => void } => {
   const canvas = document.createElement('canvas');
-  canvas.width = 1280;
-  canvas.height = 720;
+  const dim = resolution === '1440p' ? { width: 2560, height: 1440 } : resolution === '720p' ? { width: 1280, height: 720 } : { width: 1920, height: 1080 };
+  canvas.width = dim.width;
+  canvas.height = dim.height;
   const ctx = canvas.getContext('2d');
 
   let intervalId: number | null = null;
   let t = 0;
 
-  const stream = canvas.captureStream ? canvas.captureStream(30) : new MediaStream();
+  const stream = canvas.captureStream ? canvas.captureStream(fps) : new MediaStream();
   const videoTrack = stream.getVideoTracks()[0] as (MediaStreamTrack & { requestFrame?: () => void }) | undefined;
 
   const renderFrame = () => {
     if (!ctx) return;
     t += 0.05;
+
+    ctx.save();
+    ctx.scale(dim.width / 1280, dim.height / 720);
 
     const grad = ctx.createLinearGradient(0, 0, 1280, 720);
     grad.addColorStop(0, '#0c0e14');
@@ -151,7 +158,7 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
     ctx.textAlign = 'right';
     const now = new Date();
     const timeStr = `${now.toLocaleTimeString('pt-BR')}.${String(Math.floor(now.getMilliseconds() / 10)).padStart(2, '0')}`;
-    ctx.fillText(`30 FPS · 720p · ${timeStr}`, 1215, 82);
+    ctx.fillText(`${fps} FPS · ${resolution} · ${timeStr}`, 1215, 82);
 
     ctx.fillStyle = '#5865f2';
     for (let b = 0; b < 24; b++) {
@@ -164,11 +171,13 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
     ctx.textAlign = 'left';
     ctx.fillText('Áudio estéreo sintetizado (Teste de latência e PiP)', 280, 615);
 
+    ctx.restore();
+
     videoTrack?.requestFrame?.();
   };
 
   renderFrame();
-  intervalId = window.setInterval(renderFrame, 1000 / 30);
+  intervalId = window.setInterval(renderFrame, 1000 / fps);
 
   let audioContextToClose: AudioContext | null = null;
   let audioIntervalId: number | null = null;
@@ -237,16 +246,22 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
   return { stream, stop };
 };
 
-const createSimulatedCameraStream = (name: string, avatarUrl?: string): { stream: MediaStream; stop: () => void } => {
+const createSimulatedCameraStream = (
+  name: string,
+  avatarUrl?: string,
+  resolution: '480p' | '720p' | '1080p' = '720p',
+  fps: 30 | 60 = 30
+): { stream: MediaStream; stop: () => void } => {
   const canvas = document.createElement('canvas');
-  canvas.width = 640;
-  canvas.height = 480;
+  const dim = resolution === '1080p' ? { width: 1920, height: 1080 } : resolution === '480p' ? { width: 640, height: 480 } : { width: 1280, height: 720 };
+  canvas.width = dim.width;
+  canvas.height = dim.height;
   const ctx = canvas.getContext('2d');
 
   let intervalId: number | null = null;
   let t = 0;
 
-  const stream = canvas.captureStream ? canvas.captureStream(30) : new MediaStream();
+  const stream = canvas.captureStream ? canvas.captureStream(fps) : new MediaStream();
   const videoTrack = stream.getVideoTracks()[0] as (MediaStreamTrack & { requestFrame?: () => void }) | undefined;
 
   let loadedAvatarImg: HTMLImageElement | null = null;
@@ -260,6 +275,9 @@ const createSimulatedCameraStream = (name: string, avatarUrl?: string): { stream
   const renderFrame = () => {
     if (!ctx) return;
     t += 0.04;
+
+    ctx.save();
+    ctx.scale(dim.width / 640, dim.height / 480);
 
     const grad = ctx.createRadialGradient(320, 240, 50, 320, 240, 320);
     grad.addColorStop(0, '#1a2920');
@@ -309,7 +327,7 @@ const createSimulatedCameraStream = (name: string, avatarUrl?: string): { stream
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
     ctx.beginPath();
-    ctx.roundRect(320 - 90, 330, 180, 32, 16);
+    ctx.roundRect(320 - 110, 330, 220, 32, 16);
     ctx.fill();
     ctx.strokeStyle = 'rgba(35, 165, 90, 0.4)';
     ctx.stroke();
@@ -318,13 +336,15 @@ const createSimulatedCameraStream = (name: string, avatarUrl?: string): { stream
     ctx.font = 'bold 13px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`📷 ${name}`, 320, 346);
+    ctx.fillText(`📷 ${name} · ${resolution} ${fps}FPS`, 320, 346);
+
+    ctx.restore();
 
     videoTrack?.requestFrame?.();
   };
 
   renderFrame();
-  intervalId = window.setInterval(renderFrame, 1000 / 30);
+  intervalId = window.setInterval(renderFrame, 1000 / fps);
 
   const stop = () => {
     if (intervalId !== null) window.clearInterval(intervalId);
@@ -337,6 +357,16 @@ const createSimulatedCameraStream = (name: string, avatarUrl?: string): { stream
 export type StreamResolution = '720p' | '1080p' | '1440p';
 export type StreamFps = 30 | 60;
 
+export interface SimulatedPeerOptions {
+  enableScreen?: boolean;
+  screenResolution?: StreamResolution;
+  screenFps?: StreamFps;
+  enableCamera?: boolean;
+  cameraResolution?: '480p' | '720p' | '1080p';
+  cameraFps?: 30 | 60;
+  sendChatMessage?: boolean;
+  chatMessageText?: string;
+}
 
 export interface SessionModel {
   state: SessionUiState;
@@ -379,7 +409,7 @@ export interface SessionModel {
   setUserAvatar: (avatar?: string) => void;
   toggleSessionModal: (open?: boolean) => void;
   toggleChatPanel: (open?: boolean) => void;
-  simulatePeer: (enable?: boolean) => void;
+  simulatePeer: (enable?: boolean | SimulatedPeerOptions, options?: SimulatedPeerOptions) => void;
   getMetrics: () => Promise<WebRtcMetrics>;
 }
 
@@ -795,6 +825,11 @@ recordDiagnostic('audio-unavailable');
   const toggleSystemAudio = useCallback(async (): Promise<void> => {
     if (!state.selectedSource || state.mediaPhase !== 'sharing') return;
     const newAudio = !state.includeSystemAudio;
+    try {
+      localStorage.setItem('sfscreen_include_system_audio', String(newAudio));
+    } catch {
+      // Ignored
+    }
     const currentStream = localStreamRef.current;
     const controller = controllerRef.current;
     const isConnected = state.phase === 'connected';
@@ -1115,8 +1150,21 @@ recordDiagnostic('audio-unavailable');
     }
   }, [cameraActive, state.localUserAvatar, state.localUserName, stopCamera]);
 
-  const simulatePeer = useCallback((enable?: boolean): void => {
-    const shouldEnable = enable !== undefined ? enable : !isSimulatedPeer;
+  const simulatePeer = useCallback((enable?: boolean | SimulatedPeerOptions, options?: SimulatedPeerOptions): void => {
+    let shouldEnable = true;
+    let opts: SimulatedPeerOptions | undefined;
+
+    if (typeof enable === 'boolean') {
+      shouldEnable = enable;
+      opts = options;
+    } else if (typeof enable === 'object' && enable !== null) {
+      shouldEnable = true;
+      opts = enable;
+    } else {
+      shouldEnable = !isSimulatedPeer;
+      opts = options;
+    }
+
     if (!shouldEnable) {
       simulatedStreamCleanupRef.current?.();
       simulatedStreamCleanupRef.current = null;
@@ -1131,28 +1179,55 @@ recordDiagnostic('audio-unavailable');
       return;
     }
 
+    const effectiveOpts: SimulatedPeerOptions = {
+      enableScreen: opts?.enableScreen ?? true,
+      screenResolution: opts?.screenResolution ?? '1080p',
+      screenFps: opts?.screenFps ?? 60,
+      enableCamera: opts?.enableCamera ?? true,
+      cameraResolution: opts?.cameraResolution ?? '720p',
+      cameraFps: opts?.cameraFps ?? 30,
+      sendChatMessage: opts?.sendChatMessage ?? true,
+      chatMessageText: opts?.chatMessageText ?? 'Olá! Sou o participante simulado. Você pode testar ligar sua câmera, focar na câmera ou na tela separadamente, e verificar a telemetria de rede!',
+    };
+
     simulatedStreamCleanupRef.current?.();
     simulatedCameraCleanupRef.current?.();
-    const { stream, stop } = createSimulatedScreenStream();
-    const simCam = createSimulatedCameraStream('Alex (Simulado)');
-    simulatedStreamCleanupRef.current = stop;
-    simulatedCameraCleanupRef.current = simCam.stop;
+
+    if (effectiveOpts.enableScreen) {
+      const { stream, stop } = createSimulatedScreenStream(effectiveOpts.screenResolution, effectiveOpts.screenFps);
+      simulatedStreamCleanupRef.current = stop;
+      setRemoteStream(stream);
+      setRemoteMediaPhase('sharing');
+      setRemoteAudioPhase('active');
+    } else {
+      setRemoteStream(undefined);
+      setRemoteMediaPhase('stopped');
+      setRemoteAudioPhase('unavailable');
+    }
+
+    if (effectiveOpts.enableCamera) {
+      const simCam = createSimulatedCameraStream('Alex (Simulado)', undefined, effectiveOpts.cameraResolution, effectiveOpts.cameraFps);
+      simulatedCameraCleanupRef.current = simCam.stop;
+      setRemoteCameraStream(simCam.stream);
+    } else {
+      setRemoteCameraStream(undefined);
+    }
+
     setIsSimulatedPeer(true);
-    setRemoteStream(stream);
-    setRemoteCameraStream(simCam.stream);
-    setRemoteMediaPhase('sharing');
-    setRemoteAudioPhase('active');
     dispatch({ type: 'connected', route: 'direct' });
     dispatch({ type: 'set-remote-user-name', userName: 'Alex (Simulado)' });
-    dispatch({
-      type: 'add-chat-message',
-      message: {
-        id: crypto.randomUUID(),
-        senderName: 'Alex (Simulado)',
-        text: 'Olá! Sou o participante simulado. Você pode testar ligar sua câmera, focar na câmera ou na tela separadamente, e verificar a telemetria de rede!',
-        timestamp: Date.now(),
-      },
-    });
+
+    if (effectiveOpts.sendChatMessage && effectiveOpts.chatMessageText?.trim()) {
+      dispatch({
+        type: 'add-chat-message',
+        message: {
+          id: crypto.randomUUID(),
+          senderName: 'Alex (Simulado)',
+          text: effectiveOpts.chatMessageText.trim(),
+          timestamp: Date.now(),
+        },
+      });
+    }
   }, [isSimulatedPeer]);
 
   const getMetrics = useCallback(async (): Promise<WebRtcMetrics> => {

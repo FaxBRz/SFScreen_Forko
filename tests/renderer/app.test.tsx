@@ -300,7 +300,46 @@ describe('SFScreen Discord layout', () => {
     // Click "Iniciar Participante Simulado (Alex)" button
     const simStartBtn = screen.getByRole('button', { name: /iniciar participante simulado/i });
     fireEvent.click(simStartBtn);
-    expect(current.simulatePeer).toHaveBeenCalledWith(true);
+    expect(current.simulatePeer).toHaveBeenCalledWith(expect.objectContaining({
+      enableScreen: true,
+      enableCamera: true,
+      screenResolution: '1080p',
+      sendChatMessage: true,
+    }));
+  });
+
+  it('allows customizing simulated peer options (screen, camera, chat message)', () => {
+    const current = model();
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // Open Settings Modal -> Modo de Teste
+    const settingsBtn = screen.getAllByRole('button', { name: /configurações/i })[0];
+    fireEvent.click(settingsBtn);
+    const testingTab = screen.getByRole('button', { name: /modo de teste/i });
+    fireEvent.click(testingTab);
+
+    // Disable camera, select 720p screen, change chat text
+    const cameraToggle = screen.getByRole('checkbox', { name: /alex câmera ligada/i });
+    fireEvent.click(cameraToggle);
+
+    const screen720pBtn = screen.getByRole('button', { name: /720p \(hd\)/i });
+    fireEvent.click(screen720pBtn);
+
+    const chatInput = screen.getByPlaceholderText(/digite a mensagem de teste/i);
+    fireEvent.change(chatInput, { target: { value: 'Mensagem customizada do Alex' } });
+
+    // Start simulation
+    const simStartBtn = screen.getByRole('button', { name: /iniciar participante simulado/i });
+    fireEvent.click(simStartBtn);
+
+    expect(current.simulatePeer).toHaveBeenCalledWith(expect.objectContaining({
+      enableScreen: true,
+      screenResolution: '720p',
+      enableCamera: false,
+      sendChatMessage: true,
+      chatMessageText: 'Mensagem customizada do Alex',
+    }));
   });
 
 

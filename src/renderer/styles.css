@@ -4224,4 +4224,152 @@ button:disabled {
   text-align: center;
 }
 
+/* ─── Settings: Test Mode & Simulation Controls ─── */
+.settings-test-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-test-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-test-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(88, 101, 242, 0.15);
+  border: 1px solid rgba(88, 101, 242, 0.35);
+  color: #5865f2;
+  font-size: 0.76rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.settings-test-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
+.test-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.test-card-box {
+  background: #111319;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.15s ease;
+}
+
+.test-card-box:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.test-card-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.test-card-label-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.test-card-icon-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #f2f3f5;
+  font-size: 0.88rem;
+}
+
+.test-card-icon-title svg {
+  width: 16px;
+  height: 16px;
+  color: #23a55a;
+  flex-shrink: 0;
+}
+
+.test-card-desc {
+  font-size: 0.76rem;
+  color: #949ba4;
+  line-height: 1.35;
+}
+
+.test-suboptions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.test-suboption-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.test-suboption-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #b5bac1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.test-pills-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.test-pill-opt {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #181a22;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #949ba4;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.test-pill-opt:hover {
+  background: #20232c;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.test-pill-opt.is-active {
+  background: rgba(35, 165, 90, 0.18);
+  border-color: #23a55a;
+  color: #fff;
+  font-weight: 700;
+}
+
+.test-actions-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 10px;
+}
+
 
