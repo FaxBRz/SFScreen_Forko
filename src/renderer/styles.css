@@ -3177,8 +3177,8 @@ button:disabled {
 
 /* ─── Settings Modal (Clean Tabbed View) ─── */
 .settings-modal-panel {
-  width: min(760px, 100%);
-  height: 480px;
+  width: min(800px, 94vw);
+  height: min(620px, calc(100vh - 40px));
   max-height: calc(100vh - 40px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
@@ -4249,11 +4249,16 @@ button:disabled {
   font-size: 0.76rem;
   font-weight: 700;
   width: fit-content;
+  max-height: 28px;
 }
 
 .settings-test-badge svg {
-  width: 14px;
-  height: 14px;
+  width: 14px !important;
+  height: 14px !important;
+  max-width: 14px !important;
+  max-height: 14px !important;
+  flex-shrink: 0;
+  display: block;
 }
 
 .test-config-section {
@@ -4297,13 +4302,17 @@ button:disabled {
   gap: 8px;
   color: #f2f3f5;
   font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .test-card-icon-title svg {
-  width: 16px;
-  height: 16px;
+  width: 16px !important;
+  height: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
   color: #23a55a;
   flex-shrink: 0;
+  display: block;
 }
 
 .test-card-desc {
