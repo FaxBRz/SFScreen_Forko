@@ -676,6 +676,33 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(closeBtn);
     expect(screen.queryByTitle(/Fechar miniatura flutuante/i)).toBeNull();
   });
+
+  it('enables Grid Mode and PiP when local camera is active and remote is sharing screen', () => {
+    const fakeCamStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const fakeScreenStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({
+      phase: 'connected',
+      remoteUserName: 'Alex (Simulado)',
+    }));
+    current.cameraActive = true;
+    current.localCameraStream = fakeCamStream;
+    current.remoteStream = fakeScreenStream;
+    current.remoteMediaPhase = 'sharing';
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // PiP should display showing local camera while viewing remote screen
+    expect(screen.getByText(/Você \(Câmera\)/i)).toBeTruthy();
+    expect(screen.getByTitle(/Fechar miniatura flutuante/i)).toBeTruthy();
+
+    // Grid Mode button should be available
+    const gridBtn = screen.getAllByRole('button', { name: /modo grade/i })[0];
+    expect(gridBtn).toBeTruthy();
+
+    // Clicking grid button enters grid mode
+    fireEvent.click(gridBtn);
+    expect(screen.getByRole('button', { name: /alternar para modo foco/i })).toBeTruthy();
+  });
 });
 
 

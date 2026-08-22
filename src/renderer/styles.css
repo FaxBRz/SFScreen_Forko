@@ -3690,6 +3690,53 @@ button:disabled {
   color: #fff;
 }
 
+.button.outline {
+  color: #f2f3f5;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.button.outline:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.button.small {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 0.76rem;
+  border-radius: 6px;
+}
+
+.profile-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #f2f3f5 !important;
+  font-weight: 600;
+}
+
+.profile-action-btn svg {
+  width: 15px;
+  height: 15px;
+  color: #f2f3f5;
+}
+
+.profile-action-btn.is-danger {
+  color: #ff7373 !important;
+  background: rgba(218, 55, 60, 0.15);
+  border-color: rgba(218, 55, 60, 0.35);
+}
+
+.profile-action-btn.is-danger:hover {
+  background: rgba(218, 55, 60, 0.28);
+  color: #fff !important;
+}
+
 .button.icon-only {
   width: 32px;
   height: 32px;

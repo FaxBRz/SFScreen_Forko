@@ -1336,7 +1336,14 @@ export const App = (): ReactElement => {
   type StageLayoutMode = "focus" | "grid";
   const [layoutMode, setLayoutMode] = useState<StageLayoutMode>("focus");
 
-  const dualSharing = localSharing && remoteSharing && watchingRemote;
+  const localScreenActive = localSharing && !!session.localStream;
+  const localCameraActive = session.cameraActive && !!session.localCameraStream;
+  const remoteScreenActive = remoteSharing && watchingRemote && !!session.remoteStream;
+  const remoteCameraActive = !!session.remoteCameraStream;
+
+  const localHasVideo = localScreenActive || localCameraActive;
+  const remoteHasVideo = remoteScreenActive || remoteCameraActive;
+  const dualSharing = localHasVideo && remoteHasVideo;
   const isGridActive = layoutMode === "grid" && dualSharing;
 
   const [prevDualSharing, setPrevDualSharing] = useState(dualSharing);
@@ -1348,25 +1355,25 @@ export const App = (): ReactElement => {
   }
 
   const effectiveFocused: FocusedTarget =
-    (focused === "remote" || focused === "remote-screen") && (!remoteSharing || !watchingRemote) && localSharing
+    (focused === "remote" || focused === "remote-screen") && !remoteScreenActive && localScreenActive
       ? "local-screen"
-      : (focused === "local" || focused === "local-screen") && !localSharing && remoteSharing && watchingRemote
+      : (focused === "local" || focused === "local-screen") && !localScreenActive && remoteScreenActive
         ? "remote-screen"
-        : focused === "local-camera" && (!session.cameraActive || !session.localCameraStream)
-          ? (localSharing ? "local-screen" : remoteSharing && watchingRemote ? "remote-screen" : "local-screen")
-          : focused === "remote-camera" && !session.remoteCameraStream
-            ? (remoteSharing && watchingRemote ? "remote-screen" : localSharing ? "local-screen" : "remote-screen")
+        : focused === "local-camera" && !localCameraActive
+          ? (localScreenActive ? "local-screen" : remoteScreenActive ? "remote-screen" : remoteCameraActive ? "remote-camera" : "local-screen")
+          : focused === "remote-camera" && !remoteCameraActive
+            ? (remoteScreenActive ? "remote-screen" : localScreenActive ? "local-screen" : localCameraActive ? "local-camera" : "remote-screen")
             : focused;
 
   const focusedIsLocal = effectiveFocused === "local" || effectiveFocused === "local-screen" || effectiveFocused === "local-camera";
   const focusedIsCamera = effectiveFocused === "local-camera" || effectiveFocused === "remote-camera";
   const focusedSharing = effectiveFocused === "local-camera"
-    ? (session.cameraActive && !!session.localCameraStream)
+    ? localCameraActive
     : effectiveFocused === "remote-camera"
-      ? !!session.remoteCameraStream
+      ? remoteCameraActive
       : focusedIsLocal
-        ? localSharing
-        : (remoteSharing && watchingRemote);
+        ? localScreenActive
+        : remoteScreenActive;
 
   const focusedStream = effectiveFocused === "local-camera"
     ? session.localCameraStream
@@ -1376,9 +1383,70 @@ export const App = (): ReactElement => {
         ? session.localStream
         : (watchingRemote ? session.remoteStream : undefined);
 
+  let otherStream: MediaStream | undefined;
+  let otherTarget: FocusedTarget | undefined;
+  let otherLabel = "";
+
+  if (effectiveFocused === "remote" || effectiveFocused === "remote-screen") {
+    if (localScreenActive) {
+      otherStream = session.localStream;
+      otherTarget = "local-screen";
+      otherLabel = "Você (Tela)";
+    } else if (localCameraActive) {
+      otherStream = session.localCameraStream;
+      otherTarget = "local-camera";
+      otherLabel = "Você (Câmera)";
+    } else if (remoteCameraActive) {
+      otherStream = session.remoteCameraStream;
+      otherTarget = "remote-camera";
+      otherLabel = `${state.remoteUserName} (Câmera)`;
+    }
+  } else if (effectiveFocused === "local" || effectiveFocused === "local-screen") {
+    if (remoteScreenActive) {
+      otherStream = session.remoteStream;
+      otherTarget = "remote-screen";
+      otherLabel = state.remoteUserName;
+    } else if (remoteCameraActive) {
+      otherStream = session.remoteCameraStream;
+      otherTarget = "remote-camera";
+      otherLabel = `${state.remoteUserName} (Câmera)`;
+    } else if (localCameraActive) {
+      otherStream = session.localCameraStream;
+      otherTarget = "local-camera";
+      otherLabel = "Você (Câmera)";
+    }
+  } else if (effectiveFocused === "local-camera") {
+    if (remoteScreenActive) {
+      otherStream = session.remoteStream;
+      otherTarget = "remote-screen";
+      otherLabel = state.remoteUserName;
+    } else if (remoteCameraActive) {
+      otherStream = session.remoteCameraStream;
+      otherTarget = "remote-camera";
+      otherLabel = `${state.remoteUserName} (Câmera)`;
+    } else if (localScreenActive) {
+      otherStream = session.localStream;
+      otherTarget = "local-screen";
+      otherLabel = "Você (Tela)";
+    }
+  } else if (effectiveFocused === "remote-camera") {
+    if (remoteScreenActive) {
+      otherStream = session.remoteStream;
+      otherTarget = "remote-screen";
+      otherLabel = `${state.remoteUserName} (Tela)`;
+    } else if (localScreenActive) {
+      otherStream = session.localStream;
+      otherTarget = "local-screen";
+      otherLabel = "Você (Tela)";
+    } else if (localCameraActive) {
+      otherStream = session.localCameraStream;
+      otherTarget = "local-camera";
+      otherLabel = "Você (Câmera)";
+    }
+  }
+
   const isAutoHideActive = focusedSharing;
-  const otherSharing = focusedIsLocal ? (remoteSharing && watchingRemote) : localSharing;
-  const showPip = otherSharing && !isGridActive && !pipDismissed;
+  const showPip = !!otherStream && !isGridActive && !pipDismissed;
 
   const presenterName = focusedIsLocal
     ? (focusedIsCamera ? `${state.localUserName} (Câmera)` : "Você")
@@ -1538,8 +1606,9 @@ export const App = (): ReactElement => {
   const handleCloseWindow = (): void => { void window.sfscreen.closeWindow?.(); };
 
   const swapFocus = (): void => {
-    if (!otherSharing) return;
-    setFocused(focusedIsLocal ? "remote" : "local");
+    if (otherTarget) {
+      setFocused(otherTarget);
+    }
   };
 
   useEffect(() => {
@@ -2710,8 +2779,8 @@ export const App = (): ReactElement => {
             </div>
 
 
-            {/* PiP Thumbnail if both are active (Draggable with 4-corner snap) */}
-            {showPip && (
+            {/* PiP Thumbnail if multiple streams are active (Draggable with 4-corner snap) */}
+            {showPip && otherStream && (
               <div
                 ref={pipRef}
                 className={`stage-pip-card corner-${pipCorner} ${pipDragPos ? "is-dragging" : ""}`}
@@ -2735,7 +2804,7 @@ export const App = (): ReactElement => {
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setStageContextMenu({ x: e.clientX, y: e.clientY, target: focusedIsLocal ? "remote" : "local" });
+                  setStageContextMenu({ x: e.clientX, y: e.clientY, target: otherTarget === "local-screen" || otherTarget === "local-camera" ? "local" : "remote" });
                 }}
                 title="Arraste para qualquer um dos 4 cantos ou clique para alternar o foco"
               >
@@ -2754,16 +2823,16 @@ export const App = (): ReactElement => {
                 </button>
 
                 <div className="pip-video-wrapper">
-                  {!focusedIsLocal && !isWindowFocused ? (
+                  {(otherTarget === "local-screen" || otherTarget === "local-camera") && !isWindowFocused ? (
                     <div className="pip-paused-state">
                       <EcoZapIcon />
                       <small>Sua transmissão está ligada, porém pausamos a renderização para reduzir consumos.</small>
                     </div>
                   ) : (
                     <Video
-                      stream={focusedIsLocal ? session.remoteStream : session.localStream}
-                      muted={!focusedIsLocal || remoteMuted}
-                      volume={!focusedIsLocal ? 0 : remoteVolume}
+                      stream={otherStream}
+                      muted={otherTarget === "local-screen" || otherTarget === "local-camera" || remoteMuted}
+                      volume={otherTarget === "local-screen" || otherTarget === "local-camera" ? 0 : remoteVolume}
                       className="pip-video"
                     />
                   )}
@@ -2772,7 +2841,7 @@ export const App = (): ReactElement => {
                 <div className="pip-footer">
                   <div className="pip-footer-title">
                     <MoveIcon />
-                    <span>{focusedIsLocal ? state.remoteUserName : "Você"}</span>
+                    <span>{otherLabel}</span>
                   </div>
                   <span className="live-badge">AO VIVO</span>
                 </div>
