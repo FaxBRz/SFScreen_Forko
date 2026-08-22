@@ -55,14 +55,34 @@ const createWindow = (): void => {
 };
 
 app.whenReady().then(() => {
-  const canRequestDisplayCapture = (webContents: Electron.WebContents | null): boolean => mainWindow !== null
+  const isAuthorizedWebContents = (webContents: Electron.WebContents | null): boolean => mainWindow !== null
     && !mainWindow.isDestroyed()
-    && webContents === mainWindow.webContents
+    && webContents === mainWindow.webContents;
+
+  const canRequestDisplayCapture = (webContents: Electron.WebContents | null): boolean => isAuthorizedWebContents(webContents)
     && screenCapture.hasSelection(webContents.id);
+
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback((permission === 'display-capture' || permission === 'media') && canRequestDisplayCapture(webContents));
+    if (permission === 'media') {
+      callback(isAuthorizedWebContents(webContents));
+      return;
+    }
+    if (permission === 'display-capture') {
+      callback(canRequestDisplayCapture(webContents));
+      return;
+    }
+    callback(false);
   });
-  session.defaultSession.setPermissionCheckHandler((webContents, permission) => permission === 'media' && canRequestDisplayCapture(webContents));
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'media') {
+      return isAuthorizedWebContents(webContents);
+    }
+    if (permission === 'display-capture') {
+      return canRequestDisplayCapture(webContents);
+    }
+    return false;
+  });
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     void screenCapture.handleDisplayRequest(request, callback, mainWindow?.webContents.mainFrame, mainWindow?.webContents.id).catch(() => undefined);
   });

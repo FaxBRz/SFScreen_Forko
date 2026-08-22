@@ -1075,8 +1075,12 @@ recordDiagnostic('audio-unavailable');
             },
           });
         } catch {
-          const sim = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
-          stream = sim.stream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          } catch {
+            const sim = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
+            stream = sim.stream;
+          }
         }
       } else {
         const sim = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
