@@ -102,19 +102,24 @@ button:disabled {
 }
 
 .brand-mark-clean {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 6px;
   background: #23a55a;
-  color: #0b150f;
+  color: #ffffff;
   display: grid;
   place-items: center;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(35, 165, 90, 0.35);
 }
 
-.brand-mark-clean svg {
-  width: 14px;
-  height: 14px;
-  stroke: #09130c;
+.brand-mark-clean img,
+.brand-mark-clean svg,
+.brand-logo-img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-text {

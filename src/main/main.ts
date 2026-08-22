@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { webrtcUdpPortRange } from '../shared/session/types';
 import { DiscordAudioCaptureService } from './audio/discord-audio-capture-service';
@@ -18,6 +19,21 @@ const screenCapture = new ScreenCaptureService();
 const diagnostics = new DiagnosticsService();
 const audioCapture = new DiscordAudioCaptureService();
 
+const getAppIconPath = (): string => {
+  const possiblePaths = [
+    path.join(process.cwd(), 'assets', 'icon.ico'),
+    path.join(process.cwd(), 'assets', 'icon.png'),
+    path.join(__dirname, '..', '..', 'assets', 'icon.ico'),
+    path.join(__dirname, '..', '..', 'assets', 'icon.png'),
+    path.join(app.getAppPath(), 'assets', 'icon.ico'),
+    path.join(app.getAppPath(), 'assets', 'icon.png'),
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return '';
+};
+
 if (process.env.SFSCREEN_DISABLE_GPU === '1') app.disableHardwareAcceleration();
 
 // The app signals only the Tailscale host candidate. Chromium otherwise hides it behind mDNS,
@@ -25,6 +41,8 @@ if (process.env.SFSCREEN_DISABLE_GPU === '1') app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 
 const createWindow = (): void => {
+  const appIcon = getAppIconPath();
+
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 760,
@@ -32,6 +50,7 @@ const createWindow = (): void => {
     minHeight: 600,
     show: false,
     frame: false,
+    icon: appIcon || undefined,
     titleBarStyle: 'hidden',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false },
   });

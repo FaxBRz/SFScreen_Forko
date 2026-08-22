@@ -10,15 +10,16 @@ import {
 import { formatSessionCode } from "../shared/session/code";
 import type { ScreenSource } from "../shared/screen-source";
 import { type SessionModel, type StreamFps, type StreamResolution, useSession } from "./session/use-session";
+import sfLogoPng from "./assets/icon.png";
 
 /* ─── Vector Icons (Sleek, Minimalist, No Emojis) ─── */
 const BrandIcon = (): ReactElement => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <rect width="18" height="14" x="3" y="3" rx="2" />
-    <path d="M7 21h10" />
-    <path d="M12 17v4" />
-    <path d="m10 9 4 3-4 3V9z" fill="currentColor" stroke="none" />
-  </svg>
+  <img
+    src={sfLogoPng}
+    alt="SFScreen Logo"
+    className="brand-logo-img"
+    aria-hidden="true"
+  />
 );
 const SidebarIcon = (): ReactElement => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

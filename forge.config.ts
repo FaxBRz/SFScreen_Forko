@@ -4,12 +4,15 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 
 const config: ForgeConfig = {
   packagerConfig: {
+    icon: './assets/icon',
     asar: {
       unpack: '**/node_modules/loopback-capture/**',
     },
   },
   rebuildConfig: {},
-  makers: [new MakerSquirrel({})],
+  makers: [new MakerSquirrel({
+    setupIcon: './assets/icon.ico',
+  })],
   plugins: [
     new VitePlugin({
       build: [
