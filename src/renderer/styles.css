@@ -1257,6 +1257,11 @@ button:disabled {
   transition: all 0.2s ease;
   user-select: none;
   position: relative;
+  cursor: default;
+}
+
+.tile-side-avatar-box.is-clickable {
+  cursor: pointer;
 }
 
 .tile-side-avatar-box.is-self {
@@ -1266,6 +1271,18 @@ button:disabled {
 .tile-side-avatar-box:hover {
   border-color: rgba(255, 255, 255, 0.28);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+}
+
+.tile-side-avatar-box.is-clickable:hover {
+  border-color: rgba(35, 165, 90, 0.55);
+}
+
+.grid-tile-nonsharing-content {
+  cursor: default;
+}
+
+.grid-tile-nonsharing-content.is-clickable {
+  cursor: pointer;
 }
 
 .card-inner-header {

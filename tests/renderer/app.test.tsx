@@ -605,6 +605,7 @@ describe('SFScreen Discord layout', () => {
     current.localStream = fakeStream;
     current.remoteStream = fakeStream;
     current.localCameraStream = fakeStream;
+    current.remoteCameraStream = fakeStream;
     current.cameraActive = true;
     current.remoteMediaPhase = 'sharing';
     vi.mocked(useSession).mockReturnValue(current);
@@ -615,7 +616,7 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(gridBtn);
 
     // Click on camera/avatar box of local user
-    const cameraBoxes = screen.getAllByTitle(/Clique para focar na câmera\/perfil/i);
+    const cameraBoxes = screen.getAllByTitle(/Clique para focar na câmera/i);
     expect(cameraBoxes).toHaveLength(2);
 
     fireEvent.click(cameraBoxes[0]);

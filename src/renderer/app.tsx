@@ -1345,7 +1345,11 @@ export const App = (): ReactElement => {
       ? "local-screen"
       : (focused === "local" || focused === "local-screen") && !localSharing && remoteSharing && watchingRemote
         ? "remote-screen"
-        : focused;
+        : focused === "local-camera" && (!session.cameraActive || !session.localCameraStream)
+          ? (localSharing ? "local-screen" : remoteSharing && watchingRemote ? "remote-screen" : "local-screen")
+          : focused === "remote-camera" && !session.remoteCameraStream
+            ? (remoteSharing && watchingRemote ? "remote-screen" : localSharing ? "local-screen" : "remote-screen")
+            : focused;
 
   const focusedIsLocal = effectiveFocused === "local" || effectiveFocused === "local-screen" || effectiveFocused === "local-camera";
   const focusedIsCamera = effectiveFocused === "local-camera" || effectiveFocused === "remote-camera";
@@ -2029,15 +2033,15 @@ export const App = (): ReactElement => {
                     <div className="grid-tile-split-content">
                       {/* Participant Card / Camera on the Left with Ambient Backdrop */}
                       <div
-                        className={`tile-side-avatar-box is-self ${focused === "local-camera" ? "is-focused-subtile" : ""}`}
-                        onClick={(e) => {
+                        className={`tile-side-avatar-box is-self ${session.cameraActive && session.localCameraStream ? "is-clickable" : ""} ${focused === "local-camera" ? "is-focused-subtile" : ""}`}
+                        onClick={session.cameraActive && session.localCameraStream ? (e) => {
                           e.stopPropagation();
                           setFocused("local-camera");
                           setLayoutMode("focus");
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        title="Clique para focar na câmera/perfil"
+                        } : (e) => e.stopPropagation()}
+                        role={session.cameraActive && session.localCameraStream ? "button" : undefined}
+                        tabIndex={session.cameraActive && session.localCameraStream ? 0 : undefined}
+                        title={session.cameraActive && session.localCameraStream ? "Clique para focar na câmera" : undefined}
                       >
                         <div className={`card-ambient-backdrop ${!state.localUserAvatar ? "is-fallback" : ""}`}>
                           {state.localUserAvatar && (
@@ -2140,14 +2144,14 @@ export const App = (): ReactElement => {
                     </div>
                   ) : (
                     <div
-                      className="grid-tile-nonsharing-content"
-                      onClick={() => {
+                      className={`grid-tile-nonsharing-content ${session.cameraActive && session.localCameraStream ? "is-clickable" : ""}`}
+                      onClick={session.cameraActive && session.localCameraStream ? () => {
                         setFocused("local-camera");
                         setLayoutMode("focus");
-                      }}
-                      role="button"
-                      tabIndex={0}
-                      title="Clique para focar"
+                      } : undefined}
+                      role={session.cameraActive && session.localCameraStream ? "button" : undefined}
+                      tabIndex={session.cameraActive && session.localCameraStream ? 0 : undefined}
+                      title={session.cameraActive && session.localCameraStream ? "Clique para focar na câmera" : undefined}
                     >
                       <div className={`card-ambient-backdrop ${!state.localUserAvatar ? "is-fallback" : ""}`}>
                         {state.localUserAvatar && (
@@ -2211,10 +2215,12 @@ export const App = (): ReactElement => {
                     </div>
                   )}
 
-                  <div className="grid-tile-overlay-hint">
-                    <FocusViewIcon />
-                    <span>Clique para focar</span>
-                  </div>
+                  {(state.mediaPhase === "sharing" || (session.cameraActive && session.localCameraStream)) && (
+                    <div className="grid-tile-overlay-hint">
+                      <FocusViewIcon />
+                      <span>Clique para focar</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Tile 2: Remote Participant */}
@@ -2234,15 +2240,15 @@ export const App = (): ReactElement => {
                     <div className="grid-tile-split-content">
                       {/* Participant Card / Camera on the Left with Ambient Backdrop */}
                       <div
-                        className={`tile-side-avatar-box ${focused === "remote-camera" ? "is-focused-subtile" : ""}`}
-                        onClick={(e) => {
+                        className={`tile-side-avatar-box ${session.remoteCameraStream ? "is-clickable" : ""} ${focused === "remote-camera" ? "is-focused-subtile" : ""}`}
+                        onClick={session.remoteCameraStream ? (e) => {
                           e.stopPropagation();
                           setFocused("remote-camera");
                           setLayoutMode("focus");
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        title="Clique para focar na câmera/perfil"
+                        } : (e) => e.stopPropagation()}
+                        role={session.remoteCameraStream ? "button" : undefined}
+                        tabIndex={session.remoteCameraStream ? 0 : undefined}
+                        title={session.remoteCameraStream ? `Clique para focar na câmera de ${state.remoteUserName}` : undefined}
                       >
                         <div className={`card-ambient-backdrop ${!state.remoteUserAvatar ? "is-fallback" : ""}`}>
                           {state.remoteUserAvatar && (
@@ -2341,14 +2347,14 @@ export const App = (): ReactElement => {
                     </div>
                   ) : (
                     <div
-                      className="grid-tile-nonsharing-content"
-                      onClick={() => {
+                      className={`grid-tile-nonsharing-content ${session.remoteCameraStream ? "is-clickable" : ""}`}
+                      onClick={session.remoteCameraStream ? () => {
                         setFocused("remote-camera");
                         setLayoutMode("focus");
-                      }}
-                      role="button"
-                      tabIndex={0}
-                      title="Clique para focar"
+                      } : undefined}
+                      role={session.remoteCameraStream ? "button" : undefined}
+                      tabIndex={session.remoteCameraStream ? 0 : undefined}
+                      title={session.remoteCameraStream ? `Clique para focar na câmera de ${state.remoteUserName}` : undefined}
                     >
                       <div className={`card-ambient-backdrop ${!state.remoteUserAvatar ? "is-fallback" : ""}`}>
                         {state.remoteUserAvatar && (
@@ -2412,10 +2418,12 @@ export const App = (): ReactElement => {
                     </div>
                   )}
 
-                  <div className="grid-tile-overlay-hint">
-                    <FocusViewIcon />
-                    <span>Clique para focar</span>
-                  </div>
+                  {(session.remoteStream || session.remoteCameraStream) && (
+                    <div className="grid-tile-overlay-hint">
+                      <FocusViewIcon />
+                      <span>Clique para focar</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
