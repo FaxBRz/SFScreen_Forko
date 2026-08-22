@@ -973,32 +973,37 @@ button:disabled {
   height: 100%;
   display: flex;
   flex-direction: row;
-  align-items: center;
-  gap: 16px;
-  padding: 44px 20px 44px 20px;
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 12px;
   box-sizing: border-box;
   overflow: hidden;
+  position: relative;
+  z-index: 2;
 }
 
 .tile-side-avatar-box {
-  width: clamp(200px, 20vw, 300px);
+  flex: 1;
+  max-width: 480px;
+  min-width: 220px;
   height: 100%;
-  max-height: 100%;
-  background: rgba(14, 17, 23, 0.88);
-  backdrop-filter: blur(12px);
-  border: 2px solid rgba(255, 255, 255, 0.16);
-  border-radius: 14px;
+  background: rgba(14, 17, 23, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 20px 16px;
   box-sizing: border-box;
   flex-shrink: 0;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 24px rgba(255, 255, 255, 0.02);
   transition: all 0.2s ease;
   user-select: none;
+  position: relative;
 }
 
 .tile-side-avatar-box.is-self {
@@ -1011,24 +1016,24 @@ button:disabled {
 }
 
 .tile-side-avatar-ring {
-  width: clamp(80px, 9.5vw, 126px);
-  height: clamp(80px, 9.5vw, 126px);
+  width: clamp(90px, 12vw, 150px);
+  height: clamp(90px, 12vw, 150px);
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.04);
-  border: 3px solid #23a55a;
+  border: 3.5px solid #23a55a;
   display: grid;
   place-items: center;
-  box-shadow: 0 0 28px rgba(35, 165, 90, 0.4), inset 0 0 16px rgba(35, 165, 90, 0.2);
+  box-shadow: 0 0 32px rgba(35, 165, 90, 0.45), inset 0 0 18px rgba(35, 165, 90, 0.2);
   flex-shrink: 0;
 }
 
 .tile-side-avatar-inner {
-  width: calc(100% - 10px);
-  height: calc(100% - 10px);
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
   border-radius: 50%;
   background: #1b1e24;
   color: #f2f3f5;
-  font-size: 2.2rem;
+  font-size: 2.8rem;
   font-weight: 800;
   display: grid;
   place-items: center;
@@ -1042,7 +1047,7 @@ button:disabled {
 }
 
 .tile-side-name {
-  font-size: clamp(0.95rem, 1.15vw, 1.25rem);
+  font-size: clamp(1.05rem, 1.4vw, 1.35rem);
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.01em;
@@ -1051,24 +1056,35 @@ button:disabled {
 }
 
 .tile-side-subtitle {
-  font-size: clamp(0.72rem, 0.85vw, 0.88rem);
-  font-weight: 600;
+  font-size: clamp(0.78rem, 1vw, 0.92rem);
+  font-weight: 700;
   color: #23a55a;
   text-align: center;
   letter-spacing: 0.01em;
 }
 
 .tile-screenshare-box {
-  flex: 1;
   height: 100%;
-  min-width: 0;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   position: relative;
   border-radius: 10px;
+  background: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+  flex-shrink: 0;
 }
+
+.tile-screenshare-box .stage-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 
 
 
