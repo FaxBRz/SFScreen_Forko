@@ -137,13 +137,6 @@ const TrashIcon = (): ReactElement => (
   </svg>
 );
 
-const UploadIcon = (): ReactElement => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <polyline points="17 8 12 3 7 8" />
-    <line x1="12" x2="12" y1="3" y2="15" />
-  </svg>
-);
 
 const CameraIcon = (): ReactElement => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -348,7 +341,6 @@ const VoiceConnectionPopover = ({
     { time: "00:35", ping: 10 },
   ]);
   const [packetLossPercent, setPacketLossPercent] = useState(0);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const updateMetrics = async (): Promise<void> => {
@@ -412,14 +404,6 @@ const VoiceConnectionPopover = ({
     : "";
 
   const lastPoint = points[points.length - 1];
-
-  const handleExport = async (): Promise<void> => {
-    const success = await session.exportDiagnostics();
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   const firstTime = history[0]?.time ?? "00:24";
   const midTime = history[Math.floor(history.length / 2)]?.time ?? "00:29";
@@ -489,26 +473,8 @@ const VoiceConnectionPopover = ({
             <span>Último ping:</span> <strong>{lastPing} ms</strong>
           </div>
           <div className="voice-stat-row">
-            <span>Taxa de perda de pacotes enviados:</span> <strong>{packetLossPercent.toFixed(1)}%</strong>
+            <span>Taxa de perda de pacotes:</span> <strong>{packetLossPercent.toFixed(1)}%</strong>
           </div>
-        </div>
-
-        <p className="voice-popover-guidelines">
-          Você pode notar atraso no áudio quando em 250 ms ou maior. Sua voz pode soar robótica se sua taxa de perda de pacotes enviados estiver acima de 10%. Se o problema persistir, desconecte e tente novamente. Consulte nosso <span className="voice-guide-link">guia de solução de problemas</span> para mais detalhes.
-        </p>
-
-        <div className="voice-popover-action-buttons">
-          <button className="button outline small voice-action-btn" type="button" onClick={() => void session.exportDiagnostics()}>
-            <ActivityIcon /> Depuração
-          </button>
-          <button className="button outline small voice-action-btn" type="button" onClick={handleExport}>
-            <UploadIcon /> {copied ? "Registros salvos!" : "Enviar registros..."}
-          </button>
-        </div>
-
-        <div className="voice-popover-security-badge">
-          <LockShieldIcon />
-          <span>Criptografado de ponta a ponta</span>
         </div>
       </div>
     </>

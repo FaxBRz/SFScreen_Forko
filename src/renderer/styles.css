@@ -590,16 +590,17 @@ button:disabled {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
-  width: 320px;
-  max-width: calc(100vw - 24px);
-  background: #18191f;
+  right: 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: #14151b;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75), 0 0 1px rgba(255, 255, 255, 0.15);
-  padding: 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   z-index: 115;
   animation: voicePopoverSlideUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform-origin: bottom left;
@@ -621,12 +622,12 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding-bottom: 8px;
+  padding-bottom: 6px;
 }
 
 .voice-popover-header h4 {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 0.86rem;
   font-weight: 800;
   color: #f2f3f5;
   letter-spacing: -0.01em;
@@ -640,11 +641,11 @@ button:disabled {
 .voice-ping-graph-box {
   display: flex;
   gap: 6px;
-  height: 80px;
+  height: 75px;
   background: #0f1015;
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 8px;
-  padding: 8px 10px 4px 6px;
+  padding: 6px 8px 4px 6px;
 }
 
 .voice-ping-axis-y {
@@ -662,11 +663,12 @@ button:disabled {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-width: 0;
 }
 
 .voice-ping-svg {
   width: 100%;
-  height: 52px;
+  height: 48px;
 }
 
 .voice-ping-axis-x {
@@ -679,7 +681,7 @@ button:disabled {
 }
 
 .voice-popover-node-name {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 800;
   color: #ffffff;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -689,73 +691,20 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   color: #949ba4;
 }
 
 .voice-stat-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
 }
 
 .voice-stat-row strong {
   color: #f2f3f5;
   font-weight: 700;
-}
-
-.voice-popover-guidelines {
-  margin: 0;
-  font-size: 0.68rem;
-  color: #6d7380;
-  line-height: 1.35;
-}
-
-.voice-guide-link {
-  color: #5865f2;
-  cursor: pointer;
-}
-
-.voice-popover-action-buttons {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.voice-action-btn {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 0.74rem;
-  font-weight: 700;
-  padding: 6px 8px;
-  border-radius: 6px;
-}
-
-.voice-action-btn svg {
-  width: 13px;
-  height: 13px;
-}
-
-.voice-popover-security-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #23a55a;
-  background: rgba(35, 165, 90, 0.08);
-  border: 1px solid rgba(35, 165, 90, 0.2);
-  border-radius: 6px;
-  padding: 6px 10px;
-}
-
-.voice-popover-security-badge svg {
-  width: 14px;
-  height: 14px;
 }
 
 .sidebar-footer {

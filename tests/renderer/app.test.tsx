@@ -649,9 +649,8 @@ describe('SFScreen Discord layout', () => {
     // Popover is open
     expect(screen.getByText(/Ping médio:/i)).toBeTruthy();
     expect(screen.getByText(/Último ping:/i)).toBeTruthy();
-    expect(screen.getByText(/Criptografado de ponta a ponta/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Depuração/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Enviar registros.../i })).toBeTruthy();
+    expect(screen.getByText(/Taxa de perda de pacotes:/i)).toBeTruthy();
+    expect(screen.getByText(/(p2p-webrtc-direct|p2p-dtls-srtp-local|relay-tailnet-p2p)/i)).toBeTruthy();
   });
 
   it('allows dismissing the PiP floating preview card by clicking its close button', () => {
