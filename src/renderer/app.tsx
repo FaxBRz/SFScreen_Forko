@@ -1803,8 +1803,14 @@ export const App = (): ReactElement => {
 
                   {state.mediaPhase === "sharing" && session.localStream ? (
                     <div className="grid-tile-split-content">
-                      {/* Participant Card on the Left */}
+                      {/* Participant Card on the Left with Ambient Backdrop */}
                       <div className="tile-side-avatar-box is-self">
+                        <div className={`card-ambient-backdrop ${!state.localUserAvatar ? "is-fallback" : ""}`}>
+                          {state.localUserAvatar && (
+                            <img src={state.localUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
+                          )}
+                        </div>
+
                         <div className="card-inner-header">
                           <div className="card-header-pills">
                             <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
@@ -1842,7 +1848,7 @@ export const App = (): ReactElement => {
                         </div>
                       </div>
 
-                      {/* Screenshare Video on the Right */}
+                      {/* Screenshare Video on the Right with Ambient Blurred Backdrop */}
                       <div className="tile-screenshare-box">
                         {!isWindowFocused ? (
                           <div className="grid-tile-paused-state">
@@ -1850,12 +1856,23 @@ export const App = (): ReactElement => {
                             <p>Sua transmissão está ligada, porém pausamos a renderização para reduzir consumos.</p>
                           </div>
                         ) : (
-                          <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
+                          <>
+                            <div className="screenshare-ambient-backdrop">
+                              <Video stream={session.localStream} muted volume={0} className="screenshare-ambient-video" />
+                            </div>
+                            <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
+                          </>
                         )}
                       </div>
                     </div>
                   ) : (
                     <div className="grid-tile-nonsharing-content">
+                      <div className={`card-ambient-backdrop ${!state.localUserAvatar ? "is-fallback" : ""}`}>
+                        {state.localUserAvatar && (
+                          <img src={state.localUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
+                        )}
+                      </div>
+
                       <div className="card-inner-header">
                         <div className="card-header-pills">
                           <span className="tile-icon-badge" title="Microfone ativo"><MicMutedIcon /></span>
@@ -1914,8 +1931,14 @@ export const App = (): ReactElement => {
 
                   {session.remoteStream ? (
                     <div className="grid-tile-split-content">
-                      {/* Participant Card on the Left */}
+                      {/* Participant Card on the Left with Ambient Backdrop */}
                       <div className="tile-side-avatar-box">
+                        <div className={`card-ambient-backdrop ${!state.remoteUserAvatar ? "is-fallback" : ""}`}>
+                          {state.remoteUserAvatar && (
+                            <img src={state.remoteUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
+                          )}
+                        </div>
+
                         <div className="card-inner-header">
                           <div className="card-header-pills">
                             <span className="tile-res-pill">1080p · 60 FPS</span>
@@ -1941,7 +1964,7 @@ export const App = (): ReactElement => {
 
                         <div className="card-inner-body">
                           <div className="tile-side-avatar-ring">
-                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-avatar-inner" />
+                            <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="tile-side-avatar-inner" />
                           </div>
                           <span className="tile-side-name">{state.remoteUserName}</span>
                           <span className="tile-side-subtitle">Compartilhando a tela</span>
@@ -1961,8 +1984,11 @@ export const App = (): ReactElement => {
                         </div>
                       </div>
 
-                      {/* Screenshare Video on the Right */}
+                      {/* Screenshare Video on the Right with Ambient Blurred Backdrop */}
                       <div className="tile-screenshare-box">
+                        <div className="screenshare-ambient-backdrop">
+                          <Video stream={session.remoteStream} muted volume={0} className="screenshare-ambient-video" />
+                        </div>
                         <Video
                           stream={session.remoteStream}
                           muted={remoteMuted}
@@ -1973,6 +1999,12 @@ export const App = (): ReactElement => {
                     </div>
                   ) : (
                     <div className="grid-tile-nonsharing-content">
+                      <div className={`card-ambient-backdrop ${!state.remoteUserAvatar ? "is-fallback" : ""}`}>
+                        {state.remoteUserAvatar && (
+                          <img src={state.remoteUserAvatar} alt="" aria-hidden="true" className="card-ambient-img" />
+                        )}
+                      </div>
+
                       <div className="card-inner-header">
                         <div className="card-header-pills">
                           <span className="tile-icon-badge" title="Microfone"><MicMutedIcon /></span>
@@ -2104,6 +2136,14 @@ export const App = (): ReactElement => {
                       transition: isPanning ? "none" : "transform 0.15s ease-out",
                     }}
                   >
+                    <div className="screenshare-ambient-backdrop">
+                      <Video
+                        stream={focusedStream}
+                        muted
+                        volume={0}
+                        className="screenshare-ambient-video"
+                      />
+                    </div>
                     <Video
                       stream={focusedStream}
                       muted={focusedIsLocal || remoteMuted}
