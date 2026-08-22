@@ -1,4 +1,15 @@
-import { serializeControlMessage, parseControlMessage, type AudioState, type CameraState, type ChatMessagePayload, type SessionControlMessage, type VideoState } from '../../shared/session/media-control';
+import {
+  serializeControlMessage,
+  parseControlMessage,
+  type AudioState,
+  type CameraState,
+  type ChatMessagePayload,
+  type RemoteControlConfig,
+  type RemoteControlStatus,
+  type RemoteInputPayload,
+  type SessionControlMessage,
+  type VideoState,
+} from '../../shared/session/media-control';
 import { filterTailscaleCandidates, tailscaleStunUrl } from '../../shared/session/network';
 import { sessionLifetimeMs, sessionProtocolVersion, type CandidateData, type SessionDescription } from '../../shared/session/types';
 import type { WebRtcMetrics } from '../../shared/diagnostics';
@@ -196,6 +207,22 @@ export class WebRtcSession {
 
   sendSessionClosed(): void {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'session-closed' });
+  }
+
+  sendRemoteControlConfig(config: RemoteControlConfig): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'remote-control-config', config });
+  }
+
+  sendRemoteControlStatus(status: RemoteControlStatus, timeoutMs?: number): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'remote-control-status', status, timeoutMs });
+  }
+
+  sendRemoteInput(input: RemoteInputPayload): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'remote-control-input', input });
+  }
+
+  sendRemoteClipboard(text: string): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'remote-clipboard', text });
   }
 
   async updateVideoParameters(maxBitrateBps?: number, maxFramerate?: number): Promise<void> {

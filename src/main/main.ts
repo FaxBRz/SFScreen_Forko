@@ -18,6 +18,7 @@ const stunServer = new TailscaleStunServer(() => tailscale.getStatus());
 const screenCapture = new ScreenCaptureService();
 const diagnostics = new DiagnosticsService();
 const audioCapture = new DiscordAudioCaptureService();
+const remoteInput = new RemoteInputService();
 
 const getAppIconPath = (): string => {
   const possiblePaths = [
@@ -115,7 +116,7 @@ app.whenReady().then(() => {
     diagnostics,
     isAuthorizedSender,
   });
-  registerRuntimeIpc({ ipcMain, audioCapture, isAuthorizedSender });
+  registerRuntimeIpc({ ipcMain, audioCapture, remoteInput, isAuthorizedSender });
   createWindow();
 });
 

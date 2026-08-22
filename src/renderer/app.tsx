@@ -63,6 +63,26 @@ const ScreenSwitchIcon = (): ReactElement => (
   </svg>
 );
 
+const GamepadIcon = (): ReactElement => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <line x1="6" y1="12" x2="10" y2="12" /><line x1="8" y1="10" x2="8" y2="14" />
+    <line x1="15" y1="13" x2="15.01" y2="13" /><line x1="18" y1="11" x2="18.01" y2="11" />
+    <rect width="20" height="12" x="2" y="6" rx="6" />
+  </svg>
+);
+
+const MousePointerIcon = (): ReactElement => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /><path d="m13 13 6 6" />
+  </svg>
+);
+
+const KeyboardIcon = (): ReactElement => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect width="20" height="16" x="2" y="4" rx="2" /><path d="M6 8h.001" /><path d="M10 8h.001" /><path d="M14 8h.001" /><path d="M18 8h.001" /><path d="M8 12h.001" /><path d="M12 12h.001" /><path d="M16 12h.001" /><path d="M7 16h10" />
+  </svg>
+);
+
 const SpeakerOnIcon = (): ReactElement => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
@@ -514,8 +534,21 @@ const VoiceConnectionPopover = ({
   );
 };
 
-/* ─── Modal: Source Picker ─── */
-const SourceModal = ({ sources, onClose, onSelect }: { sources: ScreenSource[]; onClose: () => void; onSelect: (source: ScreenSource, includeSystemAudio: boolean) => Promise<void> }): ReactElement => {
+/* ─── Modal: Source Picker (Screenshare & AnyDesk Remote Control) ─── */
+const SourceModal = ({
+  sources,
+  onClose,
+  onSelect,
+}: {
+  sources: ScreenSource[];
+  onClose: () => void;
+  onSelect: (source: ScreenSource, includeSystemAudio: boolean, remoteControl?: Partial<RemoteControlConfig>) => Promise<void>;
+}): ReactElement => {
+  const [mode, setMode] = useState<"stream" | "remote-control">("stream");
+  const [allowMouse, setAllowMouse] = useState(true);
+  const [allowKeyboard, setAllowKeyboard] = useState(true);
+  const [allowClipboard, setAllowClipboard] = useState(true);
+
   const [includeSystemAudio, setIncludeSystemAudio] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem("sfscreen_include_system_audio");
@@ -534,6 +567,15 @@ const SourceModal = ({ sources, onClose, onSelect }: { sources: ScreenSource[]; 
     }
   };
 
+  const handleSelect = (source: ScreenSource): void => {
+    void onSelect(source, includeSystemAudio, {
+      enabled: mode === "remote-control",
+      allowMouse,
+      allowKeyboard,
+      allowClipboard,
+    });
+  };
+
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="source-modal" role="dialog" aria-modal="true" aria-labelledby="source-title">
@@ -541,10 +583,14 @@ const SourceModal = ({ sources, onClose, onSelect }: { sources: ScreenSource[]; 
           <div className="modal-heading-text">
             <div className="modal-badge-row">
               <span className="live-dot-pulse" />
-              <span className="section-kicker">Compartilhamento de Tela</span>
+              <span className="section-kicker">Compartilhamento & Controle</span>
             </div>
             <h2 id="source-title">Escolha o que compartilhar</h2>
-            <p className="modal-subtext">Selecione uma tela para iniciar a transmissão em alta definição (1080p · 60 FPS).</p>
+            <p className="modal-subtext">
+              {mode === "remote-control"
+                ? "Selecione o monitor para transmitir com controle interativo de mouse e teclado (estilo AnyDesk)."
+                : "Selecione uma tela para iniciar a transmissão em alta definição (1080p · 60 FPS)."}
+            </p>
           </div>
           <button className="button ghost icon-only modal-close-btn" type="button" onClick={onClose} aria-label="Fechar modal"><XCloseIcon /></button>
         </div>
@@ -572,10 +618,75 @@ const SourceModal = ({ sources, onClose, onSelect }: { sources: ScreenSource[]; 
           </div>
         </label>
 
+        {/* Segmented Mode Switcher: Stream vs AnyDesk Remote Access */}
+        <div className="source-mode-switcher" role="tablist" aria-label="Modo de Compartilhamento">
+          <button
+            className={`source-mode-tab ${mode === "stream" ? "is-active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={mode === "stream"}
+            onClick={() => setMode("stream")}
+          >
+            <ScreenCastIcon />
+            <span>Transmissão Padrão</span>
+          </button>
+          <button
+            className={`source-mode-tab is-anydesk ${mode === "remote-control" ? "is-active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={mode === "remote-control"}
+            onClick={() => setMode("remote-control")}
+          >
+            <GamepadIcon />
+            <span>Acesso Remoto (AnyDesk)</span>
+          </button>
+        </div>
+
+        {/* Permissions Sub-Card when AnyDesk Mode is Active */}
+        {mode === "remote-control" && (
+          <div className="remote-permissions-box">
+            <div className="remote-permissions-title">
+              <GamepadIcon />
+              <span>Permissões do Convidado no seu PC:</span>
+            </div>
+            <div className="remote-permissions-options">
+              <label className="remote-perm-pill">
+                <input
+                  type="checkbox"
+                  checked={allowMouse}
+                  onChange={(e) => setAllowMouse(e.target.checked)}
+                />
+                <MousePointerIcon />
+                <span>Mouse e Cliques</span>
+              </label>
+              <label className="remote-perm-pill">
+                <input
+                  type="checkbox"
+                  checked={allowKeyboard}
+                  onChange={(e) => setAllowKeyboard(e.target.checked)}
+                />
+                <KeyboardIcon />
+                <span>Teclado e Digitação</span>
+              </label>
+              <label className="remote-perm-pill">
+                <input
+                  type="checkbox"
+                  checked={allowClipboard}
+                  onChange={(e) => setAllowClipboard(e.target.checked)}
+                />
+                <ClipboardCopyIcon />
+                <span>Copiar/Colar (Clipboard)</span>
+              </label>
+            </div>
+          </div>
+        )}
+
         <div className="source-section-header">
           <div className="source-section-title">
             <MonitorIcon />
-            <span>Telas disponíveis ({sources.length})</span>
+            <span>
+              {mode === "remote-control" ? "Monitores para Controle Remoto" : "Telas disponíveis"} ({sources.length})
+            </span>
           </div>
         </div>
 
@@ -583,21 +694,22 @@ const SourceModal = ({ sources, onClose, onSelect }: { sources: ScreenSource[]; 
           {sources.map((source, index) => (
             <button
               key={source.id}
-              className="source-card"
+              className={`source-card ${mode === "remote-control" ? "is-anydesk-card" : ""}`}
               type="button"
-              onClick={() => void onSelect(source, includeSystemAudio)}
+              onClick={() => handleSelect(source)}
               aria-label={source.name}
             >
               <div className="source-thumbnail-box">
                 <img src={source.thumbnailDataUrl} alt={source.name} className="source-thumbnail-img" />
                 <div className="source-overlay-hover">
                   <span className="source-hover-pill">
-                    <ScreenCastIcon />
-                    <span>Compartilhar</span>
+                    {mode === "remote-control" ? <GamepadIcon /> : <ScreenCastIcon />}
+                    <span>{mode === "remote-control" ? "Conceder Controle" : "Compartilhar"}</span>
                   </span>
                 </div>
-                <div className="source-resolution-badge">
+                <div className={`source-resolution-badge ${mode === "remote-control" ? "is-anydesk" : ""}`}>
                   <span>Monitor {index + 1}</span>
+                  {mode === "remote-control" && <span className="anydesk-chip">🎮 AnyDesk</span>}
                 </div>
               </div>
               <div className="source-card-footer">
@@ -605,7 +717,9 @@ const SourceModal = ({ sources, onClose, onSelect }: { sources: ScreenSource[]; 
                   <MonitorIcon />
                   <span className="source-card-name">{source.name}</span>
                 </div>
-                <span className="source-card-sub">Clique para transmitir</span>
+                <span className="source-card-sub">
+                  {mode === "remote-control" ? "Clique para iniciar com controle" : "Clique para transmitir"}
+                </span>
               </div>
             </button>
           ))}
@@ -2247,10 +2361,64 @@ export const App = (): ReactElement => {
     };
   }, [stageContextMenu]);
 
+  /* Remote Control / AnyDesk State */
+  const [remoteControlPausedByViewer, setRemoteControlPausedByViewer] = useState(false);
+  const isControllingRemote = session.remotePeerControlConfig.enabled && !remoteControlPausedByViewer;
+  const [clipboardToast, setClipboardToast] = useState(false);
+  const videoViewportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (focusedIsLocal || !session.remotePeerControlConfig.enabled || !isControllingRemote) return;
+
+    const handleGlobalRemoteKey = (e: KeyboardEvent): void => {
+      const activeTag = (document.activeElement?.tagName || "").toLowerCase();
+      if (activeTag === "input" || activeTag === "textarea") return;
+      if (e.key === "F11" || e.key === "Escape") return;
+
+      const kind = e.type === "keydown" ? "key-down" : "key-up";
+      session.sendRemoteInput({
+        kind,
+        code: e.code,
+        key: e.key,
+        ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey,
+        altKey: e.altKey,
+        metaKey: e.metaKey,
+      });
+    };
+
+    window.addEventListener("keydown", handleGlobalRemoteKey);
+    window.addEventListener("keyup", handleGlobalRemoteKey);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalRemoteKey);
+      window.removeEventListener("keyup", handleGlobalRemoteKey);
+    };
+  }, [focusedIsLocal, session, isControllingRemote]);
+
+  const getNormalizedPoint = (e: React.MouseEvent | React.PointerEvent | React.WheelEvent): { normX: number; normY: number } | null => {
+    const el = videoViewportRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const normX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const normY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    return { normX, normY };
+  };
+
   const handleVideoMouseDown = (e: React.MouseEvent): void => {
     mouseDownTimeRef.current = Date.now();
     mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
     didPanOrDragRef.current = false;
+
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
+      const pt = getNormalizedPoint(e);
+      if (pt) {
+        const button = e.button === 2 ? "right" : e.button === 1 ? "middle" : "left";
+        session.sendRemoteInput({ kind: "mouse-down", button, x: pt.normX, y: pt.normY });
+      }
+      return;
+    }
+
     if (zoomLevel <= 1) return;
     if (e.button !== 0) return;
     setIsPanning(true);
@@ -2269,6 +2437,15 @@ export const App = (): ReactElement => {
         didPanOrDragRef.current = true;
       }
     }
+
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
+      const pt = getNormalizedPoint(e);
+      if (pt) {
+        session.sendRemoteInput({ kind: "mouse-move", x: pt.normX, y: pt.normY });
+      }
+      return;
+    }
+
     if (!isPanning || !panStartRef.current || zoomLevel <= 1) return;
     const dx = e.clientX - panStartRef.current.mouseX;
     const dy = e.clientY - panStartRef.current.mouseY;
@@ -2279,9 +2456,16 @@ export const App = (): ReactElement => {
     });
   };
 
-  const handleVideoMouseUp = (): void => {
+  const handleVideoMouseUp = (e: React.MouseEvent): void => {
     if (Date.now() - mouseDownTimeRef.current > 200) {
       didPanOrDragRef.current = true;
+    }
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
+      const pt = getNormalizedPoint(e);
+      if (pt) {
+        const button = e.button === 2 ? "right" : e.button === 1 ? "middle" : "left";
+        session.sendRemoteInput({ kind: "mouse-up", button, x: pt.normX, y: pt.normY });
+      }
     }
     setIsPanning(false);
     panStartRef.current = null;
@@ -2296,6 +2480,14 @@ export const App = (): ReactElement => {
         if (next === 1) setPanOffset({ x: 0, y: 0 });
         return next;
       });
+      return;
+    }
+
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
+      const pt = getNormalizedPoint(e);
+      if (pt) {
+        session.sendRemoteInput({ kind: "mouse-wheel", deltaX: e.deltaX, deltaY: e.deltaY, x: pt.normX, y: pt.normY });
+      }
     }
   };
 
@@ -2519,22 +2711,59 @@ export const App = (): ReactElement => {
         </div>
 
         <div className="topbar-center window-no-drag">
-          <div
-            className="status-pill status-connection"
-            title={`Status da rede Tailscale: ${state.tailscale.peers?.length || 0} peer(s) na tailnet (${(state.tailscale.peers || []).filter((p) => p.online).length} online)`}
-          >
-            <SignalWifiIcon />
-            <span>
-              {state.tailscale.state === "ready"
-                ? `Conexão excelente · 18 ms · ${state.tailscale.peers?.length || 0} peer${(state.tailscale.peers?.length || 0) !== 1 ? "s" : ""}`
-                : "Tailscale conectando…"}
-            </span>
-          </div>
+          {localSharing && session.remoteControlConfig.enabled ? (
+            <div className="remote-control-host-pill">
+              {session.remoteControlStatus === "paused-by-host" ? (
+                <>
+                  <div className="host-pill-status is-warning">
+                    <span className="warning-dot-pulse" />
+                    <span>Você assumiu o controle · Retomando em {session.remoteControlOverrideTimeoutMs ? Math.ceil(session.remoteControlOverrideTimeoutMs / 1000) : 5}s</span>
+                  </div>
+                  <button
+                    className="host-pill-action-btn is-resume"
+                    type="button"
+                    onClick={() => void session.resumeRemoteControlOverride()}
+                  >
+                    ⚡ Devolver Agora
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="host-pill-status is-active">
+                    <span className="active-dot-pulse" />
+                    <span>🎮 {state.remoteUserName || "Convidado"} pode controlar seu PC</span>
+                  </div>
+                  <button
+                    className="host-pill-action-btn is-stop"
+                    type="button"
+                    onClick={() => void session.updateRemoteControlConfig({ enabled: false })}
+                    title="Encerrar controle remoto"
+                  >
+                    🛑 Encerrar
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <div
+                className="status-pill status-connection"
+                title={`Status da rede Tailscale: ${state.tailscale.peers?.length || 0} peer(s) na tailnet (${(state.tailscale.peers || []).filter((p) => p.online).length} online)`}
+              >
+                <SignalWifiIcon />
+                <span>
+                  {state.tailscale.state === "ready"
+                    ? `Conexão excelente · 18 ms · ${state.tailscale.peers?.length || 0} peer${(state.tailscale.peers?.length || 0) !== 1 ? "s" : ""}`
+                    : "Tailscale conectando…"}
+                </span>
+              </div>
 
-          <div className="status-pill status-security" title="Criptografia ativa">
-            <LockShieldIcon />
-            <span>DTLS-SRTP ativo</span>
-          </div>
+              <div className="status-pill status-security" title="Criptografia ativa">
+                <LockShieldIcon />
+                <span>DTLS-SRTP ativo</span>
+              </div>
+            </>
+          )}
         </div>
 
 
@@ -2686,6 +2915,9 @@ export const App = (): ReactElement => {
           onMouseMove={handleStageMouseMove}
           onMouseLeave={handleStageMouseLeave}
           onContextMenu={(e) => {
+            if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
+              return;
+            }
             e.preventDefault();
             setStageContextMenu({ x: e.clientX, y: e.clientY, target: focusedIsLocal ? "local" : "remote" });
           }}
@@ -2996,6 +3228,7 @@ export const App = (): ReactElement => {
 
             ) : focusedSharing && focusedStream ? (
               <div
+                ref={videoViewportRef}
                 className="stage-video-viewport"
                 onClick={handleStageVideoClick}
                 onMouseDown={handleVideoMouseDown}
@@ -3004,9 +3237,76 @@ export const App = (): ReactElement => {
                 onWheel={handleVideoWheel}
                 onDoubleClick={handleVideoDoubleClick}
                 style={{
-                  cursor: isPanning ? "grabbing" : zoomLevel > 1 ? "grab" : dualSharing ? "pointer" : "default",
+                  cursor: isPanning ? "grabbing" : zoomLevel > 1 ? "grab" : !focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote ? "crosshair" : dualSharing ? "pointer" : "default",
                 }}
               >
+                {/* AnyDesk Interactive Remote Control Floating Action Bar */}
+                {!focusedIsLocal && session.remotePeerControlConfig.enabled && (
+                  <div className={`remote-control-viewer-bar stage-fade-element ${controlsVisible || streamMenuOpen || isControllingRemote ? "is-visible" : ""}`}>
+                    <button
+                      className={`remote-ctrl-toggle-btn ${isControllingRemote ? "is-active" : ""}`}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRemoteControlPausedByViewer((v) => !v);
+                      }}
+                      title={isControllingRemote ? "Clique para pausar o controle e apenas assistir" : "Clique para assumir o controle do mouse e teclado"}
+                    >
+                      <GamepadIcon />
+                      <span>{isControllingRemote ? "Controle Ativo (AnyDesk)" : "Só Assistindo"}</span>
+                    </button>
+
+                    {session.remoteControlStatus === "paused-by-host" && (
+                      <div className="remote-ctrl-paused-pill" title="O anfitrião mexeu no mouse físico. O controle retornará automaticamente em 5s.">
+                        <span className="paused-pulse-dot" />
+                        <span>Anfitrião no controle ({session.remoteControlOverrideTimeoutMs ? Math.ceil(session.remoteControlOverrideTimeoutMs / 1000) : 5}s)</span>
+                      </div>
+                    )}
+
+                    {isControllingRemote && (
+                      <div className="remote-ctrl-actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className="remote-ctrl-mini-btn"
+                          type="button"
+                          title="Enviar texto copiado para o PC remoto"
+                          onClick={async () => {
+                            try {
+                              const text = await navigator.clipboard.readText();
+                              if (text) {
+                                session.sendRemoteClipboard(text);
+                                setClipboardToast(true);
+                                setTimeout(() => setClipboardToast(false), 2000);
+                              }
+                            } catch {
+                              // Ignored
+                            }
+                          }}
+                        >
+                          <ClipboardCopyIcon />
+                          <span>{clipboardToast ? "Enviado!" : "Clipboard"}</span>
+                        </button>
+
+                        <button
+                          className="remote-ctrl-mini-btn"
+                          type="button"
+                          title="Enviar Tecla Windows para o PC remoto"
+                          onClick={() => session.sendRemoteInput({ kind: "special", action: "win" })}
+                        >
+                          <span>🪟 Win</span>
+                        </button>
+
+                        <button
+                          className="remote-ctrl-mini-btn"
+                          type="button"
+                          title="Enviar Ctrl+Alt+Del para o PC remoto"
+                          onClick={() => session.sendRemoteInput({ kind: "special", action: "ctrl-alt-del" })}
+                        >
+                          <span>⌨️ Ctrl+Alt+Del</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className={`stage-top-pill stage-fade-element ${controlsVisible || streamMenuOpen ? "is-visible" : ""}`}>
                   <span className="presenter-tag">

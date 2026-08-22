@@ -400,6 +400,10 @@ export interface SessionModel {
   remoteAudioPhase?: AudioPhase;
   remoteAudioError?: string;
   isSimulatedPeer: boolean;
+  remoteControlConfig: import('../../shared/session/media-control').RemoteControlConfig;
+  remotePeerControlConfig: import('../../shared/session/media-control').RemoteControlConfig;
+  remoteControlStatus: import('../../shared/session/media-control').RemoteControlStatus;
+  remoteControlOverrideTimeoutMs?: number;
   setJoinCode: (value: string) => void;
   setResolution: (resolution: StreamResolution) => void;
   setFps: (fps: StreamFps) => void;
@@ -408,7 +412,7 @@ export interface SessionModel {
   refresh: () => Promise<TailscaleStatus | undefined>;
   openSourcePicker: () => Promise<void>;
   closeSourcePicker: () => void;
-  selectSource: (source: ScreenSource, includeSystemAudio: boolean) => Promise<void>;
+  selectSource: (source: ScreenSource, includeSystemAudio: boolean, remoteControl?: Partial<import('../../shared/session/media-control').RemoteControlConfig>) => Promise<void>;
   host: () => Promise<void>;
   join: () => Promise<void>;
   confirmSecurity: () => void;
@@ -426,6 +430,10 @@ export interface SessionModel {
   toggleChatPanel: (open?: boolean) => void;
   simulatePeer: (enable?: boolean | SimulatedPeerOptions, options?: SimulatedPeerOptions) => void;
   getMetrics: () => Promise<WebRtcMetrics>;
+  updateRemoteControlConfig: (cfg: Partial<import('../../shared/session/media-control').RemoteControlConfig>) => Promise<void>;
+  sendRemoteInput: (input: import('../../shared/session/media-control').RemoteInputPayload) => void;
+  sendRemoteClipboard: (text: string) => void;
+  resumeRemoteControlOverride: () => Promise<void>;
 }
 
 
@@ -453,6 +461,21 @@ export const useSession = (): SessionModel => {
   const [remoteAudioPhase, setRemoteAudioPhase] = useState<AudioPhase>('unavailable');
   const [remoteAudioError, setRemoteAudioError] = useState<string | undefined>(undefined);
   const [isSimulatedPeer, setIsSimulatedPeer] = useState(false);
+  const [remoteControlConfig, setRemoteControlConfigState] = useState<RemoteControlConfig>({
+    enabled: false,
+    allowMouse: true,
+    allowKeyboard: true,
+    allowClipboard: true,
+  });
+  const [remotePeerControlConfig, setRemotePeerControlConfig] = useState<RemoteControlConfig>({
+    enabled: false,
+    allowMouse: false,
+    allowKeyboard: false,
+    allowClipboard: false,
+  });
+  const [remoteControlStatus, setRemoteControlStatus] = useState<RemoteControlStatus>('idle');
+  const [remoteControlOverrideTimeoutMs, setRemoteControlOverrideTimeoutMs] = useState<number | undefined>(undefined);
+
   const simulatedStreamCleanupRef = useRef<(() => void) | null>(null);
   const controllerRef = useRef<WebRtcSession | undefined>(undefined);
 
@@ -633,6 +656,27 @@ export const useSession = (): SessionModel => {
           } else {
             setRemoteMediaPhase('stopped');
             setRemoteMediaError(undefined);
+          }
+          return;
+        }
+        if (message.type === 'remote-control-config') {
+          setRemotePeerControlConfig(message.config);
+          return;
+        }
+        if (message.type === 'remote-control-status') {
+          setRemoteControlStatus(message.status);
+          setRemoteControlOverrideTimeoutMs(message.timeoutMs);
+          return;
+        }
+        if (message.type === 'remote-control-input') {
+          void window.sfscreen.executeRemoteInput?.(message.input, capturedSourceIdRef.current);
+          return;
+        }
+        if (message.type === 'remote-clipboard') {
+          try {
+            void navigator.clipboard?.writeText(message.text);
+          } catch {
+            // Ignored if clipboard write fails
           }
           return;
         }
@@ -848,10 +892,16 @@ recordDiagnostic('audio-unavailable');
         dispatch({ type: 'verifying', securityCode, message: 'Resposta recebida. Compare o código de segurança.' });
       }).catch((caught: unknown) => dispatch({ type: 'failed', message: errorMessage(caught) }));
     });
+    const unsubStatus = window.sfscreen.onRemoteControlStatusChanged?.((status) => {
+      setRemoteControlStatus(status.state);
+      setRemoteControlOverrideTimeoutMs(status.timeoutMs);
+      controllerRef.current?.sendRemoteControlStatus(status.state, status.timeoutMs);
+    });
     return () => {
       window.clearInterval(clock);
       window.clearInterval(metricsTimer);
       unsubscribe();
+      unsubStatus?.();
       stopTracks(localStreamRef.current);
       controllerRef.current?.close();
       void window.sfscreen.clearScreenSource();
@@ -868,12 +918,23 @@ recordDiagnostic('audio-unavailable');
     return status;
   }, [refresh]);
 
-  const selectSource = useCallback(async (source: ScreenSource, includeSystemAudio: boolean): Promise<void> => {
+  const selectSource = useCallback(async (source: ScreenSource, includeSystemAudio: boolean, remoteControl?: Partial<RemoteControlConfig>): Promise<void> => {
     const selection: ScreenSelection = { sourceId: source.id, includeSystemAudio };
     const result = await window.sfscreen.selectScreenSource(selection);
     if (!result.ok) return dispatch({ type: 'media', phase: 'failed', error: result.error.message });
     dispatch({ type: 'source-selected', source, includeSystemAudio });
     setSourcePickerOpen(false);
+    if (remoteControl) {
+      const updated: RemoteControlConfig = {
+        enabled: remoteControl.enabled ?? false,
+        allowMouse: remoteControl.allowMouse ?? true,
+        allowKeyboard: remoteControl.allowKeyboard ?? true,
+        allowClipboard: remoteControl.allowClipboard ?? true,
+      };
+      setRemoteControlConfigState(updated);
+      void window.sfscreen.setRemoteControlHostConfig(updated);
+      controllerRef.current?.sendRemoteControlConfig(updated);
+    }
     await captureAndAttach(source, includeSystemAudio, true);
   }, [captureAndAttach]);
 
@@ -1305,6 +1366,32 @@ recordDiagnostic('audio-unavailable');
     return metricsRef.current;
   }, []);
 
+  const updateRemoteControlConfig = useCallback(async (cfg: Partial<RemoteControlConfig>): Promise<void> => {
+    const updated: RemoteControlConfig = {
+      enabled: cfg.enabled ?? remoteControlConfig.enabled,
+      allowMouse: cfg.allowMouse ?? remoteControlConfig.allowMouse,
+      allowKeyboard: cfg.allowKeyboard ?? remoteControlConfig.allowKeyboard,
+      allowClipboard: cfg.allowClipboard ?? remoteControlConfig.allowClipboard,
+    };
+    setRemoteControlConfigState(updated);
+    await window.sfscreen.setRemoteControlHostConfig?.(updated);
+    controllerRef.current?.sendRemoteControlConfig(updated);
+  }, [remoteControlConfig]);
+
+  const sendRemoteInput = useCallback((input: RemoteInputPayload): void => {
+    controllerRef.current?.sendRemoteInput(input);
+  }, []);
+
+  const sendRemoteClipboard = useCallback((text: string): void => {
+    controllerRef.current?.sendRemoteClipboard(text);
+  }, []);
+
+  const resumeRemoteControlOverride = useCallback(async (): Promise<void> => {
+    await window.sfscreen.resumeRemoteControlOverride?.();
+    controllerRef.current?.sendRemoteControlStatus('active');
+    setRemoteControlStatus('active');
+  }, []);
+
   return {
     state,
     joinCode,
@@ -1322,6 +1409,10 @@ recordDiagnostic('audio-unavailable');
     remoteAudioPhase,
     remoteAudioError,
     isSimulatedPeer,
+    remoteControlConfig,
+    remotePeerControlConfig,
+    remoteControlStatus,
+    remoteControlOverrideTimeoutMs,
     setJoinCode,
     setResolution,
     setFps,
@@ -1348,6 +1439,10 @@ recordDiagnostic('audio-unavailable');
     toggleChatPanel,
     simulatePeer,
     getMetrics,
+    updateRemoteControlConfig,
+    sendRemoteInput,
+    sendRemoteClipboard,
+    resumeRemoteControlOverride,
   };
 };
 

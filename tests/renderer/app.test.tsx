@@ -54,7 +54,15 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   toggleSessionModal: vi.fn(),
   toggleChatPanel: vi.fn(),
   simulatePeer: vi.fn(),
-
+  getMetrics: vi.fn(async () => ({})),
+  remoteControlConfig: { enabled: false, allowMouse: true, allowKeyboard: true, allowClipboard: true },
+  remotePeerControlConfig: { enabled: false, allowMouse: false, allowKeyboard: false, allowClipboard: false },
+  remoteControlStatus: 'idle',
+  remoteControlOverrideTimeoutMs: undefined,
+  updateRemoteControlConfig: vi.fn(async () => undefined),
+  sendRemoteInput: vi.fn(),
+  sendRemoteClipboard: vi.fn(),
+  resumeRemoteControlOverride: vi.fn(async () => undefined),
 });
 
 
@@ -173,7 +181,11 @@ describe('SFScreen Discord layout', () => {
     expect((option as HTMLInputElement).checked).toBe(false);
     fireEvent.click(option);
     fireEvent.click(screen.getByRole('button', { name: 'Monitor principal' }));
-    expect(current.selectSource).toHaveBeenCalledWith(current.sources[0], true);
+    expect(current.selectSource).toHaveBeenCalledWith(
+      current.sources[0],
+      true,
+      { enabled: false, allowMouse: true, allowKeyboard: true, allowClipboard: true }
+    );
   });
 
   it('renders chat drawer and allows sending messages', () => {
@@ -813,6 +825,84 @@ describe('SFScreen Discord layout', () => {
     // No PiP and no "Parar de ver" remote viewer button
     expect(screen.queryByText(/Parar de ver/i)).toBeNull();
     expect(screen.queryByTitle(/Fechar miniatura flutuante/i)).toBeNull();
+  });
+
+  it('supports selecting Acesso Remoto (AnyDesk) in source picker modal', async () => {
+    const current = model(readyState({ phase: 'connected', remoteUserName: 'Alex' }));
+    current.sourcePickerOpen = true;
+    current.sources = [{ id: 'screen:1', name: 'Monitor Principal', thumbnailDataUrl: 'data:image/png;base64,' }];
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // Check mode tabs exist
+    expect(screen.getByRole('tab', { name: /transmissão padrão/i })).toBeTruthy();
+    const anydeskTab = screen.getByRole('tab', { name: /acesso remoto \(anydesk\)/i });
+    expect(anydeskTab).toBeTruthy();
+
+    // Switch to AnyDesk tab
+    fireEvent.click(anydeskTab);
+    expect(screen.getByText(/Permissões do Convidado no seu PC/i)).toBeTruthy();
+    expect(screen.getByText(/Mouse e Cliques/i)).toBeTruthy();
+    expect(screen.getByText(/Teclado e Digitação/i)).toBeTruthy();
+
+    // Click monitor card
+    const monitorCard = screen.getByLabelText('Monitor Principal');
+    fireEvent.click(monitorCard);
+
+    expect(current.selectSource).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'screen:1' }),
+      expect.any(Boolean),
+      { enabled: true, allowMouse: true, allowKeyboard: true, allowClipboard: true }
+    );
+  });
+
+  it('renders Host Remote Control floating banner with pause & override controls', () => {
+    const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({
+      phase: 'connected',
+      mediaPhase: 'sharing',
+      remoteUserName: 'Alex',
+    }));
+    current.localStream = fakeStream;
+    current.remoteControlConfig = { enabled: true, allowMouse: true, allowKeyboard: true, allowClipboard: true };
+    current.remoteControlStatus = 'active';
+    vi.mocked(useSession).mockReturnValue(current);
+    const { rerender } = render(<App />);
+
+    expect(screen.getByText(/Alex pode controlar seu PC/i)).toBeTruthy();
+    const stopBtn = screen.getByRole('button', { name: /encerrar/i });
+    expect(stopBtn).toBeTruthy();
+
+    // Test Host Paused by local physical mouse
+    current.remoteControlStatus = 'paused-by-host';
+    current.remoteControlOverrideTimeoutMs = 5000;
+    rerender(<App />);
+
+    expect(screen.getByText(/Você assumiu o controle · Retomando em 5s/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /devolver agora/i })).toBeTruthy();
+  });
+
+  it('renders Viewer Remote Control floating action bar and toggles interactive control', () => {
+    const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({
+      phase: 'connected',
+      remoteUserName: 'Alex',
+    }));
+    current.remoteStream = fakeStream;
+    current.remoteMediaPhase = 'sharing';
+    current.remotePeerControlConfig = { enabled: true, allowMouse: true, allowKeyboard: true, allowClipboard: true };
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // Floating action bar
+    expect(screen.getByText(/Controle Ativo \(AnyDesk\)/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /clipboard/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /win/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /ctrl\+alt\+del/i })).toBeTruthy();
+
+    // Click Win button
+    fireEvent.click(screen.getByRole('button', { name: /win/i }));
+    expect(current.sendRemoteInput).toHaveBeenCalledWith({ kind: 'special', action: 'win' });
   });
 });
 

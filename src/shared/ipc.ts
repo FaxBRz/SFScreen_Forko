@@ -17,5 +17,9 @@ export const ipcChannels = {
   startFilteredSystemAudio: 'audio:start-filtered-system',
   stopFilteredSystemAudio: 'audio:stop-filtered-system',
   filteredAudioChunk: 'audio:filtered-chunk',
+  setRemoteControlHostConfig: 'remote-input:set-config',
+  executeRemoteInput: 'remote-input:execute',
+  resumeRemoteControlOverride: 'remote-input:resume-override',
+  remoteControlStatusChanged: 'remote-input:status-changed',
 } as const;
 

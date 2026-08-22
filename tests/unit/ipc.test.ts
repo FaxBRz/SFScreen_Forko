@@ -22,6 +22,10 @@ describe('IPC channels', () => {
       startFilteredSystemAudio: 'audio:start-filtered-system',
       stopFilteredSystemAudio: 'audio:stop-filtered-system',
       filteredAudioChunk: 'audio:filtered-chunk',
+      executeRemoteInput: 'remote-input:execute',
+      setRemoteControlHostConfig: 'remote-input:set-config',
+      resumeRemoteControlOverride: 'remote-input:resume-override',
+      remoteControlStatusChanged: 'remote-input:status-changed',
     });
   });
 });

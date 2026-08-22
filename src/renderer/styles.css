@@ -4422,4 +4422,330 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+/* ─── AnyDesk Remote Control Mode & Segmented Switcher ─── */
+.source-mode-switcher {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: #111319;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 14px;
+}
+
+.source-mode-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 9px;
+  background: transparent;
+  border: none;
+  color: #949ba4;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.source-mode-tab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.source-mode-tab.is-active {
+  background: #1e2029;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.source-mode-tab.is-anydesk.is-active {
+  background: rgba(235, 71, 38, 0.18);
+  color: #ff6a4d;
+  border: 1px solid rgba(235, 71, 38, 0.35);
+}
+
+.source-mode-tab svg {
+  width: 17px;
+  height: 17px;
+}
+
+.remote-permissions-box {
+  background: rgba(235, 71, 38, 0.06);
+  border: 1px solid rgba(235, 71, 38, 0.22);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fadeIn 0.18s ease;
+}
+
+.remote-permissions-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #ff7d63;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.remote-permissions-title svg {
+  width: 16px;
+  height: 16px;
+}
+
+.remote-permissions-options {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.remote-perm-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #14161f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #dbdee1;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.remote-perm-pill:hover {
+  background: #1a1d28;
+  border-color: rgba(235, 71, 38, 0.35);
+}
+
+.remote-perm-pill input[type="checkbox"] {
+  accent-color: #eb4726;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.remote-perm-pill svg {
+  width: 14px;
+  height: 14px;
+  color: #ff6a4d;
+}
+
+.source-card.is-anydesk-card {
+  border-color: rgba(235, 71, 38, 0.25);
+}
+
+.source-card.is-anydesk-card:hover {
+  border-color: #eb4726;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4), 0 0 20px rgba(235, 71, 38, 0.25);
+}
+
+.source-card.is-anydesk-card .source-hover-pill {
+  background: #eb4726;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(235, 71, 38, 0.45);
+}
+
+.source-resolution-badge.is-anydesk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.anydesk-chip {
+  background: rgba(235, 71, 38, 0.25);
+  color: #ff7d63;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+/* ─── Host Floating Remote Control Pill ─── */
+.remote-control-host-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #151720;
+  border: 1px solid rgba(235, 71, 38, 0.35);
+  border-radius: 20px;
+  padding: 3px 12px 3px 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  animation: fadeIn 0.2s ease;
+}
+
+.host-pill-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.host-pill-status.is-active .active-dot-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #23a55a;
+  box-shadow: 0 0 8px #23a55a;
+  animation: pulse 1.8s infinite;
+}
+
+.host-pill-status.is-warning {
+  color: #f0b232;
+}
+
+.host-pill-status.is-warning .warning-dot-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f0b232;
+  box-shadow: 0 0 8px #f0b232;
+  animation: pulse 1.2s infinite;
+}
+
+.host-pill-action-btn {
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: none;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.host-pill-action-btn.is-resume {
+  background: #f0b232;
+  color: #1a1505;
+}
+
+.host-pill-action-btn.is-resume:hover {
+  background: #ffc857;
+  transform: scale(1.04);
+}
+
+.host-pill-action-btn.is-stop {
+  background: rgba(218, 55, 60, 0.2);
+  color: #ff6a6e;
+  border: 1px solid rgba(218, 55, 60, 0.35);
+}
+
+.host-pill-action-btn.is-stop:hover {
+  background: #da373c;
+  color: #fff;
+}
+
+/* ─── Viewer Remote Control Floating Action Bar ─── */
+.remote-control-viewer-bar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(14, 16, 22, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 4px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 40;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.remote-ctrl-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #1f222e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #949ba4;
+  padding: 5px 12px;
+  border-radius: 16px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.remote-ctrl-toggle-btn.is-active {
+  background: rgba(235, 71, 38, 0.2);
+  color: #ff7d63;
+  border-color: #eb4726;
+  box-shadow: 0 0 12px rgba(235, 71, 38, 0.35);
+}
+
+.remote-ctrl-toggle-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.remote-ctrl-paused-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(240, 178, 50, 0.15);
+  border: 1px solid rgba(240, 178, 50, 0.35);
+  border-radius: 16px;
+  padding: 4px 10px;
+  color: #f0b232;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.paused-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f0b232;
+  box-shadow: 0 0 6px #f0b232;
+  animation: pulse 1s infinite;
+}
+
+.remote-ctrl-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding-left: 8px;
+}
+
+.remote-ctrl-mini-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #1a1d27;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px 8px;
+  color: #dbdee1;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.remote-ctrl-mini-btn:hover {
+  background: #252936;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.remote-ctrl-mini-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
 

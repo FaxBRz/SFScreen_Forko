@@ -33,6 +33,14 @@ const api: SFScreenApi = {
     ipcRenderer.on(ipcChannels.filteredAudioChunk, callback);
     return () => ipcRenderer.removeListener(ipcChannels.filteredAudioChunk, callback);
   },
+  setRemoteControlHostConfig: (config) => ipcRenderer.invoke(ipcChannels.setRemoteControlHostConfig, config),
+  executeRemoteInput: (input, sourceId) => ipcRenderer.invoke(ipcChannels.executeRemoteInput, input, sourceId),
+  resumeRemoteControlOverride: () => ipcRenderer.invoke(ipcChannels.resumeRemoteControlOverride),
+  onRemoteControlStatusChanged: (listener) => {
+    const callback = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]): void => listener(status);
+    ipcRenderer.on(ipcChannels.remoteControlStatusChanged, callback);
+    return () => ipcRenderer.removeListener(ipcChannels.remoteControlStatusChanged, callback);
+  },
 };
 
 contextBridge.exposeInMainWorld('sfscreen', api);

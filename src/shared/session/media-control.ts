@@ -4,6 +4,22 @@ export type VideoState = 'starting' | 'active' | 'stopped' | 'failed';
 export type AudioState = 'unavailable' | 'starting' | 'active' | 'stopped' | 'failed';
 export type CameraState = 'starting' | 'active' | 'stopped' | 'failed';
 
+export type RemoteControlStatus = 'idle' | 'active' | 'paused-by-host' | 'disabled';
+
+export interface RemoteControlConfig {
+  enabled: boolean;
+  allowMouse: boolean;
+  allowKeyboard: boolean;
+  allowClipboard: boolean;
+}
+
+export type RemoteInputPayload =
+  | { kind: 'mouse-move'; x: number; y: number }
+  | { kind: 'mouse-down' | 'mouse-up'; button: 'left' | 'right' | 'middle'; x: number; y: number }
+  | { kind: 'mouse-wheel'; deltaX: number; deltaY: number; x: number; y: number }
+  | { kind: 'key-down' | 'key-up'; code: string; key: string; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean }
+  | { kind: 'special'; action: 'ctrl-alt-del' | 'win' | 'taskmgr' };
+
 export interface ChatMessagePayload {
   id: string;
   senderName: string;
@@ -19,7 +35,11 @@ export type SessionControlMessage =
   | { protocolVersion: typeof sessionProtocolVersion; type: 'delete-chat-message'; messageId: string }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'video-state'; state: VideoState }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'camera-state'; state: CameraState }
-  | { protocolVersion: typeof sessionProtocolVersion; type: 'audio-state'; state: AudioState };
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'audio-state'; state: AudioState }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-control-config'; config: RemoteControlConfig }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-control-status'; status: RemoteControlStatus; timeoutMs?: number }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-control-input'; input: RemoteInputPayload }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-clipboard'; text: string };
 
 export const serializeControlMessage = (message: SessionControlMessage): string => JSON.stringify(message);
 
@@ -63,6 +83,60 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
     if (control.type === 'video-state' && (control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'video-state', state: control.state };
     if (control.type === 'camera-state' && (control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'camera-state', state: control.state };
     if (control.type === 'audio-state' && (control.state === 'unavailable' || control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'audio-state', state: control.state };
+
+    if (control.type === 'remote-control-config' && typeof control.config === 'object' && control.config !== null) {
+      const cfg = control.config as Record<string, unknown>;
+      return {
+        protocolVersion: sessionProtocolVersion,
+        type: 'remote-control-config',
+        config: {
+          enabled: Boolean(cfg.enabled),
+          allowMouse: Boolean(cfg.allowMouse),
+          allowKeyboard: Boolean(cfg.allowKeyboard),
+          allowClipboard: Boolean(cfg.allowClipboard),
+        },
+      };
+    }
+
+    if (control.type === 'remote-control-status' && (control.status === 'idle' || control.status === 'active' || control.status === 'paused-by-host' || control.status === 'disabled')) {
+      const timeoutMs = typeof control.timeoutMs === 'number' && Number.isFinite(control.timeoutMs) ? control.timeoutMs : undefined;
+      return { protocolVersion: sessionProtocolVersion, type: 'remote-control-status', status: control.status, timeoutMs };
+    }
+
+    if (control.type === 'remote-control-input' && typeof control.input === 'object' && control.input !== null) {
+      const inp = control.input as Record<string, unknown>;
+      if (inp.kind === 'mouse-move' && typeof inp.x === 'number' && typeof inp.y === 'number') {
+        return { protocolVersion: sessionProtocolVersion, type: 'remote-control-input', input: { kind: 'mouse-move', x: inp.x, y: inp.y } };
+      }
+      if ((inp.kind === 'mouse-down' || inp.kind === 'mouse-up') && (inp.button === 'left' || inp.button === 'right' || inp.button === 'middle') && typeof inp.x === 'number' && typeof inp.y === 'number') {
+        return { protocolVersion: sessionProtocolVersion, type: 'remote-control-input', input: { kind: inp.kind, button: inp.button, x: inp.x, y: inp.y } };
+      }
+      if (inp.kind === 'mouse-wheel' && typeof inp.deltaX === 'number' && typeof inp.deltaY === 'number' && typeof inp.x === 'number' && typeof inp.y === 'number') {
+        return { protocolVersion: sessionProtocolVersion, type: 'remote-control-input', input: { kind: 'mouse-wheel', deltaX: inp.deltaX, deltaY: inp.deltaY, x: inp.x, y: inp.y } };
+      }
+      if ((inp.kind === 'key-down' || inp.kind === 'key-up') && typeof inp.code === 'string' && typeof inp.key === 'string') {
+        return {
+          protocolVersion: sessionProtocolVersion,
+          type: 'remote-control-input',
+          input: {
+            kind: inp.kind,
+            code: inp.code,
+            key: inp.key,
+            ctrlKey: Boolean(inp.ctrlKey),
+            shiftKey: Boolean(inp.shiftKey),
+            altKey: Boolean(inp.altKey),
+            metaKey: Boolean(inp.metaKey),
+          },
+        };
+      }
+      if (inp.kind === 'special' && (inp.action === 'ctrl-alt-del' || inp.action === 'win' || inp.action === 'taskmgr')) {
+        return { protocolVersion: sessionProtocolVersion, type: 'remote-control-input', input: { kind: 'special', action: inp.action } };
+      }
+    }
+
+    if (control.type === 'remote-clipboard' && typeof control.text === 'string' && control.text.length <= 100000) {
+      return { protocolVersion: sessionProtocolVersion, type: 'remote-clipboard', text: control.text };
+    }
   } catch {
     return undefined;
   }

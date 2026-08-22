@@ -51,6 +51,53 @@ describe('media control protocol', () => {
     expect(parseControlMessage(serializeControlMessage(del))).toEqual(del);
   });
 
+  it('round-trips remote-control-config and remote-control-status', () => {
+    const config = {
+      protocolVersion: sessionProtocolVersion,
+      type: 'remote-control-config' as const,
+      config: { enabled: true, allowMouse: true, allowKeyboard: true, allowClipboard: true },
+    };
+    expect(parseControlMessage(serializeControlMessage(config))).toEqual(config);
+
+    const status = {
+      protocolVersion: sessionProtocolVersion,
+      type: 'remote-control-status' as const,
+      status: 'paused-by-host' as const,
+      timeoutMs: 5000,
+    };
+    expect(parseControlMessage(serializeControlMessage(status))).toEqual(status);
+  });
+
+  it('round-trips remote-control-input events and remote-clipboard', () => {
+    const move = {
+      protocolVersion: sessionProtocolVersion,
+      type: 'remote-control-input' as const,
+      input: { kind: 'mouse-move' as const, x: 0.5, y: 0.25 },
+    };
+    expect(parseControlMessage(serializeControlMessage(move))).toEqual(move);
+
+    const click = {
+      protocolVersion: sessionProtocolVersion,
+      type: 'remote-control-input' as const,
+      input: { kind: 'mouse-down' as const, button: 'left' as const, x: 0.5, y: 0.25 },
+    };
+    expect(parseControlMessage(serializeControlMessage(click))).toEqual(click);
+
+    const key = {
+      protocolVersion: sessionProtocolVersion,
+      type: 'remote-control-input' as const,
+      input: { kind: 'key-down' as const, code: 'KeyA', key: 'a', ctrlKey: true, shiftKey: false, altKey: false, metaKey: false },
+    };
+    expect(parseControlMessage(serializeControlMessage(key))).toEqual(key);
+
+    const clip = {
+      protocolVersion: sessionProtocolVersion,
+      type: 'remote-clipboard' as const,
+      text: 'Texto copiado remotamente',
+    };
+    expect(parseControlMessage(serializeControlMessage(clip))).toEqual(clip);
+  });
+
 
 
   it('rejects malformed and older protocol messages', () => {
