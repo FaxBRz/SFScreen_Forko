@@ -1064,7 +1064,7 @@ export const App = (): ReactElement => {
   const pipRef = useRef<HTMLDivElement>(null);
   const isDraggingPipRef = useRef(false);
   const pipDragStartRef = useRef<{ mouseX: number; mouseY: number; startElemX: number; startElemY: number; moved: boolean } | null>(null);
-
+  const [pipDismissed, setPipDismissed] = useState(false);
   const [watchingRemote, setWatchingRemote] = useState(true);
 
   const prevLocalSharingRef = useRef(localSharing);
@@ -1156,6 +1156,14 @@ export const App = (): ReactElement => {
   const dualSharing = localSharing && remoteSharing && watchingRemote;
   const isGridActive = layoutMode === "grid" && dualSharing;
 
+  const [prevDualSharing, setPrevDualSharing] = useState(dualSharing);
+  if (prevDualSharing !== dualSharing) {
+    setPrevDualSharing(dualSharing);
+    if (!dualSharing) {
+      setPipDismissed(false);
+    }
+  }
+
   // Discord-style optimization: when window loses focus, pause local rendering while keeping stream active
   const effectiveFocused: FocusedStream =
     focused === "remote" && (!remoteSharing || !watchingRemote) && localSharing
@@ -1169,7 +1177,7 @@ export const App = (): ReactElement => {
   const focusedStream = focusedIsLocal ? session.localStream : (watchingRemote ? session.remoteStream : undefined);
   const isAutoHideActive = focusedSharing;
   const otherSharing = focusedIsLocal ? (remoteSharing && watchingRemote) : localSharing;
-  const showPip = otherSharing && !isGridActive; // Render PiP preview in focus mode
+  const showPip = otherSharing && !isGridActive && !pipDismissed; // Render PiP preview in focus mode unless dismissed
 
   const showControls = useCallback((): void => {
     setControlsVisible(true);
@@ -2342,7 +2350,6 @@ export const App = (): ReactElement => {
                 ref={pipRef}
                 className={`stage-pip-card corner-${pipCorner} ${pipDragPos ? "is-dragging" : ""}`}
                 onPointerDown={handlePipPointerDown}
-
                 onPointerMove={handlePipPointerMove}
                 onPointerUp={handlePipPointerUp}
                 style={
@@ -2366,6 +2373,19 @@ export const App = (): ReactElement => {
                 }}
                 title="Arraste para qualquer um dos 4 cantos ou clique para alternar o foco"
               >
+                {/* Close / Dismiss Button */}
+                <button
+                  className="pip-close-btn"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPipDismissed(true);
+                  }}
+                  title="Fechar miniatura flutuante"
+                  aria-label="Fechar miniatura"
+                >
+                  <XCloseIcon />
+                </button>
 
                 <div className="pip-video-wrapper">
                   {!focusedIsLocal && !isWindowFocused ? (

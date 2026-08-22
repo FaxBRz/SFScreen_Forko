@@ -589,6 +589,29 @@ describe('SFScreen Discord layout', () => {
     expect(screen.queryAllByTitle(/Clique para focar nesta tela/i)).toHaveLength(0);
     expect(screen.getByText(/Alex \(Simulado\) está apresentando/i)).toBeTruthy();
   });
+
+  it('allows dismissing the PiP floating preview card by clicking its close button', () => {
+    const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({
+      phase: 'connected',
+      mediaPhase: 'sharing',
+      remoteUserName: 'Alex (Simulado)',
+      selectedSource: { id: 'screen:1', name: 'Monitor 1', thumbnailDataUrl: 'data:image/png;base64,' },
+    }));
+    current.localStream = fakeStream;
+    current.remoteStream = fakeStream;
+    current.remoteMediaPhase = 'sharing';
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // In focus mode with dual sharing, PiP card is shown with close button
+    const closeBtn = screen.getByTitle(/Fechar miniatura flutuante/i);
+    expect(closeBtn).toBeTruthy();
+
+    // Click close button -> PiP card is dismissed
+    fireEvent.click(closeBtn);
+    expect(screen.queryByTitle(/Fechar miniatura flutuante/i)).toBeNull();
+  });
 });
 
 
