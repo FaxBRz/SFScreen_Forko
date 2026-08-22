@@ -60,18 +60,20 @@ const captureErrorMessage = (error: unknown, state: import('../../shared/screen-
 };
 
 const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void } => {
-
   const canvas = document.createElement('canvas');
   canvas.width = 1280;
   canvas.height = 720;
   const ctx = canvas.getContext('2d');
 
-  let animationFrame: number | null = null;
+  let intervalId: number | null = null;
   let t = 0;
+
+  const stream = canvas.captureStream ? canvas.captureStream(60) : new MediaStream();
+  const videoTrack = stream.getVideoTracks()[0] as (MediaStreamTrack & { requestFrame?: () => void }) | undefined;
 
   const renderFrame = () => {
     if (!ctx) return;
-    t += 0.03;
+    t += 0.035;
 
     const grad = ctx.createLinearGradient(0, 0, 1280, 720);
     grad.addColorStop(0, '#0c0e14');
@@ -134,9 +136,9 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
     ctx.fillStyle = waveGrad;
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.fillRect(40, 40, 1200, 70);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     ctx.strokeRect(40, 40, 1200, 70);
 
     ctx.fillStyle = '#ffffff';
@@ -162,12 +164,11 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
     ctx.textAlign = 'left';
     ctx.fillText('Áudio estéreo sintetizado (Teste de latência e PiP)', 280, 615);
 
-    animationFrame = requestAnimationFrame(renderFrame);
+    videoTrack?.requestFrame?.();
   };
 
   renderFrame();
-
-  const stream = canvas.captureStream ? canvas.captureStream(30) : new MediaStream();
+  intervalId = window.setInterval(renderFrame, 1000 / 60);
 
   try {
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -192,7 +193,7 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
   }
 
   const stop = () => {
-    if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+    if (intervalId !== null) window.clearInterval(intervalId);
     stream.getTracks().forEach((track) => track.stop());
   };
 

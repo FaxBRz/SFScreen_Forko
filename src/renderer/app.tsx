@@ -278,10 +278,13 @@ const Video = ({ stream, muted = false, volume = 1, className }: { stream?: Medi
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (!ref.current) return;
-    if (ref.current.srcObject !== (stream ?? null)) {
-      ref.current.srcObject = stream ?? null;
-      if (stream) void ref.current.play()?.catch?.(() => undefined);
+    const el = ref.current;
+    if (!el) return;
+    if (el.srcObject !== (stream ?? null)) {
+      el.srcObject = stream ?? null;
+    }
+    if (stream) {
+      void el.play()?.catch?.(() => undefined);
     }
   }, [stream]);
 
@@ -292,7 +295,18 @@ const Video = ({ stream, muted = false, volume = 1, className }: { stream?: Medi
     }
   }, [volume, muted]);
 
-  return <video ref={ref} className={className} autoPlay playsInline muted={muted} />;
+  return (
+    <video
+      ref={ref}
+      className={className}
+      autoPlay
+      playsInline
+      muted={muted}
+      onLoadedMetadata={(e) => {
+        void (e.target as HTMLVideoElement).play()?.catch?.(() => undefined);
+      }}
+    />
+  );
 };
 
 
