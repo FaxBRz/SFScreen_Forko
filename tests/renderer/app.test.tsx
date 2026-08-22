@@ -319,12 +319,15 @@ describe('SFScreen Discord layout', () => {
     const testingTab = screen.getByRole('button', { name: /modo de teste/i });
     fireEvent.click(testingTab);
 
-    // Disable camera, select 720p screen, change chat text
+    // Disable camera, select 720p screen, disable screen audio, change chat text
     const cameraToggle = screen.getByRole('checkbox', { name: /alex câmera ligada/i });
     fireEvent.click(cameraToggle);
 
     const screen720pBtn = screen.getByRole('button', { name: /720p \(hd\)/i });
     fireEvent.click(screen720pBtn);
+
+    const screenAudioToggle = screen.getByRole('checkbox', { name: /a tela de alex vai emitir som/i });
+    fireEvent.click(screenAudioToggle);
 
     const chatInput = screen.getByPlaceholderText(/digite a mensagem de teste/i);
     fireEvent.change(chatInput, { target: { value: 'Mensagem customizada do Alex' } });
@@ -336,6 +339,7 @@ describe('SFScreen Discord layout', () => {
     expect(current.simulatePeer).toHaveBeenCalledWith(expect.objectContaining({
       enableScreen: true,
       screenResolution: '720p',
+      enableScreenAudio: false,
       enableCamera: false,
       sendChatMessage: true,
       chatMessageText: 'Mensagem customizada do Alex',

@@ -4381,4 +4381,33 @@ button:disabled {
   padding-top: 10px;
 }
 
+.test-avatar-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.test-alex-avatar-preview {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e2029;
+  border: 2px solid #23a55a;
+  box-shadow: 0 0 12px rgba(35, 165, 90, 0.25);
+  flex-shrink: 0;
+}
+
+.test-avatar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 

@@ -61,7 +61,8 @@ const captureErrorMessage = (error: unknown, state: import('../../shared/screen-
 
 const createSimulatedScreenStream = (
   resolution: StreamResolution = '1080p',
-  fps: StreamFps = 60
+  fps: StreamFps = 60,
+  enableAudio: boolean = true
 ): { stream: MediaStream; stop: () => void } => {
   const canvas = document.createElement('canvas');
   const dim = resolution === '1440p' ? { width: 2560, height: 1440 } : resolution === '720p' ? { width: 1280, height: 720 } : { width: 1920, height: 1080 };
@@ -160,16 +161,26 @@ const createSimulatedScreenStream = (
     const timeStr = `${now.toLocaleTimeString('pt-BR')}.${String(Math.floor(now.getMilliseconds() / 10)).padStart(2, '0')}`;
     ctx.fillText(`${fps} FPS · ${resolution} · ${timeStr}`, 1215, 82);
 
-    ctx.fillStyle = '#5865f2';
-    for (let b = 0; b < 24; b++) {
-      const barH = 10 + Math.abs(Math.sin(t * 4 + b * 0.4)) * 40;
-      ctx.fillRect(65 + b * 8, 620 - barH, 5, barH);
+    if (enableAudio) {
+      ctx.fillStyle = '#5865f2';
+      for (let b = 0; b < 24; b++) {
+        const barH = 10 + Math.abs(Math.sin(t * 4 + b * 0.4)) * 40;
+        ctx.fillRect(65 + b * 8, 620 - barH, 5, barH);
+      }
+      ctx.fillStyle = '#949ba4';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('Áudio estéreo sintetizado (Teste de latência e PiP)', 280, 615);
+    } else {
+      ctx.fillStyle = '#4e5058';
+      for (let b = 0; b < 24; b++) {
+        ctx.fillRect(65 + b * 8, 616, 5, 4);
+      }
+      ctx.fillStyle = '#72767d';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('Transmissão sem áudio do sistema (Mudo)', 280, 615);
     }
-
-    ctx.fillStyle = '#949ba4';
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('Áudio estéreo sintetizado (Teste de latência e PiP)', 280, 615);
 
     ctx.restore();
 
@@ -182,54 +193,56 @@ const createSimulatedScreenStream = (
   let audioContextToClose: AudioContext | null = null;
   let audioIntervalId: number | null = null;
 
-  try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (AudioCtx) {
-      const ctxAudio = new AudioCtx();
-      audioContextToClose = ctxAudio;
-      if (ctxAudio.state === 'suspended') {
-        void ctxAudio.resume();
+  if (enableAudio) {
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (AudioCtx) {
+        const ctxAudio = new AudioCtx();
+        audioContextToClose = ctxAudio;
+        if (ctxAudio.state === 'suspended') {
+          void ctxAudio.resume();
+        }
+
+        const dest = ctxAudio.createMediaStreamDestination();
+        const mainGain = ctxAudio.createGain();
+        mainGain.gain.setValueAtTime(0.1, ctxAudio.currentTime);
+        mainGain.connect(dest);
+
+        // Play pleasant rhythmic melodic chord tones (A4, C#5, E5, A5)
+        const notes = [440, 554.37, 659.25, 880];
+        let noteIndex = 0;
+
+        const playChime = () => {
+          if (ctxAudio.state === 'closed') return;
+          if (ctxAudio.state === 'suspended') void ctxAudio.resume();
+
+          const now = ctxAudio.currentTime;
+          const osc = ctxAudio.createOscillator();
+          const noteGain = ctxAudio.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(notes[noteIndex % notes.length], now);
+          noteIndex++;
+
+          noteGain.gain.setValueAtTime(0, now);
+          noteGain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+          noteGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+
+          osc.connect(noteGain);
+          noteGain.connect(mainGain);
+
+          osc.start(now);
+          osc.stop(now + 0.36);
+        };
+
+        playChime();
+        audioIntervalId = window.setInterval(playChime, 800);
+
+        dest.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
       }
-
-      const dest = ctxAudio.createMediaStreamDestination();
-      const mainGain = ctxAudio.createGain();
-      mainGain.gain.setValueAtTime(0.1, ctxAudio.currentTime);
-      mainGain.connect(dest);
-
-      // Play pleasant rhythmic melodic chord tones (A4, C#5, E5, A5)
-      const notes = [440, 554.37, 659.25, 880];
-      let noteIndex = 0;
-
-      const playChime = () => {
-        if (ctxAudio.state === 'closed') return;
-        if (ctxAudio.state === 'suspended') void ctxAudio.resume();
-
-        const now = ctxAudio.currentTime;
-        const osc = ctxAudio.createOscillator();
-        const noteGain = ctxAudio.createGain();
-
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(notes[noteIndex % notes.length], now);
-        noteIndex++;
-
-        noteGain.gain.setValueAtTime(0, now);
-        noteGain.gain.linearRampToValueAtTime(0.15, now + 0.02);
-        noteGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
-
-        osc.connect(noteGain);
-        noteGain.connect(mainGain);
-
-        osc.start(now);
-        osc.stop(now + 0.36);
-      };
-
-      playChime();
-      audioIntervalId = window.setInterval(playChime, 800);
-
-      dest.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
+    } catch {
+      // Unsupported in headless/mock test
     }
-  } catch {
-    // Unsupported in headless/mock test
   }
 
   const stop = () => {
@@ -361,9 +374,11 @@ export interface SimulatedPeerOptions {
   enableScreen?: boolean;
   screenResolution?: StreamResolution;
   screenFps?: StreamFps;
+  enableScreenAudio?: boolean;
   enableCamera?: boolean;
   cameraResolution?: '480p' | '720p' | '1080p';
   cameraFps?: 30 | 60;
+  avatarUrl?: string;
   sendChatMessage?: boolean;
   chatMessageText?: string;
 }
@@ -1183,9 +1198,11 @@ recordDiagnostic('audio-unavailable');
       enableScreen: opts?.enableScreen ?? true,
       screenResolution: opts?.screenResolution ?? '1080p',
       screenFps: opts?.screenFps ?? 60,
+      enableScreenAudio: opts?.enableScreenAudio ?? true,
       enableCamera: opts?.enableCamera ?? true,
       cameraResolution: opts?.cameraResolution ?? '720p',
       cameraFps: opts?.cameraFps ?? 30,
+      avatarUrl: opts?.avatarUrl,
       sendChatMessage: opts?.sendChatMessage ?? true,
       chatMessageText: opts?.chatMessageText ?? 'Olá! Sou o participante simulado. Você pode testar ligar sua câmera, focar na câmera ou na tela separadamente, e verificar a telemetria de rede!',
     };
@@ -1194,11 +1211,15 @@ recordDiagnostic('audio-unavailable');
     simulatedCameraCleanupRef.current?.();
 
     if (effectiveOpts.enableScreen) {
-      const { stream, stop } = createSimulatedScreenStream(effectiveOpts.screenResolution, effectiveOpts.screenFps);
+      const { stream, stop } = createSimulatedScreenStream(
+        effectiveOpts.screenResolution,
+        effectiveOpts.screenFps,
+        effectiveOpts.enableScreenAudio
+      );
       simulatedStreamCleanupRef.current = stop;
       setRemoteStream(stream);
       setRemoteMediaPhase('sharing');
-      setRemoteAudioPhase('active');
+      setRemoteAudioPhase(effectiveOpts.enableScreenAudio ? 'active' : 'unavailable');
     } else {
       setRemoteStream(undefined);
       setRemoteMediaPhase('stopped');
@@ -1206,7 +1227,7 @@ recordDiagnostic('audio-unavailable');
     }
 
     if (effectiveOpts.enableCamera) {
-      const simCam = createSimulatedCameraStream('Alex (Simulado)', undefined, effectiveOpts.cameraResolution, effectiveOpts.cameraFps);
+      const simCam = createSimulatedCameraStream('Alex (Simulado)', effectiveOpts.avatarUrl, effectiveOpts.cameraResolution, effectiveOpts.cameraFps);
       simulatedCameraCleanupRef.current = simCam.stop;
       setRemoteCameraStream(simCam.stream);
     } else {
@@ -1216,6 +1237,7 @@ recordDiagnostic('audio-unavailable');
     setIsSimulatedPeer(true);
     dispatch({ type: 'connected', route: 'direct' });
     dispatch({ type: 'set-remote-user-name', userName: 'Alex (Simulado)' });
+    dispatch({ type: 'set-remote-user-avatar', avatar: effectiveOpts.avatarUrl });
 
     if (effectiveOpts.sendChatMessage && effectiveOpts.chatMessageText?.trim()) {
       dispatch({

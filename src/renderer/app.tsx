@@ -772,6 +772,23 @@ const SettingsModal = ({
       return 60;
     }
   });
+  const [simScreenAudio, setSimScreenAudio] = useState(() => {
+    try {
+      const saved = localStorage.getItem("sfscreen_sim_screen_audio");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [simAvatar, setSimAvatar] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem("sfscreen_sim_avatar") || undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const alexFileInputRef = useRef<HTMLInputElement>(null);
 
   const [simCamera, setSimCamera] = useState(() => {
     try {
@@ -818,6 +835,12 @@ const SettingsModal = ({
       localStorage.setItem("sfscreen_sim_screen", String(simScreen));
       localStorage.setItem("sfscreen_sim_screen_res", simScreenRes);
       localStorage.setItem("sfscreen_sim_screen_fps", String(simScreenFps));
+      localStorage.setItem("sfscreen_sim_screen_audio", String(simScreenAudio));
+      if (simAvatar) {
+        localStorage.setItem("sfscreen_sim_avatar", simAvatar);
+      } else {
+        localStorage.removeItem("sfscreen_sim_avatar");
+      }
       localStorage.setItem("sfscreen_sim_camera", String(simCamera));
       localStorage.setItem("sfscreen_sim_camera_res", simCameraRes);
       localStorage.setItem("sfscreen_sim_camera_fps", String(simCameraFps));
@@ -831,13 +854,44 @@ const SettingsModal = ({
       enableScreen: simScreen,
       screenResolution: simScreenRes,
       screenFps: simScreenFps,
+      enableScreenAudio: simScreenAudio,
       enableCamera: simCamera,
       cameraResolution: simCameraRes,
       cameraFps: simCameraFps,
+      avatarUrl: simAvatar,
       sendChatMessage: simChat,
       chatMessageText: simChatMsg,
     });
     onClose();
+  };
+
+  const handleAlexAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result;
+      if (typeof result === "string") {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const size = 180;
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            const minSide = Math.min(img.width, img.height);
+            const sx = (img.width - minSide) / 2;
+            const sy = (img.height - minSide) / 2;
+            ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+            const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+            setSimAvatar(compressedDataUrl);
+          }
+        };
+        img.src = result;
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
@@ -1125,6 +1179,53 @@ const SettingsModal = ({
               </div>
 
               <div className="test-config-section">
+                {/* 0. Foto e Avatar de Alex */}
+                <div className="test-card-box">
+                  <div className="test-card-header-row">
+                    <div className="test-card-label-col">
+                      <div className="test-card-icon-title">
+                        <UserCircleIcon />
+                        <strong>Foto e Avatar de Alex</strong>
+                      </div>
+                      <span className="test-card-desc">Personalize a foto do perfil de Alex que aparecerá na câmera, na barra lateral e nos cartões da chamada.</span>
+                    </div>
+                  </div>
+
+                  <input
+                    ref={alexFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    style={{ display: "none" }}
+                    onChange={handleAlexAvatarFileChange}
+                  />
+
+                  <div className="test-avatar-selector-row">
+                    <div className="test-alex-avatar-preview">
+                      <UserAvatar name="Alex" avatar={simAvatar} />
+                    </div>
+
+                    <div className="test-avatar-actions">
+                      <button
+                        type="button"
+                        className="button outline small"
+                        onClick={() => alexFileInputRef.current?.click()}
+                      >
+                        <CameraIcon /> Escolher Foto
+                      </button>
+
+                      {simAvatar && (
+                        <button
+                          type="button"
+                          className="button ghost small is-danger"
+                          onClick={() => setSimAvatar(undefined)}
+                        >
+                          <TrashIcon /> Remover Foto
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 {/* 1. Compartilhamento de Tela */}
                 <div className="test-card-box">
                   <div className="test-card-header-row">
@@ -1133,7 +1234,7 @@ const SettingsModal = ({
                         <MonitorIcon />
                         <strong>Alex irá compartilhar tela?</strong>
                       </div>
-                      <span className="test-card-desc">Gera uma transmissão de tela animada em tempo real com relógio de milissegundos e áudio sintetizado.</span>
+                      <span className="test-card-desc">Gera uma transmissão de tela animada em tempo real com relógio de milissegundos.</span>
                     </div>
                     <div className="switch-toggle-wrapper">
                       <input
@@ -1180,6 +1281,32 @@ const SettingsModal = ({
                               {f} FPS
                             </button>
                           ))}
+                        </div>
+                      </div>
+
+                      {/* Switch de Áudio da Tela de Alex */}
+                      <div className="test-suboption-field" style={{ gridColumn: "1 / -1", paddingTop: "6px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                          <div>
+                            <label className="test-suboption-label" style={{ marginBottom: "2px", display: "block" }}>
+                              A tela de Alex vai emitir som?
+                            </label>
+                            <span style={{ fontSize: "0.74rem", color: "#949ba4" }}>
+                              Gera áudio estéreo sintetizado para testar volume, fones de ouvido e silenciamento.
+                            </span>
+                          </div>
+                          <div className="switch-toggle-wrapper is-mini">
+                            <input
+                              type="checkbox"
+                              className="switch-toggle-input"
+                              checked={simScreenAudio}
+                              onChange={(e) => setSimScreenAudio(e.target.checked)}
+                              aria-label="A tela de Alex vai emitir som"
+                            />
+                            <div className={`switch-toggle-track ${simScreenAudio ? "is-checked" : ""}`}>
+                              <div className="switch-toggle-thumb" />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
