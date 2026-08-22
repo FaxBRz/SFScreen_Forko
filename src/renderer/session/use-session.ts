@@ -170,21 +170,52 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
   renderFrame();
   intervalId = window.setInterval(renderFrame, 1000 / 60);
 
+  let audioContextToClose: AudioContext | null = null;
+  let audioIntervalId: number | null = null;
+
   try {
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (AudioCtx) {
       const ctxAudio = new AudioCtx();
-      const osc = ctxAudio.createOscillator();
-      const gain = ctxAudio.createGain();
+      audioContextToClose = ctxAudio;
+      if (ctxAudio.state === 'suspended') {
+        void ctxAudio.resume();
+      }
+
       const dest = ctxAudio.createMediaStreamDestination();
+      const mainGain = ctxAudio.createGain();
+      mainGain.gain.setValueAtTime(0.1, ctxAudio.currentTime);
+      mainGain.connect(dest);
 
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(220, ctxAudio.currentTime);
-      gain.gain.setValueAtTime(0.01, ctxAudio.currentTime);
+      // Play pleasant rhythmic melodic chord tones (A4, C#5, E5, A5)
+      const notes = [440, 554.37, 659.25, 880];
+      let noteIndex = 0;
 
-      osc.connect(gain);
-      gain.connect(dest);
-      osc.start();
+      const playChime = () => {
+        if (ctxAudio.state === 'closed') return;
+        if (ctxAudio.state === 'suspended') void ctxAudio.resume();
+
+        const now = ctxAudio.currentTime;
+        const osc = ctxAudio.createOscillator();
+        const noteGain = ctxAudio.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(notes[noteIndex % notes.length], now);
+        noteIndex++;
+
+        noteGain.gain.setValueAtTime(0, now);
+        noteGain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+        noteGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+
+        osc.connect(noteGain);
+        noteGain.connect(mainGain);
+
+        osc.start(now);
+        osc.stop(now + 0.36);
+      };
+
+      playChime();
+      audioIntervalId = window.setInterval(playChime, 800);
 
       dest.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
     }
@@ -194,6 +225,12 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
 
   const stop = () => {
     if (intervalId !== null) window.clearInterval(intervalId);
+    if (audioIntervalId !== null) window.clearInterval(audioIntervalId);
+    try {
+      void audioContextToClose?.close();
+    } catch {
+      // Ignored
+    }
     stream.getTracks().forEach((track) => track.stop());
   };
 

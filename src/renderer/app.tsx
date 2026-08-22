@@ -1077,7 +1077,7 @@ export const App = (): ReactElement => {
   const [chatWidth, setChatWidth] = useState(320);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [remoteMuted, setRemoteMuted] = useState(true);
+  const [remoteMuted, setRemoteMuted] = useState(false);
   const [remoteVolume, setRemoteVolume] = useState(1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [streamMenuOpen, setStreamMenuOpen] = useState(false);
