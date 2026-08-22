@@ -8,6 +8,11 @@ describe('media control protocol', () => {
     expect(parseControlMessage(serializeControlMessage(message))).toEqual(message);
   });
 
+  it('round-trips security-confirmed and session-closed', () => {
+    const closed = { protocolVersion: sessionProtocolVersion, type: 'session-closed' as const };
+    expect(parseControlMessage(serializeControlMessage(closed))).toEqual(closed);
+  });
+
   it('round-trips camera states and rejects invalid camera state', () => {
     const message = { protocolVersion: sessionProtocolVersion, type: 'camera-state' as const, state: 'active' as const };
     expect(parseControlMessage(serializeControlMessage(message))).toEqual(message);

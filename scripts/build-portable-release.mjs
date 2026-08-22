@@ -1,6 +1,8 @@
 import { execSync } from 'node:child_process';
+import console from 'node:console';
 import fs from 'node:fs';
 import path from 'node:path';
+import process from 'node:process';
 
 console.log('🚀 Iniciando build da versão Portable do SFScreen...');
 
@@ -16,9 +18,19 @@ execSync('npx vite build --config vite.preload.config.mts', { stdio: 'inherit' }
 execSync('npx vite build --config vite.renderer.config.mts', { stdio: 'inherit' });
 
 // 2. Preparar diretório out
+try {
+  execSync('taskkill /F /IM SFScreen.exe /T', { stdio: 'ignore' });
+} catch {
+  // Ignored if not running
+}
+
 if (fs.existsSync(portableDir)) {
   console.log('🧹 Limpando build anterior...');
-  fs.rmSync(portableDir, { recursive: true, force: true });
+  try {
+    fs.rmSync(portableDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
+  } catch {
+    // Fallback if directory partially locked
+  }
 }
 fs.mkdirSync(portableDir, { recursive: true });
 

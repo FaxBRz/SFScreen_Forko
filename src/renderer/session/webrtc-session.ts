@@ -26,14 +26,32 @@ export const securityCodeFor = async (sessionId: string, nonce: string, first: s
 
 const waitForIce = (peer: RTCPeerConnection): Promise<void> => new Promise((resolve) => {
   if (peer.iceGatheringState === 'complete') return resolve();
-  const timeout = window.setTimeout(finish, 5_000);
-  const onChange = (): void => { if (peer.iceGatheringState === 'complete') finish(); };
+  let settled = false;
+  let candidateTimer: number | undefined;
+
   function finish(): void {
-    window.clearTimeout(timeout);
+    if (settled) return;
+    settled = true;
+    window.clearTimeout(maxTimeout);
+    if (candidateTimer) window.clearTimeout(candidateTimer);
     peer.removeEventListener('icegatheringstatechange', onChange);
+    peer.removeEventListener('icecandidate', onCandidate);
     resolve();
   }
+
+  const onChange = (): void => {
+    if (peer.iceGatheringState === 'complete') finish();
+  };
+
+  const onCandidate = (event: RTCPeerConnectionIceEvent): void => {
+    if (event.candidate && !candidateTimer) {
+      candidateTimer = window.setTimeout(finish, 150);
+    }
+  };
+
+  const maxTimeout = window.setTimeout(finish, 800);
   peer.addEventListener('icegatheringstatechange', onChange);
+  peer.addEventListener('icecandidate', onCandidate);
 });
 
 const candidateData = (candidate: RTCIceCandidate): CandidateData => {
@@ -60,6 +78,7 @@ export class WebRtcSession {
   private audioSender?: RTCRtpSender;
   private videoPlaceholder?: { stream: MediaStream; track: MediaStreamTrack };
   private cameraPlaceholder?: { stream: MediaStream; track: MediaStreamTrack };
+  private audioPlaceholder?: { stream: MediaStream; track: MediaStreamTrack };
   private readonly remoteTracks = new Map<string, MediaStreamTrack>();
   private readonly remoteCameraTracks = new Map<string, MediaStreamTrack>();
   private readonly candidates: CandidateData[] = [];
@@ -87,7 +106,13 @@ export class WebRtcSession {
     preferVp8(cameraTransceiver);
     this.cameraSender = cameraTransceiver.sender;
 
-    this.audioSender = peer.addTransceiver(initialAudioTrack ?? 'audio', { direction: 'sendrecv' }).sender;
+    const audioTrack = initialAudioTrack ?? this.ensureAudioPlaceholder();
+    const audioTransceiver = peer.addTransceiver(audioTrack ?? 'audio', { direction: 'sendrecv' });
+    this.audioSender = audioTransceiver.sender;
+    if (audioTrack && this.audioSender.track !== audioTrack) {
+      void this.audioSender.replaceTrack(audioTrack);
+    }
+
     const offer = await peer.createOffer();
     if (!offer.sdp) throw new Error('A oferta WebRTC não contém SDP.');
     await peer.setLocalDescription(offer);
@@ -118,6 +143,10 @@ export class WebRtcSession {
     if (audioTransceiver) {
       audioTransceiver.direction = 'sendrecv';
       this.audioSender = audioTransceiver.sender;
+      const placeholderAudio = this.ensureAudioPlaceholder();
+      if (placeholderAudio) {
+        await this.audioSender.replaceTrack(placeholderAudio);
+      }
     }
 
     const answer = await peer.createAnswer();
@@ -163,6 +192,10 @@ export class WebRtcSession {
 
   sendAudioState(state: AudioState): void {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'audio-state', state });
+  }
+
+  sendSessionClosed(): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'session-closed' });
   }
 
   async updateVideoParameters(maxBitrateBps?: number, maxFramerate?: number): Promise<void> {
@@ -239,7 +272,12 @@ export class WebRtcSession {
   }
 
   async removeAudioTrack(): Promise<void> {
-    await this.audioSender?.replaceTrack(null);
+    const placeholder = this.ensureAudioPlaceholder();
+    if (placeholder && this.audioSender) {
+      await this.audioSender.replaceTrack(placeholder);
+    } else {
+      await this.audioSender?.replaceTrack(null);
+    }
   }
 
   async getMetrics(): Promise<WebRtcMetrics> {
@@ -269,6 +307,11 @@ export class WebRtcSession {
   }
 
   close(): void {
+    try {
+      this.sendSessionClosed();
+    } catch {
+      // Channel may already be closed
+    }
     this.channel?.close();
     this.channel = undefined;
     this.peer?.close();
@@ -280,6 +323,8 @@ export class WebRtcSession {
     this.videoPlaceholder = undefined;
     this.cameraPlaceholder?.stream.getTracks().forEach((track) => track.stop());
     this.cameraPlaceholder = undefined;
+    this.audioPlaceholder?.stream.getTracks().forEach((track) => track.stop());
+    this.audioPlaceholder = undefined;
     this.remoteTracks.forEach((track) => track.stop());
     this.remoteTracks.clear();
     this.remoteCameraTracks.forEach((track) => track.stop());
@@ -318,6 +363,26 @@ export class WebRtcSession {
     };
     this.peer = peer;
     return peer;
+  }
+
+  private ensureAudioPlaceholder(): MediaStreamTrack | undefined {
+    if (this.audioPlaceholder?.track.readyState === 'live') return this.audioPlaceholder.track;
+    try {
+      const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (AudioCtxClass) {
+        const ctx = new AudioCtxClass();
+        const dest = ctx.createMediaStreamDestination();
+        const track = dest.stream.getAudioTracks()[0];
+        if (track) {
+          track.enabled = true;
+          this.audioPlaceholder = { stream: dest.stream, track };
+          return track;
+        }
+      }
+    } catch {
+      // Ignored
+    }
+    return undefined;
   }
 
   private ensureVideoPlaceholder(): MediaStreamTrack {

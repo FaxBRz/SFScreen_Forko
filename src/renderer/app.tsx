@@ -310,6 +310,39 @@ const Video = ({ stream, muted = false, volume = 1, className }: { stream?: Medi
   );
 };
 
+/* ─── Dedicated Remote Audio Player ─── */
+const RemoteAudio = ({ stream, muted = false, volume = 1 }: { stream?: MediaStream; muted?: boolean; volume?: number }): ReactElement => {
+  const ref = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (el.srcObject !== (stream ?? null)) {
+      el.srcObject = stream ?? null;
+    }
+    if (stream) {
+      const hasAudio = typeof stream.getAudioTracks === "function" ? stream.getAudioTracks().length > 0 : true;
+      if (hasAudio) {
+        void el.play()?.catch?.(() => undefined);
+      }
+    }
+    return () => {
+      if (el) {
+        el.srcObject = null;
+      }
+    };
+  }, [stream]);
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.volume = Math.max(0, Math.min(1, volume));
+      ref.current.muted = muted;
+    }
+  }, [volume, muted]);
+
+  return <audio ref={ref} autoPlay playsInline muted={muted} style={{ display: 'none' }} />;
+};
+
 
 
 /* ─── Discord-Style Voice Connection & Network Telemetry Popover ─── */
@@ -1816,7 +1849,7 @@ export const App = (): ReactElement => {
   }, [isConnected]);
 
   useEffect(() => {
-    if (prevChatCountRef.current > 0 && state.chatMessages.length > prevChatCountRef.current) {
+    if (state.chatMessages.length > prevChatCountRef.current && state.chatMessages.length > 0) {
       playChatMessageSound();
     }
     prevChatCountRef.current = state.chatMessages.length;
@@ -2453,6 +2486,8 @@ export const App = (): ReactElement => {
 
   return (
     <div className={`discord-app-layout ${isFullscreen ? "is-app-fullscreen" : ""}`}>
+      {/* Background Remote System Audio Player */}
+      <RemoteAudio stream={session.remoteStream} muted={remoteMuted} volume={remoteVolume} />
 
       {/* Integrated Titlebar & Top Header */}
       <header className="discord-topbar window-drag-region" onDoubleClick={handleMaximizeWindow}>

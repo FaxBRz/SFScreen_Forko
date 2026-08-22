@@ -13,6 +13,7 @@ export interface ChatMessagePayload {
 
 export type SessionControlMessage =
   | { protocolVersion: typeof sessionProtocolVersion; type: 'security-confirmed' }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'session-closed' }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'user-profile'; userName: string; userAvatar?: string }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'chat-message'; message: ChatMessagePayload }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'delete-chat-message'; messageId: string }
@@ -30,6 +31,7 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
     const control = message as Record<string, unknown>;
     if (control.protocolVersion !== sessionProtocolVersion) return undefined;
     if (control.type === 'security-confirmed') return { protocolVersion: sessionProtocolVersion, type: 'security-confirmed' };
+    if (control.type === 'session-closed') return { protocolVersion: sessionProtocolVersion, type: 'session-closed' };
     if (control.type === 'user-profile' && typeof control.userName === 'string' && control.userName.trim().length > 0 && control.userName.length <= 64) {
       const userAvatar = typeof control.userAvatar === 'string' && control.userAvatar.length <= 250000 ? control.userAvatar : undefined;
       return { protocolVersion: sessionProtocolVersion, type: 'user-profile', userName: control.userName.trim(), userAvatar };

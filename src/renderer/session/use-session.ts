@@ -609,6 +609,17 @@ export const useSession = (): SessionModel => {
           setRemoteAudioError(message.state === 'failed' ? 'O áudio remoto não ficou disponível.' : undefined);
           return;
         }
+        if (message.type === 'session-closed') {
+          recordDiagnostic('session-closed');
+          setRemoteStream(undefined);
+          setRemoteCameraStream(undefined);
+          remoteCameraStateRef.current = 'stopped';
+          rawRemoteCameraStreamRef.current = undefined;
+          setRemoteMediaPhase('stopped');
+          setRemoteAudioPhase('unavailable');
+          dispatch({ type: 'closed' });
+          return;
+        }
         if (message.type === 'video-state') {
           if (message.state === 'active') {
             setRemoteMediaPhase('sharing');
