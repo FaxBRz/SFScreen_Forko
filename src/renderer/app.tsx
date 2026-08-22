@@ -1360,12 +1360,39 @@ export const App = (): ReactElement => {
   }, [state.chatMessages.length]);
 
 
+  const userManuallyToggledChatRef = useRef(false);
+
   const handleToggleChat = (): void => {
+    userManuallyToggledChatRef.current = true;
     if (!state.chatPanelOpen) {
       setLastReadTimestamp(Date.now());
     }
     session.toggleChatPanel();
   };
+
+  const handleCloseChat = (): void => {
+    userManuallyToggledChatRef.current = true;
+    session.toggleChatPanel(false);
+  };
+
+  // Abre o painel de chat automaticamente quando a janela for ampla/maximizada (>= 1200px)
+  useEffect(() => {
+    const handleWindowResize = (): void => {
+      if (typeof window === "undefined") return;
+      const isWidescreen = window.innerWidth >= 1200;
+      if (!userManuallyToggledChatRef.current) {
+        if (isWidescreen && !state.chatPanelOpen) {
+          session.toggleChatPanel(true);
+        } else if (!isWidescreen && state.chatPanelOpen) {
+          session.toggleChatPanel(false);
+        }
+      }
+    };
+
+    handleWindowResize();
+    window.addEventListener("resize", handleWindowResize);
+    return () => window.removeEventListener("resize", handleWindowResize);
+  }, [state.chatPanelOpen, session]);
 
   useEffect(() => {
     if (!prevLocalSharingRef.current && localSharing) {
@@ -3010,7 +3037,7 @@ export const App = (): ReactElement => {
 
             <div className="chat-header">
               <h3>Chat da Chamada</h3>
-              <button className="icon-action-button" type="button" onClick={() => session.toggleChatPanel(false)} aria-label="Fechar chat">
+              <button className="icon-action-button" type="button" onClick={handleCloseChat} aria-label="Fechar chat">
                 <XCloseIcon />
               </button>
             </div>

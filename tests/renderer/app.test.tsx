@@ -224,6 +224,17 @@ describe('SFScreen Discord layout', () => {
     expect(screen.queryByText('1', { selector: '.dock-badge' })).toBeNull();
   });
 
+  it('automatically opens chat panel when window is widescreen/maximized', () => {
+    const current = model(readyState({ chatPanelOpen: false }));
+    vi.mocked(useSession).mockReturnValue(current);
+
+    // Mock widescreen (e.g. 1440px)
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1440 });
+    render(<App />);
+
+    expect(current.toggleChatPanel).toHaveBeenCalledWith(true);
+  });
+
 
   it('opens and navigates settings tabs', () => {
     const current = model();
