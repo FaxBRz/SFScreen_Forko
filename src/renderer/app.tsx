@@ -2144,14 +2144,6 @@ export const App = (): ReactElement => {
                       transition: isPanning ? "none" : "transform 0.15s ease-out",
                     }}
                   >
-                    <div className="screenshare-ambient-backdrop">
-                      <Video
-                        stream={focusedStream}
-                        muted
-                        volume={0}
-                        className="screenshare-ambient-video"
-                      />
-                    </div>
                     <Video
                       stream={focusedStream}
                       muted={focusedIsLocal || remoteMuted}
