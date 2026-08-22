@@ -287,6 +287,11 @@ const Video = ({ stream, muted = false, volume = 1, className }: { stream?: Medi
     if (stream) {
       void el.play()?.catch?.(() => undefined);
     }
+    return () => {
+      if (el) {
+        el.srcObject = null;
+      }
+    };
   }, [stream]);
 
   useEffect(() => {
@@ -2265,9 +2270,7 @@ export const App = (): ReactElement => {
                           </div>
                         ) : (
                           <>
-                            <div className="screenshare-ambient-backdrop">
-                              <Video stream={session.localStream} muted volume={0} className="screenshare-ambient-video" />
-                            </div>
+                            <div className="screenshare-ambient-backdrop" />
                             <Video stream={session.localStream} muted volume={0} className="stage-video is-contain" />
                           </>
                         )}
@@ -2467,9 +2470,7 @@ export const App = (): ReactElement => {
                           </div>
                         </div>
 
-                        <div className="screenshare-ambient-backdrop">
-                          <Video stream={session.remoteStream} muted volume={0} className="screenshare-ambient-video" />
-                        </div>
+                        <div className="screenshare-ambient-backdrop" />
                         <Video
                           stream={session.remoteStream}
                           muted={remoteMuted}

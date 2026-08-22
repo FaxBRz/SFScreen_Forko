@@ -68,12 +68,12 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
   let intervalId: number | null = null;
   let t = 0;
 
-  const stream = canvas.captureStream ? canvas.captureStream(60) : new MediaStream();
+  const stream = canvas.captureStream ? canvas.captureStream(30) : new MediaStream();
   const videoTrack = stream.getVideoTracks()[0] as (MediaStreamTrack & { requestFrame?: () => void }) | undefined;
 
   const renderFrame = () => {
     if (!ctx) return;
-    t += 0.035;
+    t += 0.05;
 
     const grad = ctx.createLinearGradient(0, 0, 1280, 720);
     grad.addColorStop(0, '#0c0e14');
@@ -151,7 +151,7 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
     ctx.textAlign = 'right';
     const now = new Date();
     const timeStr = `${now.toLocaleTimeString('pt-BR')}.${String(Math.floor(now.getMilliseconds() / 10)).padStart(2, '0')}`;
-    ctx.fillText(`60 FPS · 1080p · ${timeStr}`, 1215, 82);
+    ctx.fillText(`30 FPS · 720p · ${timeStr}`, 1215, 82);
 
     ctx.fillStyle = '#5865f2';
     for (let b = 0; b < 24; b++) {
@@ -168,7 +168,7 @@ const createSimulatedScreenStream = (): { stream: MediaStream; stop: () => void 
   };
 
   renderFrame();
-  intervalId = window.setInterval(renderFrame, 1000 / 60);
+  intervalId = window.setInterval(renderFrame, 1000 / 30);
 
   let audioContextToClose: AudioContext | null = null;
   let audioIntervalId: number | null = null;
