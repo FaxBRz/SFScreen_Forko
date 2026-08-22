@@ -2574,7 +2574,7 @@ export const App = (): ReactElement => {
 
 
             <div className="sidebar-footer">
-              {(isConnected || localSharing || state.hosted) && (
+              {isConnected && (
                 <div className="sidebar-voice-connected-wrap">
                   {voicePopoverOpen && (
                     <VoiceConnectionPopover session={session} onClose={() => setVoicePopoverOpen(false)} />
@@ -3478,10 +3478,12 @@ export const App = (): ReactElement => {
                 <GearIcon />
               </button>
 
-              <button className="dock-action-btn is-hangup" type="button" title="Sair da chamada" onClick={() => void session.close()}>
-                <PhoneOffIcon />
-                <span>{isConnected ? "Desconectar" : "Sair"}</span>
-              </button>
+              {isConnected && (
+                <button className="dock-action-btn is-hangup" type="button" title="Desconectar da chamada" onClick={() => void session.close()}>
+                  <PhoneOffIcon />
+                  <span>Desconectar</span>
+                </button>
+              )}
             </div>
           </div>
         </main>

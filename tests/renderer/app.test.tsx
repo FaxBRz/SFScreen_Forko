@@ -756,7 +756,31 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(gridBtn);
     expect(screen.getByRole('button', { name: /alternar para modo foco/i })).toBeTruthy();
   });
+
+  it('hides the disconnect / hangup button when alone in the room, and shows it when connected', () => {
+    // 1. Alone in the room
+    const aloneSession = model(readyState({ phase: 'idle' }));
+    vi.mocked(useSession).mockReturnValue(aloneSession);
+    const { unmount } = render(<App />);
+
+    expect(screen.queryByRole('button', { name: /desconectar|sair/i })).toBeNull();
+    expect(screen.queryByTitle(/sair da chamada|desconectar/i)).toBeNull();
+
+    unmount();
+
+    // 2. Connected with a peer
+    const connectedSession = model(readyState({ phase: 'connected', remoteUserName: 'Alex' }));
+    vi.mocked(useSession).mockReturnValue(connectedSession);
+    render(<App />);
+
+    const hangupBtns = screen.getAllByRole('button', { name: /desconectar/i });
+    expect(hangupBtns.length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(hangupBtns[0]);
+    expect(connectedSession.close).toHaveBeenCalledOnce();
+  });
 });
+
 
 
 
