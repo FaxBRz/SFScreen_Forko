@@ -274,6 +274,22 @@ const UserAvatar = ({ name, avatar, className = "", isSelf = false }: UserAvatar
 
 
 
+const getStreamTrackInfo = (
+  stream?: MediaStream,
+  fallbackRes = "1080p",
+  fallbackFps = 60
+): { resolution: string; fps: number } => {
+  if (!stream) return { resolution: fallbackRes, fps: fallbackFps };
+  const track = stream.getVideoTracks()[0];
+  if (!track) return { resolution: fallbackRes, fps: fallbackFps };
+  const settings = track.getSettings ? track.getSettings() : undefined;
+  const height = settings?.height;
+  const frameRate = settings?.frameRate;
+  const res = height ? `${height}p` : fallbackRes;
+  const fps = frameRate ? Math.round(frameRate) : fallbackFps;
+  return { resolution: res, fps };
+};
+
 /* ─── Video Renderer ─── */
 const Video = ({ stream, muted = false, volume = 1, className }: { stream?: MediaStream; muted?: boolean; volume?: number; className?: string }): ReactElement => {
   const ref = useRef<HTMLVideoElement>(null);
@@ -2463,7 +2479,9 @@ export const App = (): ReactElement => {
                         title="Clique para focar nesta transmissão de tela"
                       >
                         <div className="screenshare-header-overlay">
-                          <span className="tile-res-pill">1080p · 60 FPS</span>
+                          <span className="tile-res-pill">
+                            {getStreamTrackInfo(session.remoteStream, "1080p", 60).resolution} · {getStreamTrackInfo(session.remoteStream, "1080p", 60).fps} FPS
+                          </span>
                           <div className="tile-live-badge">
                             <span className="tile-live-dot" />
                             <span>AO VIVO</span>
@@ -2578,8 +2596,15 @@ export const App = (): ReactElement => {
               >
 
                 <div className={`stage-top-pill stage-fade-element ${controlsVisible || streamMenuOpen ? "is-visible" : ""}`}>
-                  <span className="presenter-tag"><ScreenCastIcon /> {presenterName} está apresentando</span>
-                  <span className="resolution-tag">{focusedIsLocal ? `${session.resolution} · ${session.fps} FPS` : "1080p · 60 FPS"}</span>
+                  <span className="presenter-tag">
+                    {focusedIsCamera ? <CameraIcon /> : <ScreenCastIcon />}
+                    <span>{presenterName} está apresentando</span>
+                  </span>
+                  <span className="resolution-tag">
+                    {focusedIsLocal && !focusedIsCamera
+                      ? `${session.resolution} · ${session.fps} FPS`
+                      : `${getStreamTrackInfo(focusedStream, focusedIsCamera ? "720p" : "1080p", focusedIsCamera ? 30 : 60).resolution} · ${getStreamTrackInfo(focusedStream, focusedIsCamera ? "720p" : "1080p", focusedIsCamera ? 30 : 60).fps} FPS`}
+                  </span>
                 </div>
 
 

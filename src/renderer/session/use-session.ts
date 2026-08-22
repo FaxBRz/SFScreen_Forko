@@ -1068,11 +1068,11 @@ recordDiagnostic('audio-unavailable');
       let stream: MediaStream | undefined;
       if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
         try {
+          // Solicita resolução ideal respeitando o framerate nativo do hardware (geralmente 30 FPS)
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
-              width: { ideal: 1280, max: 1920 },
-              height: { ideal: 720, max: 1080 },
-              frameRate: { ideal: 30, max: 60 },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
             },
           });
         } catch {
