@@ -171,6 +171,36 @@ describe('SFScreen Discord layout', () => {
     expect(current.selectSource).toHaveBeenCalledOnce();
   });
 
+  it('requires visible resolution and FPS configuration before normal screen sharing', () => {
+    const current = model();
+    current.sourcePickerOpen = true;
+    current.sources = [{ id: 'screen:1', name: 'Monitor principal', thumbnailDataUrl: 'data:image/png;base64,' }];
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    expect(screen.getByLabelText(/configuração obrigatória da transmissão/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '1080p' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '60 FPS' }).getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: '720p' }));
+    fireEvent.click(screen.getByRole('button', { name: '30 FPS' }));
+
+    expect(current.setResolution).toHaveBeenCalledWith('720p');
+    expect(current.setFps).toHaveBeenCalledWith(30);
+  });
+
+  it('shows measured outgoing screen FPS instead of presenting the configured target as real', () => {
+    const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({ phase: 'connected', mediaPhase: 'sharing', remoteUserName: 'Alex' }));
+    current.localStream = fakeStream;
+    current.captureFps = 60;
+    current.outgoingFps = 57;
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    expect(screen.getByText(/1080p · 57 FPS reais/i)).toBeTruthy();
+  });
+
   it('supports opting in to system audio in source picker', () => {
     const current = model();
     current.sourcePickerOpen = true;

@@ -3167,7 +3167,8 @@ button:disabled {
 .source-modal {
   width: min(640px, 94vw);
   max-height: calc(100vh - 40px);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   padding: 24px;
@@ -4470,6 +4471,81 @@ button:disabled {
 .source-mode-tab svg {
   width: 17px;
   height: 17px;
+}
+
+.source-quality-config {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid rgba(35, 165, 90, 0.28);
+  border-radius: 12px;
+  background: rgba(35, 165, 90, 0.07);
+}
+
+.source-quality-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.source-quality-heading > div,
+.source-quality-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.source-quality-heading strong {
+  color: #f2f3f5;
+  font-size: 0.82rem;
+}
+
+.source-quality-heading span,
+.source-quality-note {
+  color: #949ba4;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.source-quality-required {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(35, 165, 90, 0.18);
+  color: #57f287 !important;
+  font-size: 0.62rem !important;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.source-quality-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.source-quality-group > span {
+  color: #b5bac1;
+  font-size: 0.67rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.source-quality-note {
+  margin: 0;
+}
+
+.stream-quality-chip {
+  color: #57f287;
+  margin-left: 5px;
+}
+
+@media (max-width: 560px) {
+  .source-quality-columns {
+    grid-template-columns: 1fr;
+  }
 }
 
 .remote-permissions-box {

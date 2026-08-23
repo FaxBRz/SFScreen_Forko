@@ -370,6 +370,26 @@ const createSimulatedCameraStream = (
 export type StreamResolution = '720p' | '1080p' | '1440p';
 export type StreamFps = 30 | 60;
 
+const getSavedStreamResolution = (): StreamResolution => {
+  try {
+    const saved = localStorage.getItem('sfscreen_stream_resolution');
+    if (saved === '720p' || saved === '1080p' || saved === '1440p') return saved;
+  } catch {
+    // Local storage may be unavailable.
+  }
+  return '1080p';
+};
+
+const getSavedStreamFps = (): StreamFps => {
+  try {
+    const saved = Number(localStorage.getItem('sfscreen_stream_fps'));
+    if (saved === 30 || saved === 60) return saved;
+  } catch {
+    // Local storage may be unavailable.
+  }
+  return 60;
+};
+
 export interface SimulatedPeerOptions {
   enableScreen?: boolean;
   screenResolution?: StreamResolution;
@@ -390,6 +410,8 @@ export interface SessionModel {
   sourcePickerOpen: boolean;
   resolution: StreamResolution;
   fps: StreamFps;
+  captureFps?: number;
+  outgoingFps?: number;
   localStream?: MediaStream;
   remoteStream?: MediaStream;
   localCameraStream?: MediaStream;
@@ -442,10 +464,12 @@ export const useSession = (): SessionModel => {
   const [joinCode, setJoinCodeState] = useState('');
   const [sources, setSources] = useState<ScreenSource[]>([]);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
-  const [resolution, setResolutionState] = useState<StreamResolution>('1080p');
-  const [fps, setFpsState] = useState<StreamFps>(60);
-  const resolutionRef = useRef<StreamResolution>('1080p');
-  const fpsRef = useRef<StreamFps>(60);
+  const [resolution, setResolutionState] = useState<StreamResolution>(getSavedStreamResolution);
+  const [fps, setFpsState] = useState<StreamFps>(getSavedStreamFps);
+  const resolutionRef = useRef<StreamResolution>(resolution);
+  const fpsRef = useRef<StreamFps>(fps);
+  const [captureFps, setCaptureFps] = useState<number | undefined>(undefined);
+  const [outgoingFps, setOutgoingFps] = useState<number | undefined>(undefined);
   const [localStream, setLocalStream] = useState<MediaStream | undefined>(undefined);
   const [localCameraStream, setLocalCameraStream] = useState<MediaStream | undefined>(undefined);
   const [remoteCameraStream, setRemoteCameraStream] = useState<MediaStream | undefined>(undefined);
@@ -544,6 +568,8 @@ export const useSession = (): SessionModel => {
       localStreamRef.current = undefined;
       capturedSourceIdRef.current = undefined;
       setLocalStream(undefined);
+      setCaptureFps(undefined);
+      setOutgoingFps(undefined);
       await clearSource();
       dispatch({ type: 'media', phase: 'stopped' });
       dispatch({ type: 'audio', phase: 'stopped' });
@@ -793,7 +819,16 @@ export const useSession = (): SessionModel => {
       captured = await captureDisplayStream(includeSystemAudio, resolutionRef.current, fpsRef.current);
       const videoTrack = captured.getVideoTracks()[0];
       if (!videoTrack) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
-      videoTrack.contentHint = 'detail';
+      const dim = resDimensionMap[resolutionRef.current];
+      await videoTrack.applyConstraints?.({
+        width: { ideal: dim.width, max: dim.width },
+        height: { ideal: dim.height, max: dim.height },
+        frameRate: { ideal: fpsRef.current, max: fpsRef.current },
+      }).catch(() => undefined);
+      const acceptedFrameRate = videoTrack.getSettings?.().frameRate;
+      setCaptureFps(typeof acceptedFrameRate === 'number' ? Math.round(acceptedFrameRate) : fpsRef.current);
+      setOutgoingFps(undefined);
+      videoTrack.contentHint = fpsRef.current === 60 ? 'motion' : 'detail';
       videoTrack.enabled = true;
       videoTrack.onended = () => { if (localStreamRef.current === captured) void stopSharing(); };
 
@@ -887,8 +922,13 @@ recordDiagnostic('audio-unavailable');
     void refresh();
     const clock = window.setInterval(() => dispatch({ type: 'tick', now: Date.now() }), 1_000);
     const metricsTimer = window.setInterval(() => {
-      void controllerRef.current?.getMetrics().then((metrics) => { metricsRef.current = metrics; }).catch(() => undefined);
-    }, 5_000);
+      const controller = controllerRef.current;
+      if (!controller) return;
+      void controller.getMetrics().then((metrics) => {
+        metricsRef.current = metrics;
+        setOutgoingFps(metrics.videoFramesPerSecond);
+      }).catch(() => undefined);
+    }, 2_000);
     const unsubscribe = window.sfscreen.onSessionAnswer((event) => {
       const controller = controllerRef.current;
       if (!controller) return;
@@ -1116,6 +1156,7 @@ recordDiagnostic('audio-unavailable');
   const setResolution = useCallback((newResolution: StreamResolution): void => {
     resolutionRef.current = newResolution;
     setResolutionState(newResolution);
+    try { localStorage.setItem('sfscreen_stream_resolution', newResolution); } catch { /* ignore */ }
     const stream = localStreamRef.current;
     if (stream) {
       const videoTrack = stream.getVideoTracks().find((t) => t.readyState === 'live');
@@ -1138,10 +1179,12 @@ recordDiagnostic('audio-unavailable');
   const setFps = useCallback((newFps: StreamFps): void => {
     fpsRef.current = newFps;
     setFpsState(newFps);
+    try { localStorage.setItem('sfscreen_stream_fps', String(newFps)); } catch { /* ignore */ }
     const stream = localStreamRef.current;
     if (stream) {
       const videoTrack = stream.getVideoTracks().find((t) => t.readyState === 'live');
       if (videoTrack && videoTrack.applyConstraints) {
+        videoTrack.contentHint = newFps === 60 ? 'motion' : 'detail';
         void videoTrack.applyConstraints({
           frameRate: { ideal: newFps, max: newFps },
         }).catch(() => undefined);
@@ -1427,6 +1470,8 @@ recordDiagnostic('audio-unavailable');
     sourcePickerOpen,
     resolution,
     fps,
+    captureFps,
+    outgoingFps,
     localStream,
     remoteStream,
     localCameraStream,

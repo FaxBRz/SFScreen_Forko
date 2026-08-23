@@ -537,12 +537,20 @@ const VoiceConnectionPopover = ({
 /* ─── Modal: Source Picker (Screenshare & AnyDesk Remote Control) ─── */
 const SourceModal = ({
   sources,
+  resolution,
+  fps,
   onClose,
   onSelect,
+  onResolutionChange,
+  onFpsChange,
 }: {
   sources: ScreenSource[];
+  resolution: StreamResolution;
+  fps: StreamFps;
   onClose: () => void;
   onSelect: (source: ScreenSource, includeSystemAudio: boolean, remoteControl?: Partial<RemoteControlConfig>) => Promise<void>;
+  onResolutionChange: (resolution: StreamResolution) => void;
+  onFpsChange: (fps: StreamFps) => void;
 }): ReactElement => {
   const [mode, setMode] = useState<"stream" | "remote-control">("stream");
   const [allowMouse, setAllowMouse] = useState(true);
@@ -589,7 +597,7 @@ const SourceModal = ({
             <p className="modal-subtext">
               {mode === "remote-control"
                 ? "Selecione o monitor para transmitir com controle interativo de mouse e teclado (estilo AnyDesk)."
-                : "Selecione uma tela para iniciar a transmissão em alta definição (1080p · 60 FPS)."}
+                : `Configure a qualidade e selecione uma tela (${resolution} · alvo de ${fps} FPS).`}
             </p>
           </div>
           <button className="button ghost icon-only modal-close-btn" type="button" onClick={onClose} aria-label="Fechar modal"><XCloseIcon /></button>
@@ -641,6 +649,53 @@ const SourceModal = ({
             <span>Acesso Remoto (AnyDesk)</span>
           </button>
         </div>
+
+        {mode === "stream" && (
+          <div className="source-quality-config" aria-label="Configuração obrigatória da transmissão">
+            <div className="source-quality-heading">
+              <div>
+                <strong>Qualidade da transmissão</strong>
+                <span>Configure a resolução e o FPS antes de escolher a tela.</span>
+              </div>
+              <span className="source-quality-required">Obrigatório</span>
+            </div>
+            <div className="source-quality-columns">
+              <div className="source-quality-group">
+                <span>Resolução</span>
+                <div className="quality-pill-row">
+                  {(['720p', '1080p', '1440p'] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={`quality-opt-pill ${resolution === value ? "is-selected" : ""}`}
+                      aria-pressed={resolution === value}
+                      onClick={() => onResolutionChange(value)}
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="source-quality-group">
+                <span>Taxa de quadros</span>
+                <div className="quality-pill-row">
+                  {([30, 60] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={`quality-opt-pill ${fps === value ? "is-selected" : ""}`}
+                      aria-pressed={fps === value}
+                      onClick={() => onFpsChange(value)}
+                    >
+                      {value} FPS
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <p className="source-quality-note">60 FPS exige monitor, GPU, rede e conteúdo em movimento compatíveis. O valor real será mostrado durante a transmissão.</p>
+          </div>
+        )}
 
         {/* Permissions Sub-Card when AnyDesk Mode is Active */}
         {mode === "remote-control" && (
@@ -710,6 +765,7 @@ const SourceModal = ({
                 <div className={`source-resolution-badge ${mode === "remote-control" ? "is-anydesk" : ""}`}>
                   <span>Monitor {index + 1}</span>
                   {mode === "remote-control" && <span className="anydesk-chip">🎮 AnyDesk</span>}
+                  {mode === "stream" && <span className="stream-quality-chip">{resolution} · {fps} FPS</span>}
                 </div>
               </div>
               <div className="source-card-footer">
@@ -2256,6 +2312,11 @@ export const App = (): ReactElement => {
   const presenterName = focusedIsLocal
     ? (focusedIsCamera ? `${state.localUserName} (Câmera)` : state.localUserName)
     : (focusedIsCamera ? `${state.remoteUserName} (Câmera)` : state.remoteUserName);
+  const localScreenQualityLabel = isConnected && session.outgoingFps !== undefined
+    ? `${session.resolution} · ${session.outgoingFps} FPS reais`
+    : session.captureFps !== undefined
+      ? `${session.resolution} · captura ${session.captureFps} FPS`
+      : `${session.resolution} · alvo ${session.fps} FPS`;
 
   const showControls = useCallback((): void => {
     setControlsVisible(true);
@@ -3285,7 +3346,7 @@ export const App = (): ReactElement => {
                         tabIndex={0}
                       >
                         <div className="screenshare-header-overlay">
-                          <span className="tile-res-pill">{session.resolution} · {session.fps} FPS</span>
+                          <span className="tile-res-pill" title={`Alvo configurado: ${session.fps} FPS`}>{localScreenQualityLabel}</span>
                           <div className="tile-live-badge">
                             <span className="tile-live-dot" />
                             <span>AO VIVO</span>
@@ -3647,7 +3708,7 @@ export const App = (): ReactElement => {
                   </span>
                   <span className="resolution-tag">
                     {focusedIsLocal && !focusedIsCamera
-                      ? `${session.resolution} · ${session.fps} FPS`
+                      ? localScreenQualityLabel
                       : `${getStreamTrackInfo(focusedStream, focusedIsCamera ? "720p" : "1080p", focusedIsCamera ? 30 : 60).resolution} · ${getStreamTrackInfo(focusedStream, focusedIsCamera ? "720p" : "1080p", focusedIsCamera ? 30 : 60).fps} FPS`}
                   </span>
                 </div>
@@ -4595,7 +4656,15 @@ export const App = (): ReactElement => {
       {/* Modals */}
       {session.sourcePickerOpen && (
 
-        <SourceModal sources={session.sources} onClose={session.closeSourcePicker} onSelect={session.selectSource} />
+        <SourceModal
+          sources={session.sources}
+          resolution={session.resolution}
+          fps={session.fps}
+          onClose={session.closeSourcePicker}
+          onSelect={session.selectSource}
+          onResolutionChange={session.setResolution}
+          onFpsChange={session.setFps}
+        />
       )}
 
       {state.sessionModalOpen && (

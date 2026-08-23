@@ -95,6 +95,7 @@ export class WebRtcSession {
   private readonly candidates: CandidateData[] = [];
   private confirmed = false;
   private previousOutbound?: { bytes: number; at: number };
+  private previousOutboundFrames?: { frames: number; at: number };
 
   constructor(private readonly events: WebRtcSessionEvents) {}
 
@@ -244,17 +245,16 @@ export class WebRtcSession {
     }
   }
 
-  async replaceVideoTrack(track: MediaStreamTrack, maxBitrate = 6_000_000, maxFramerate?: number): Promise<void> {
+  async replaceVideoTrack(track: MediaStreamTrack, maxBitrate = 6_000_000, maxFramerate = 60): Promise<void> {
     if (!this.videoSender) throw new Error('O canal de vídeo não foi negociado.');
-    track.contentHint = 'detail';
+    track.contentHint = maxFramerate === 60 ? 'motion' : 'detail';
     if (this.videoSender.track !== track) await this.videoSender.replaceTrack(track);
     try {
       const parameters = this.videoSender.getParameters();
-      if (parameters.encodings && parameters.encodings[0]) {
-        parameters.encodings[0].maxBitrate = maxBitrate;
-        if (maxFramerate) parameters.encodings[0].maxFramerate = maxFramerate;
-        await this.videoSender.setParameters(parameters);
-      }
+      if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}];
+      parameters.encodings[0].maxBitrate = maxBitrate;
+      parameters.encodings[0].maxFramerate = maxFramerate;
+      await this.videoSender.setParameters(parameters);
     } catch {
       // Ignored
     }
@@ -314,14 +314,22 @@ export class WebRtcSession {
   async getMetrics(): Promise<WebRtcMetrics> {
     if (!this.peer) return {};
     const stats = await this.peer.getStats();
+    let screenStats: RTCStatsReport | undefined;
+    try {
+      screenStats = await this.videoSender?.getStats();
+    } catch {
+      // Fall back to the complete peer report on older Chromium versions.
+    }
     const metrics: WebRtcMetrics = {};
     let outboundBytes: number | undefined;
+    let outboundFrames: number | undefined;
     for (const stat of stats.values()) {
       const value = stat as unknown as Record<string, unknown>;
       if (value.type === 'candidate-pair' && value.nominated === true && typeof value.currentRoundTripTime === 'number') metrics.roundTripTimeMs = Math.round(value.currentRoundTripTime * 1_000);
-      if (value.type === 'outbound-rtp' && value.kind === 'video') {
+      if (!screenStats && value.type === 'outbound-rtp' && value.kind === 'video') {
         if (typeof value.bytesSent === 'number') outboundBytes = value.bytesSent;
         if (typeof value.framesPerSecond === 'number') metrics.videoFramesPerSecond = Math.round(value.framesPerSecond);
+        if (typeof value.framesEncoded === 'number') outboundFrames = value.framesEncoded;
       }
       if (value.type === 'inbound-rtp' && value.kind === 'video') {
         if (typeof value.bytesReceived === 'number') metrics.videoBytesReceived = value.bytesReceived;
@@ -331,9 +339,22 @@ export class WebRtcSession {
       if (value.type === 'remote-inbound-rtp' && value.kind === 'video' && typeof value.packetsLost === 'number') metrics.videoPacketsLost = value.packetsLost;
       if (value.type === 'remote-inbound-rtp' && value.kind === 'audio' && typeof value.packetsLost === 'number') metrics.audioPacketsLost = value.packetsLost;
     }
+    if (screenStats) {
+      for (const stat of screenStats.values()) {
+        const value = stat as unknown as Record<string, unknown>;
+        if (value.type !== 'outbound-rtp' || value.kind !== 'video') continue;
+        if (typeof value.bytesSent === 'number') outboundBytes = value.bytesSent;
+        if (typeof value.framesPerSecond === 'number') metrics.videoFramesPerSecond = Math.round(value.framesPerSecond);
+        if (typeof value.framesEncoded === 'number') outboundFrames = value.framesEncoded;
+      }
+    }
     const now = performance.now();
     if (outboundBytes !== undefined && this.previousOutbound && now > this.previousOutbound.at) metrics.outgoingBitrateKbps = Math.round(((outboundBytes - this.previousOutbound.bytes) * 8) / (now - this.previousOutbound.at));
     if (outboundBytes !== undefined) this.previousOutbound = { bytes: outboundBytes, at: now };
+    if (metrics.videoFramesPerSecond === undefined && outboundFrames !== undefined && this.previousOutboundFrames && now > this.previousOutboundFrames.at) {
+      metrics.videoFramesPerSecond = Math.max(0, Math.round(((outboundFrames - this.previousOutboundFrames.frames) * 1_000) / (now - this.previousOutboundFrames.at)));
+    }
+    if (outboundFrames !== undefined) this.previousOutboundFrames = { frames: outboundFrames, at: now };
     return metrics;
   }
 
@@ -363,6 +384,7 @@ export class WebRtcSession {
     this.candidates.length = 0;
     this.confirmed = false;
     this.previousOutbound = undefined;
+    this.previousOutboundFrames = undefined;
   }
 
   private createPeer(stunServerIp: string): RTCPeerConnection {
