@@ -1169,6 +1169,94 @@ const SettingsModal = ({
   const microphoneTestContextRef = useRef<AudioContext | null>(null);
   const microphoneTestFrameRef = useRef<number | null>(null);
   const microphoneTestRunRef = useRef(0);
+  const [audioOutputTestStatus, setAudioOutputTestStatus] = useState<"idle" | "playing" | "success" | "error">("idle");
+  const [audioOutputTestError, setAudioOutputTestError] = useState<string>();
+  const audioOutputPreviewRef = useRef<{
+    context: AudioContext;
+    player: HTMLAudioElement;
+    oscillator?: OscillatorNode;
+    timer?: number;
+  } | null>(null);
+  const audioOutputPreviewRunRef = useRef(0);
+
+  const releaseAudioOutputPreview = useCallback((): void => {
+    audioOutputPreviewRunRef.current += 1;
+    const preview = audioOutputPreviewRef.current;
+    audioOutputPreviewRef.current = null;
+    if (!preview) return;
+    if (preview.timer !== undefined) window.clearTimeout(preview.timer);
+    try { preview.oscillator?.stop(); } catch { /* Already stopped */ }
+    preview.player.pause();
+    preview.player.srcObject = null;
+    if (preview.context.state !== "closed") {
+      void preview.context.close().catch(() => undefined);
+    }
+  }, []);
+
+  const playAudioOutputPreview = useCallback(async (deviceId: string): Promise<void> => {
+    releaseAudioOutputPreview();
+    setAudioOutputTestStatus("playing");
+    setAudioOutputTestError(undefined);
+    const runId = audioOutputPreviewRunRef.current;
+
+    try {
+      const context = new AudioContext();
+      const destination = context.createMediaStreamDestination();
+      const player = new Audio();
+      player.srcObject = destination.stream;
+      player.volume = 0.62;
+      audioOutputPreviewRef.current = { context, player };
+
+      if (typeof player.setSinkId === "function") {
+        try {
+          await player.setSinkId(deviceId);
+        } catch {
+          if (deviceId !== "default") saveAudioOutputPreference("default");
+          throw new Error("output-unavailable");
+        }
+      } else if (deviceId !== "default") {
+        saveAudioOutputPreference("default");
+        throw new Error("output-unsupported");
+      }
+      if (runId !== audioOutputPreviewRunRef.current) return;
+
+      if (context.state === "suspended") await context.resume();
+      await player.play();
+
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const now = context.currentTime;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(660, now);
+      oscillator.frequency.exponentialRampToValueAtTime(920, now + 0.16);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.2, now + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+      oscillator.connect(gain);
+      gain.connect(destination);
+      oscillator.start(now);
+      oscillator.stop(now + 0.35);
+      if (audioOutputPreviewRef.current) audioOutputPreviewRef.current.oscillator = oscillator;
+
+      setAudioOutputTestStatus("success");
+      const timer = window.setTimeout(() => {
+        if (runId === audioOutputPreviewRunRef.current) releaseAudioOutputPreview();
+      }, 460);
+      if (audioOutputPreviewRef.current) audioOutputPreviewRef.current.timer = timer;
+    } catch (error) {
+      if (runId !== audioOutputPreviewRunRef.current) return;
+      releaseAudioOutputPreview();
+      const reason = error instanceof Error ? error.message : "";
+      setAudioOutputTestError(
+        reason === "output-unavailable"
+          ? "A saída selecionada não está disponível. Voltamos ao padrão do sistema."
+          : reason === "output-unsupported"
+            ? "Este dispositivo não aceita seleção direta de saída."
+            : "Não foi possível reproduzir o som de confirmação."
+      );
+      setAudioOutputTestStatus("error");
+    }
+  }, [releaseAudioOutputPreview]);
 
   const releaseMicrophoneTest = useCallback((): void => {
     microphoneTestRunRef.current += 1;
@@ -1259,6 +1347,7 @@ const SettingsModal = ({
   }, [preferredMicrophone, releaseMicrophoneTest]);
 
   useEffect(() => () => releaseMicrophoneTest(), [releaseMicrophoneTest]);
+  useEffect(() => () => releaseAudioOutputPreview(), [releaseAudioOutputPreview]);
 
   useEffect(() => {
     const refreshDevices = async (): Promise<void> => {
@@ -1289,6 +1378,7 @@ const SettingsModal = ({
 
   const savePreferredAudioOutput = (deviceId: string): void => {
     saveAudioOutputPreference(deviceId);
+    void playAudioOutputPreview(deviceId);
   };
 
   // Estados de Configuração da Simulação (Modo de Teste)
@@ -1712,6 +1802,18 @@ const SettingsModal = ({
                   {audioOutputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Saída de áudio ${index + 1}`}</option>)}
                 </select>
                 <p className="setting-field-hint">Todo o áudio recebido será reproduzido nesta saída. Se ela for desconectada, o SFScreen volta ao padrão do Windows.</p>
+                <div className={`audio-output-feedback is-${audioOutputTestStatus}`} aria-live="polite">
+                  <span className="audio-output-feedback-icon"><SpeakerOnIcon /></span>
+                  <span>
+                    {audioOutputTestStatus === "playing"
+                      ? "Reproduzindo som de teste…"
+                      : audioOutputTestStatus === "success"
+                        ? "Som enviado para esta saída"
+                        : audioOutputTestStatus === "error"
+                          ? audioOutputTestError
+                          : "Ao trocar, você ouvirá um bip de confirmação."}
+                  </span>
+                </div>
               </div>
               <div className="setting-card">
                 <span className="card-key">Resolução Máxima</span>

@@ -3343,6 +3343,13 @@ button:disabled {
 .microphone-level-track { position:relative; width:100%; height:7px; overflow:hidden; border-radius:999px; background:#0d0f14; border:1px solid rgba(255,255,255,.06); }
 .microphone-level-fill { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#23a55a 0%,#57f287 72%,#f0c24b 90%,#da373c 100%); transition:width 80ms linear; }
 .microphone-test-error { margin:0; color:#ff9195; font-size:.68rem; line-height:1.35; }
+.audio-output-feedback { margin-top:auto; padding-top:12px; display:flex; align-items:center; gap:8px; color:#7f8794; font-size:.69rem; line-height:1.35; }
+.audio-output-feedback-icon { width:28px; height:28px; flex:0 0 auto; display:grid; place-items:center; border-radius:8px; color:#8b94a2; background:#101219; border:1px solid rgba(255,255,255,.06); }
+.audio-output-feedback-icon svg { width:15px; height:15px; }
+.audio-output-feedback.is-playing,.audio-output-feedback.is-success { color:#73c993; }
+.audio-output-feedback.is-playing .audio-output-feedback-icon,.audio-output-feedback.is-success .audio-output-feedback-icon { color:#57f287; background:rgba(35,165,90,.12); border-color:rgba(35,165,90,.25); }
+.audio-output-feedback.is-error { color:#ff9195; }
+.audio-output-feedback.is-error .audio-output-feedback-icon { color:#ff9195; background:rgba(218,55,60,.12); border-color:rgba(218,55,60,.25); }
 .session-entry-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); height:auto; padding:4px; gap:3px; }
 .session-entry-tabs .tab-pill { min-height:34px; }
 .room-create-form,.room-saved-card { display:flex; flex-direction:column; gap:9px; }

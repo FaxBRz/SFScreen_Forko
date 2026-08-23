@@ -361,6 +361,75 @@ describe('SFScreen Discord layout', () => {
     }
   });
 
+  it('plays the confirmation chime through the newly selected output', async () => {
+    const originalMediaDevices = navigator.mediaDevices;
+    const originalAudioContext = Object.getOwnPropertyDescriptor(globalThis, 'AudioContext');
+    const originalSetSinkId = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'setSinkId');
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    const setSinkId = vi.fn(async () => undefined);
+    const close = vi.fn(async () => undefined);
+
+    class FakeAudioContext {
+      state: AudioContextState = 'running';
+      currentTime = 0;
+      close = close;
+      resume = vi.fn(async () => undefined);
+      createMediaStreamDestination = vi.fn(() => ({ stream: {} }));
+      createOscillator = vi.fn(() => ({
+        type: 'sine',
+        frequency: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+        connect: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+      }));
+      createGain = vi.fn(() => ({
+        gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+        connect: vi.fn(),
+      }));
+    }
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        enumerateDevices: vi.fn(async () => [
+          { deviceId: 'headset-1', groupId: 'group-1', kind: 'audiooutput', label: 'Fone USB', toJSON: () => ({}) },
+        ] as MediaDeviceInfo[]),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+    });
+    Object.defineProperty(globalThis, 'AudioContext', { configurable: true, value: FakeAudioContext });
+    Object.defineProperty(HTMLMediaElement.prototype, 'setSinkId', { configurable: true, value: setSinkId });
+    localStorage.setItem('sfscreen_preferred_audio_output', 'default');
+
+    try {
+      const current = model();
+      vi.mocked(useSession).mockReturnValue(current);
+      render(<App />);
+
+      fireEvent.click(screen.getAllByRole('button', { name: /configurações/i })[0]);
+      fireEvent.click(screen.getByRole('button', { name: /vídeo & áudio/i }));
+      const outputSelector = screen.getByRole('combobox', { name: /saída de áudio/i });
+      expect(await screen.findByRole('option', { name: 'Fone USB' })).toBeTruthy();
+      fireEvent.change(outputSelector, { target: { value: 'headset-1' } });
+
+      await waitFor(() => expect(setSinkId).toHaveBeenCalledWith('headset-1'));
+      expect(await screen.findByText(/som enviado para esta saída/i)).toBeTruthy();
+      expect(playSpy).toHaveBeenCalled();
+      expect(localStorage.getItem('sfscreen_preferred_audio_output')).toBe('headset-1');
+    } finally {
+      cleanup();
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: originalMediaDevices });
+      if (originalAudioContext) Object.defineProperty(globalThis, 'AudioContext', originalAudioContext);
+      else Reflect.deleteProperty(globalThis, 'AudioContext');
+      if (originalSetSinkId) Object.defineProperty(HTMLMediaElement.prototype, 'setSinkId', originalSetSinkId);
+      else Reflect.deleteProperty(HTMLMediaElement.prototype, 'setSinkId');
+      playSpy.mockRestore();
+      pauseSpy.mockRestore();
+    }
+  });
+
   it('tests the selected microphone and stops its capture', async () => {
     const originalMediaDevices = navigator.mediaDevices;
     const originalAudioContext = Object.getOwnPropertyDescriptor(globalThis, 'AudioContext');
