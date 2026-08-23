@@ -1887,6 +1887,34 @@ const playUnlockModeSound = (): void => {
   osc.stop(now + 0.18);
 };
 
+/* 10. 🔔 Incoming Join / Verification Chime: Harmonious 4-tone bell */
+const playIncomingJoinRequestSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const notes = [
+    { freq: 698.46, start: 0.00, dur: 0.18, gain: 0.18 }, // F5
+    { freq: 880.00, start: 0.09, dur: 0.20, gain: 0.20 }, // A5
+    { freq: 1046.50, start: 0.18, dur: 0.24, gain: 0.22 }, // C6
+    { freq: 1396.91, start: 0.28, dur: 0.45, gain: 0.25 }, // F6
+  ];
+
+  notes.forEach(({ freq, start, dur, gain: noteGain }) => {
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, now + start);
+    gainNode.gain.setValueAtTime(0, now + start);
+    gainNode.gain.linearRampToValueAtTime(noteGain, now + start + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    osc.start(now + start);
+    osc.stop(now + start + dur);
+  });
+};
+
 /* ─── Main Application Component ─── */
 export const App = (): ReactElement => {
   const session = useSession();
@@ -2049,6 +2077,17 @@ export const App = (): ReactElement => {
     window.addEventListener("resize", handleWindowResize);
     return () => window.removeEventListener("resize", handleWindowResize);
   }, [state.chatPanelOpen, session]);
+
+  const prevPhaseRef = useRef(state.phase);
+  useEffect(() => {
+    if (prevPhaseRef.current !== "verifying" && state.phase === "verifying") {
+      playIncomingJoinRequestSound();
+      if (!state.sessionModalOpen) {
+        session.toggleSessionModal(true);
+      }
+    }
+    prevPhaseRef.current = state.phase;
+  }, [state.phase, state.sessionModalOpen, session]);
 
   useEffect(() => {
     if (!prevLocalSharingRef.current && localSharing) {
