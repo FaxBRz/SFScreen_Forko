@@ -1180,6 +1180,8 @@ const SettingsModal = ({
   const [microphoneTestError, setMicrophoneTestError] = useState<string>();
   const microphoneTestStreamRef = useRef<MediaStream | null>(null);
   const microphoneTestContextRef = useRef<AudioContext | null>(null);
+  const microphoneTestGainRef = useRef<GainNode | null>(null);
+  const microphoneTestPlayerRef = useRef<HTMLAudioElement | null>(null);
   const microphoneTestFrameRef = useRef<number | null>(null);
   const microphoneTestRunRef = useRef(0);
   const [audioOutputTestStatus, setAudioOutputTestStatus] = useState<"idle" | "playing" | "success" | "error">("idle");
@@ -1194,7 +1196,14 @@ const SettingsModal = ({
 
   useEffect(() => {
     microphoneVolumeRef.current = microphoneVolume;
+    const gain = microphoneTestGainRef.current;
+    const context = microphoneTestContextRef.current;
+    if (gain && context) gain.gain.setTargetAtTime(microphoneVolume, context.currentTime, 0.02);
   }, [microphoneVolume]);
+
+  useEffect(() => {
+    if (microphoneTestPlayerRef.current) microphoneTestPlayerRef.current.volume = outputVolume;
+  }, [outputVolume]);
 
   const releaseAudioOutputPreview = useCallback((): void => {
     audioOutputPreviewRunRef.current += 1;
@@ -1283,6 +1292,13 @@ const SettingsModal = ({
     }
     microphoneTestStreamRef.current?.getTracks().forEach((track) => track.stop());
     microphoneTestStreamRef.current = null;
+    microphoneTestGainRef.current = null;
+    const player = microphoneTestPlayerRef.current;
+    microphoneTestPlayerRef.current = null;
+    if (player) {
+      player.pause();
+      player.srcObject = null;
+    }
     const context = microphoneTestContextRef.current;
     microphoneTestContextRef.current = null;
     if (context && context.state !== "closed") {
@@ -1330,7 +1346,31 @@ const SettingsModal = ({
       const analyser = context.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.72;
-      context.createMediaStreamSource(stream).connect(analyser);
+      const source = context.createMediaStreamSource(stream);
+      const monitorGain = context.createGain();
+      const monitorDestination = context.createMediaStreamDestination();
+      monitorGain.gain.setValueAtTime(microphoneVolumeRef.current, context.currentTime);
+      source.connect(monitorGain);
+      monitorGain.connect(analyser);
+      monitorGain.connect(monitorDestination);
+      microphoneTestGainRef.current = monitorGain;
+
+      const player = new Audio();
+      player.srcObject = monitorDestination.stream;
+      player.volume = outputVolume;
+      microphoneTestPlayerRef.current = player;
+      if (typeof player.setSinkId === "function") {
+        try {
+          await player.setSinkId(preferredAudioOutput);
+        } catch {
+          throw new Error("output-unavailable");
+        }
+      } else if (preferredAudioOutput !== "default") {
+        throw new Error("output-unsupported");
+      }
+      if (runId !== microphoneTestRunRef.current) return;
+      await player.play();
+      if (runId !== microphoneTestRunRef.current) return;
       const samples = new Uint8Array(analyser.fftSize);
 
       const updateLevel = (): void => {
@@ -1342,7 +1382,7 @@ const SettingsModal = ({
           energy += normalized * normalized;
         }
         const rms = Math.sqrt(energy / samples.length);
-        setMicrophoneLevel(Math.min(100, Math.round(rms * 360 * microphoneVolumeRef.current)));
+        setMicrophoneLevel(Math.min(100, Math.round(rms * 360)));
         microphoneTestFrameRef.current = window.requestAnimationFrame(updateLevel);
       };
 
@@ -1352,16 +1392,21 @@ const SettingsModal = ({
       if (runId !== microphoneTestRunRef.current) return;
       releaseMicrophoneTest();
       const errorName = error instanceof DOMException ? error.name : "";
+      const errorReason = error instanceof Error ? error.message : "";
       setMicrophoneTestError(
         errorName === "NotAllowedError"
           ? "Permissão de microfone negada. Autorize o SFScreen nas configurações do Windows."
           : errorName === "NotFoundError" || errorName === "OverconstrainedError"
             ? "O microfone selecionado não está disponível. Escolha outro dispositivo."
+            : errorReason === "output-unsupported"
+              ? "Não foi possível enviar sua voz para o fone selecionado."
+              : errorReason === "output-unavailable"
+                ? "O fone selecionado não está disponível para o teste."
             : "Não foi possível iniciar o teste de microfone."
       );
       setMicrophoneTestStatus("error");
     }
-  }, [preferredMicrophone, releaseMicrophoneTest]);
+  }, [outputVolume, preferredAudioOutput, preferredMicrophone, releaseMicrophoneTest]);
 
   useEffect(() => () => releaseMicrophoneTest(), [releaseMicrophoneTest]);
   useEffect(() => () => releaseAudioOutputPreview(), [releaseAudioOutputPreview]);
@@ -1394,6 +1439,7 @@ const SettingsModal = ({
   };
 
   const savePreferredAudioOutput = (deviceId: string): void => {
+    if (microphoneTestStatus === "active" || microphoneTestStatus === "starting") stopMicrophoneTest();
     saveAudioOutputPreference(deviceId);
     void playAudioOutputPreview(deviceId);
   };
@@ -1858,7 +1904,7 @@ const SettingsModal = ({
                   </div>
                 </div>
                 {microphoneTestError && <p className="discord-microphone-error" role="alert">{microphoneTestError}</p>}
-                <p className="discord-voice-help">Fale normalmente durante o teste. O indicador deve reagir sem chegar ao máximo o tempo todo.</p>
+                <p className="discord-voice-help">Fale normalmente durante o teste: você ouvirá sua própria voz no alto-falante selecionado e o indicador mostrará o nível enviado.</p>
               </section>
 
               <section className="discord-media-section discord-video-summary" aria-labelledby="video-settings-title">

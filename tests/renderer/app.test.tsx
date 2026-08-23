@@ -441,8 +441,12 @@ describe('SFScreen Discord layout', () => {
   it('tests the selected microphone and stops its capture', async () => {
     const originalMediaDevices = navigator.mediaDevices;
     const originalAudioContext = Object.getOwnPropertyDescriptor(globalThis, 'AudioContext');
+    const originalSetSinkId = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'setSinkId');
     const originalRequestAnimationFrame = window.requestAnimationFrame;
     const originalCancelAnimationFrame = window.cancelAnimationFrame;
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    const setSinkId = vi.fn(async () => undefined);
     const stopTrack = vi.fn();
     const testStream = { getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream;
     const getUserMedia = vi.fn(async () => testStream);
@@ -450,6 +454,7 @@ describe('SFScreen Discord layout', () => {
 
     class FakeAudioContext {
       state: AudioContextState = 'running';
+      currentTime = 0;
       close = close;
       resume = vi.fn(async () => undefined);
       createAnalyser = vi.fn(() => ({
@@ -458,6 +463,11 @@ describe('SFScreen Discord layout', () => {
         getByteTimeDomainData: vi.fn((samples: Uint8Array) => samples.fill(128)),
       }));
       createMediaStreamSource = vi.fn(() => ({ connect: vi.fn() }));
+      createGain = vi.fn(() => ({
+        gain: { setValueAtTime: vi.fn(), setTargetAtTime: vi.fn() },
+        connect: vi.fn(),
+      }));
+      createMediaStreamDestination = vi.fn(() => ({ stream: {} }));
     }
 
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -465,8 +475,10 @@ describe('SFScreen Discord layout', () => {
       value: { enumerateDevices: vi.fn(async () => []), getUserMedia, addEventListener: vi.fn(), removeEventListener: vi.fn() },
     });
     Object.defineProperty(globalThis, 'AudioContext', { configurable: true, value: FakeAudioContext });
+    Object.defineProperty(HTMLMediaElement.prototype, 'setSinkId', { configurable: true, value: setSinkId });
     Object.defineProperty(window, 'requestAnimationFrame', { configurable: true, value: vi.fn(() => 1) });
     Object.defineProperty(window, 'cancelAnimationFrame', { configurable: true, value: vi.fn() });
+    localStorage.setItem('sfscreen_preferred_audio_output', 'default');
 
     try {
       const current = model();
@@ -480,16 +492,24 @@ describe('SFScreen Discord layout', () => {
       await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: expect.any(Object), video: false })));
       const stopButton = await screen.findByRole('button', { name: /parar teste/i });
       expect(screen.getByRole('meter', { name: /nível do microfone/i })).toBeTruthy();
+      expect(setSinkId).toHaveBeenCalledWith('default');
+      expect(playSpy).toHaveBeenCalled();
 
       fireEvent.click(stopButton);
       expect(stopTrack).toHaveBeenCalledOnce();
       expect(close).toHaveBeenCalledOnce();
+      expect(pauseSpy).toHaveBeenCalled();
     } finally {
+      cleanup();
       Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: originalMediaDevices });
       if (originalAudioContext) Object.defineProperty(globalThis, 'AudioContext', originalAudioContext);
       else Reflect.deleteProperty(globalThis, 'AudioContext');
+      if (originalSetSinkId) Object.defineProperty(HTMLMediaElement.prototype, 'setSinkId', originalSetSinkId);
+      else Reflect.deleteProperty(HTMLMediaElement.prototype, 'setSinkId');
       Object.defineProperty(window, 'requestAnimationFrame', { configurable: true, value: originalRequestAnimationFrame });
       Object.defineProperty(window, 'cancelAnimationFrame', { configurable: true, value: originalCancelAnimationFrame });
+      playSpy.mockRestore();
+      pauseSpy.mockRestore();
     }
   });
 
