@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { ipcChannels } from '../shared/ipc';
 import { webrtcUdpPortRange } from '../shared/session/types';
 import { DiscordAudioCaptureService } from './audio/discord-audio-capture-service';
 import { ScreenCaptureService } from './capture/screen-capture-service';
