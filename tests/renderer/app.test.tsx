@@ -319,7 +319,11 @@ describe('SFScreen Discord layout', () => {
     const settingsBtns = screen.getAllByRole('button', { name: /configurações/i });
     fireEvent.click(settingsBtns[0]);
 
-    expect(screen.getByRole('dialog', { name: 'Configurações' })).toBeTruthy();
+    const settingsDialog = screen.getByRole('dialog', { name: 'Configurações' });
+    expect(settingsDialog).toBeTruthy();
+    const fixedClose = screen.getByRole('button', { name: /fechar configurações/i });
+    expect(fixedClose.classList.contains('settings-fixed-close')).toBe(true);
+    expect(fixedClose.parentElement).toBe(settingsDialog);
     expect(screen.getByText('Perfil de Usuário')).toBeTruthy();
 
     // Switch to Network tab

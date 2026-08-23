@@ -1807,6 +1807,9 @@ const SettingsModal = ({
   return (
     <div className="modal-backdrop" role="presentation">
       <section className={`settings-modal-panel is-${activeTab}`} role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <button className="button ghost icon-only settings-fixed-close" type="button" onClick={onClose} aria-label="Fechar configurações">
+          <XCloseIcon />
+        </button>
         {/* Settings Navigation Sidebar */}
         <aside className="settings-sidebar">
           <div className="settings-nav-header">
@@ -1857,9 +1860,6 @@ const SettingsModal = ({
               </p>
             </div>
 
-            <button className="button ghost icon-only" type="button" onClick={onClose} aria-label="Fechar configurações">
-              <XCloseIcon />
-            </button>
           </div>
 
           {activeTab === "profile" && (
