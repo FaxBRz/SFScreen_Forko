@@ -964,6 +964,29 @@ const SettingsModal = ({
   const [avatar, setAvatar] = useState<string | undefined>(state.localUserAvatar);
   const [copiedDiag, setCopiedDiag] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
+  const [preferredMicrophone, setPreferredMicrophone] = useState(() => {
+    try { return localStorage.getItem("sfscreen_preferred_microphone") || "default"; } catch { return "default"; }
+  });
+
+  useEffect(() => {
+    const refreshDevices = async (): Promise<void> => {
+      try {
+        const devices = await navigator.mediaDevices?.enumerateDevices?.();
+        setMicrophones((devices ?? []).filter((device) => device.kind === "audioinput"));
+      } catch {
+        setMicrophones([]);
+      }
+    };
+    void refreshDevices();
+    navigator.mediaDevices?.addEventListener?.("devicechange", refreshDevices);
+    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", refreshDevices);
+  }, []);
+
+  const savePreferredMicrophone = (deviceId: string): void => {
+    setPreferredMicrophone(deviceId);
+    try { localStorage.setItem("sfscreen_preferred_microphone", deviceId); } catch { /* Ignored */ }
+  };
 
   // Estados de Configuração da Simulação (Modo de Teste)
   const [simScreen, setSimScreen] = useState(() => {
@@ -1344,6 +1367,14 @@ const SettingsModal = ({
 
           {activeTab === "media" && (
             <div className="settings-info-grid">
+              <div className="setting-card full-span">
+                <span className="card-key">Microfone para o modo voz</span>
+                <select className="text-input media-device-select" value={preferredMicrophone} onChange={(event) => savePreferredMicrophone(event.target.value)}>
+                  <option value="default">Padrão do sistema (detecção automática)</option>
+                  {microphones.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Microfone ${index + 1}`}</option>)}
+                </select>
+                <p className="setting-field-hint">A escolha será usada ao entrar na voz. O modo padrão acompanha o dispositivo definido no Windows.</p>
+              </div>
               <div className="setting-card">
                 <span className="card-key">Resolução Máxima</span>
                 <span className="card-value">1920 × 1080 (Full HD)</span>

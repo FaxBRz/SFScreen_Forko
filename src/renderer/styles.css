@@ -3126,6 +3126,8 @@ button:disabled {
 .chat-image-preview button { width:22px; height:22px; padding:0; border:0; border-radius:6px; color:#9ba4af; background:transparent; cursor:pointer; font-size:1.1rem; }
 .chat-image-preview button:hover { background:rgba(218,55,60,.18); color:#ff9397; }
 .chat-upload-error { width:100%; color:#ff9195; font-size:.65rem; }
+.media-device-select { width:100%; margin-top:8px; appearance:auto; cursor:pointer; }
+.media-device-select option { background:#191b23; color:#f2f3f5; }
 
 /* ─── Floating In-Stage Control Dock (Discord In-Stage Style) ─── */
 .stage-dock-trigger-zone {
