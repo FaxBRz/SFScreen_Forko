@@ -444,7 +444,7 @@ describe('SFScreen Discord layout', () => {
     }
   });
 
-  it('monitors the natural microphone without a processing chain and stops its capture', async () => {
+  it('keeps the microphone test active while processing changes and stops it on tab change', async () => {
     const originalMediaDevices = navigator.mediaDevices;
     const originalAudioContext = Object.getOwnPropertyDescriptor(globalThis, 'AudioContext');
     const originalSetSinkId = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'setSinkId');
@@ -454,7 +454,9 @@ describe('SFScreen Discord layout', () => {
     const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
     const setSinkId = vi.fn(async () => undefined);
     const stopTrack = vi.fn();
-    const testStream = { getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream;
+    const applyConstraints = vi.fn(async () => undefined);
+    const testTrack = { stop: stopTrack, applyConstraints };
+    const testStream = { getTracks: () => [testTrack], getAudioTracks: () => [testTrack] } as unknown as MediaStream;
     const getUserMedia = vi.fn(async () => testStream);
     const close = vi.fn(async () => undefined);
     const sourceConnect = vi.fn();
@@ -478,14 +480,14 @@ describe('SFScreen Discord layout', () => {
       }));
       createBiquadFilter = vi.fn(() => ({
         type: 'highpass',
-        frequency: { setValueAtTime: vi.fn() },
+        frequency: { setValueAtTime: vi.fn(), setTargetAtTime: vi.fn() },
         Q: { setValueAtTime: vi.fn() },
         connect: filterConnect,
       }));
       createDynamicsCompressor = vi.fn(() => ({
         threshold: { setValueAtTime: vi.fn() },
         knee: { setValueAtTime: vi.fn() },
-        ratio: { setValueAtTime: vi.fn() },
+        ratio: { setValueAtTime: vi.fn(), setTargetAtTime: vi.fn() },
         attack: { setValueAtTime: vi.fn() },
         release: { setValueAtTime: vi.fn() },
         connect: vi.fn(),
@@ -514,14 +516,19 @@ describe('SFScreen Discord layout', () => {
       fireEvent.click(screen.getByRole('button', { name: /teste do microfone/i }));
 
       await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: expect.any(Object), video: false })));
-      const stopButton = await screen.findByRole('button', { name: /parar teste/i });
+      await screen.findByRole('button', { name: /parar teste/i });
       expect(screen.getByRole('meter', { name: /nível do microfone/i })).toBeTruthy();
       expect(setSinkId).toHaveBeenCalledWith('default');
       expect(playSpy).toHaveBeenCalled();
       expect(sourceConnect).toHaveBeenCalledTimes(2);
-      expect(filterConnect).not.toHaveBeenCalled();
+      expect(filterConnect).toHaveBeenCalled();
 
-      fireEvent.click(stopButton);
+      fireEvent.click(screen.getByRole('radio', { name: /isolamento de voz/i }));
+      expect(screen.getByRole('button', { name: /parar teste/i })).toBeTruthy();
+      expect(stopTrack).not.toHaveBeenCalled();
+      await waitFor(() => expect(applyConstraints).toHaveBeenCalledWith(expect.objectContaining({ noiseSuppression: true })));
+
+      fireEvent.click(screen.getByRole('button', { name: /^perfil$/i }));
       expect(stopTrack).toHaveBeenCalledOnce();
       expect(close).toHaveBeenCalledOnce();
       expect(pauseSpy).toHaveBeenCalled();

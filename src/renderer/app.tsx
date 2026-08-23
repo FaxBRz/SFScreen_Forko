@@ -1204,6 +1204,13 @@ const SettingsModal = ({
   const microphoneTestStreamRef = useRef<MediaStream | null>(null);
   const microphoneTestContextRef = useRef<AudioContext | null>(null);
   const microphoneTestGainRef = useRef<GainNode | null>(null);
+  const microphoneTestDryGainRef = useRef<GainNode | null>(null);
+  const microphoneTestWetGainRef = useRef<GainNode | null>(null);
+  const microphoneTestGateRef = useRef<GainNode | null>(null);
+  const microphoneTestHighPassRef = useRef<BiquadFilterNode | null>(null);
+  const microphoneTestLowPassRef = useRef<BiquadFilterNode | null>(null);
+  const microphoneTestCompressorRef = useRef<DynamicsCompressorNode | null>(null);
+  const microphoneTestProcessingRef = useRef(getEffectiveMicrophoneProcessing());
   const microphoneTestPlayerRef = useRef<HTMLAudioElement | null>(null);
   const microphoneTestFrameRef = useRef<number | null>(null);
   const microphoneTestRunRef = useRef(0);
@@ -1227,6 +1234,47 @@ const SettingsModal = ({
   useEffect(() => {
     if (microphoneTestPlayerRef.current) microphoneTestPlayerRef.current.volume = outputVolume;
   }, [outputVolume]);
+
+  useEffect(() => {
+    const player = microphoneTestPlayerRef.current;
+    if (!player || typeof player.setSinkId !== "function") return;
+    void player.setSinkId(preferredAudioOutput).catch(() => undefined);
+  }, [preferredAudioOutput]);
+
+  useEffect(() => {
+    const processing = getEffectiveMicrophoneProcessing(microphoneProcessing);
+    microphoneTestProcessingRef.current = processing;
+    const context = microphoneTestContextRef.current;
+    const now = context?.currentTime ?? 0;
+    const noiseEnabled = processing.noiseSuppression !== "off";
+    const strong = processing.noiseSuppression === "strong";
+
+    if (context && microphoneTestDryGainRef.current && microphoneTestWetGainRef.current) {
+      microphoneTestDryGainRef.current.gain.setTargetAtTime(noiseEnabled ? 0 : 1, now, 0.018);
+      microphoneTestWetGainRef.current.gain.setTargetAtTime(noiseEnabled ? 1 : 0, now, 0.018);
+    }
+    if (context && microphoneTestHighPassRef.current) {
+      microphoneTestHighPassRef.current.frequency.setTargetAtTime(noiseEnabled ? (strong ? 80 : 65) : 20, now, 0.03);
+    }
+    if (context && microphoneTestLowPassRef.current) {
+      microphoneTestLowPassRef.current.frequency.setTargetAtTime(noiseEnabled ? (strong ? 13_500 : 16_000) : 20_000, now, 0.03);
+    }
+    if (context && microphoneTestCompressorRef.current) {
+      microphoneTestCompressorRef.current.ratio.setTargetAtTime(noiseEnabled ? (strong ? 2.2 : 1.5) : 1, now, 0.03);
+    }
+    if (!noiseEnabled && context && microphoneTestGateRef.current) {
+      microphoneTestGateRef.current.gain.setTargetAtTime(1, now, 0.008);
+    }
+
+    const track = microphoneTestStreamRef.current?.getAudioTracks()[0];
+    if (track?.applyConstraints) {
+      void track.applyConstraints({
+        echoCancellation: processing.echoCancellation,
+        noiseSuppression: noiseEnabled,
+        autoGainControl: processing.autoGainControl,
+      }).catch(() => undefined);
+    }
+  }, [microphoneProcessing]);
 
   const releaseAudioOutputPreview = useCallback((): void => {
     audioOutputPreviewRunRef.current += 1;
@@ -1316,6 +1364,12 @@ const SettingsModal = ({
     microphoneTestStreamRef.current?.getTracks().forEach((track) => track.stop());
     microphoneTestStreamRef.current = null;
     microphoneTestGainRef.current = null;
+    microphoneTestDryGainRef.current = null;
+    microphoneTestWetGainRef.current = null;
+    microphoneTestGateRef.current = null;
+    microphoneTestHighPassRef.current = null;
+    microphoneTestLowPassRef.current = null;
+    microphoneTestCompressorRef.current = null;
     const player = microphoneTestPlayerRef.current;
     microphoneTestPlayerRef.current = null;
     if (player) {
@@ -1336,6 +1390,11 @@ const SettingsModal = ({
     setMicrophoneTestStatus("idle");
   }, [releaseMicrophoneTest]);
 
+  const selectSettingsTab = useCallback((tab: SettingsTab): void => {
+    if (tab !== "media") stopMicrophoneTest();
+    setActiveTab(tab);
+  }, [stopMicrophoneTest]);
+
   const startMicrophoneTest = useCallback(async (): Promise<void> => {
     releaseMicrophoneTest();
     setMicrophoneLevel(0);
@@ -1348,6 +1407,7 @@ const SettingsModal = ({
         throw new Error("media-unavailable");
       }
       const processing = getEffectiveMicrophoneProcessing();
+      microphoneTestProcessingRef.current = processing;
       const noiseEnabled = processing.noiseSuppression !== "off";
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -1388,23 +1448,31 @@ const SettingsModal = ({
       compressor.ratio.setValueAtTime(processing.noiseSuppression === "strong" ? 2.2 : 1.5, context.currentTime);
       compressor.attack.setValueAtTime(0.008, context.currentTime);
       compressor.release.setValueAtTime(0.24, context.currentTime);
+      const dryGain = context.createGain();
+      const wetGain = context.createGain();
       const monitorGain = context.createGain();
       const monitorDestination = context.createMediaStreamDestination();
+      dryGain.gain.setValueAtTime(noiseEnabled ? 0 : 1, context.currentTime);
+      wetGain.gain.setValueAtTime(noiseEnabled ? 1 : 0, context.currentTime);
       monitorGain.gain.setValueAtTime(microphoneVolumeRef.current, context.currentTime);
-      if (noiseEnabled) {
-        source.connect(highPass);
-        highPass.connect(lowPass);
-        lowPass.connect(analyser);
-        analyser.connect(gate);
-        gate.connect(compressor);
-        compressor.connect(monitorGain);
-      } else {
-        // Natural/off must be a faithful monitor, without filters, gate or compressor.
-        source.connect(analyser);
-        source.connect(monitorGain);
-      }
+      // Keep a transparent and a processed route alive so profile changes can crossfade without recapturing the microphone.
+      source.connect(dryGain);
+      dryGain.connect(monitorGain);
+      source.connect(highPass);
+      highPass.connect(lowPass);
+      lowPass.connect(analyser);
+      analyser.connect(gate);
+      gate.connect(compressor);
+      compressor.connect(wetGain);
+      wetGain.connect(monitorGain);
       monitorGain.connect(monitorDestination);
       microphoneTestGainRef.current = monitorGain;
+      microphoneTestDryGainRef.current = dryGain;
+      microphoneTestWetGainRef.current = wetGain;
+      microphoneTestGateRef.current = gate;
+      microphoneTestHighPassRef.current = highPass;
+      microphoneTestLowPassRef.current = lowPass;
+      microphoneTestCompressorRef.current = compressor;
 
       const player = new Audio();
       player.srcObject = monitorDestination.stream;
@@ -1436,14 +1504,16 @@ const SettingsModal = ({
           energy += normalized * normalized;
         }
         const rms = Math.sqrt(energy / samples.length);
-        const strongSuppression = processing.noiseSuppression === "strong";
-        if (noiseEnabled && processing.autoSensitivity && rms < Math.max(0.032, noiseFloor * 1.6)) {
+        const currentProcessing = microphoneTestProcessingRef.current;
+        const currentNoiseEnabled = currentProcessing.noiseSuppression !== "off";
+        const strongSuppression = currentProcessing.noiseSuppression === "strong";
+        if (currentNoiseEnabled && currentProcessing.autoSensitivity && rms < Math.max(0.032, noiseFloor * 1.6)) {
           noiseFloor = (noiseFloor * 0.975) + (rms * 0.025);
         }
         const automaticThreshold = Math.max(0.006, Math.min(strongSuppression ? 0.038 : 0.028, noiseFloor * (strongSuppression ? 2.25 : 1.75)));
-        const manualThreshold = 0.004 + ((1 - processing.sensitivity) * 0.052);
-        const threshold = processing.autoSensitivity ? automaticThreshold : manualThreshold;
-        const voiceDetected = !noiseEnabled || rms >= threshold;
+        const manualThreshold = 0.004 + ((1 - currentProcessing.sensitivity) * 0.052);
+        const threshold = currentProcessing.autoSensitivity ? automaticThreshold : manualThreshold;
+        const voiceDetected = !currentNoiseEnabled || rms >= threshold;
         if (voiceDetected) hangoverFrames = strongSuppression ? 28 : 22;
         else if (hangoverFrames > 0) hangoverFrames -= 1;
         const shouldOpen = voiceDetected || hangoverFrames > 0;
@@ -1508,7 +1578,6 @@ const SettingsModal = ({
   };
 
   const savePreferredAudioOutput = (deviceId: string): void => {
-    if (microphoneTestStatus === "active" || microphoneTestStatus === "starting") stopMicrophoneTest();
     saveAudioOutputPreference(deviceId);
     void playAudioOutputPreview(deviceId);
   };
@@ -1716,22 +1785,22 @@ const SettingsModal = ({
             <span>Seu espaço no SFScreen</span>
           </div>
           <nav className="settings-nav-list">
-            <button className={`settings-nav-item ${activeTab === "profile" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("profile")}>
+            <button className={`settings-nav-item ${activeTab === "profile" ? "is-active" : ""}`} type="button" onClick={() => selectSettingsTab("profile")}>
               <UserCircleIcon /> <span>Perfil</span>
             </button>
-            <button className={`settings-nav-item ${activeTab === "network" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("network")}>
+            <button className={`settings-nav-item ${activeTab === "network" ? "is-active" : ""}`} type="button" onClick={() => selectSettingsTab("network")}>
               <ServerIcon /> <span>Rede & Tailscale</span>
             </button>
-            <button className={`settings-nav-item ${activeTab === "media" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("media")}>
+            <button className={`settings-nav-item ${activeTab === "media" ? "is-active" : ""}`} type="button" onClick={() => selectSettingsTab("media")}>
               <SlidersIcon /> <span>Vídeo & Áudio</span>
             </button>
-            <button className={`settings-nav-item ${activeTab === "diagnostics" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("diagnostics")}>
+            <button className={`settings-nav-item ${activeTab === "diagnostics" ? "is-active" : ""}`} type="button" onClick={() => selectSettingsTab("diagnostics")}>
               <ActivityIcon /> <span>Diagnóstico</span>
             </button>
-            <button className={`settings-nav-item ${activeTab === "testing" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("testing")}>
+            <button className={`settings-nav-item ${activeTab === "testing" ? "is-active" : ""}`} type="button" onClick={() => selectSettingsTab("testing")}>
               <ScreenCastIcon /> <span>Modo de Teste</span>
             </button>
-            <button className={`settings-nav-item ${activeTab === "about" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("about")}>
+            <button className={`settings-nav-item ${activeTab === "about" ? "is-active" : ""}`} type="button" onClick={() => selectSettingsTab("about")}>
               <InfoCircleIcon /> <span>Sobre</span>
             </button>
           </nav>
@@ -1994,7 +2063,7 @@ const SettingsModal = ({
                           value={value}
                           aria-label={value === "voice-isolation" ? "Isolamento de voz" : value === "studio" ? "Estúdio" : "Personalizado"}
                           checked={microphoneProcessing.profile === value}
-                          onChange={(event) => { stopMicrophoneTest(); saveInputProfile(event.target.value as InputProfile); }}
+                          onChange={(event) => saveInputProfile(event.target.value as InputProfile)}
                         />
                         <span className="sfs-profile-icon">{icon}</span>
                         <span className="sfs-profile-copy"><strong>{label}</strong><small>{description}</small></span>
@@ -2014,7 +2083,7 @@ const SettingsModal = ({
                             className="switch-toggle-input"
                             type="checkbox"
                             checked={microphoneProcessing.autoSensitivity}
-                            onChange={(event) => { stopMicrophoneTest(); saveAutoSensitivity(event.target.checked); }}
+                            onChange={(event) => saveAutoSensitivity(event.target.checked)}
                           />
                           <span className={`switch-toggle-track ${microphoneProcessing.autoSensitivity ? "is-checked" : ""}`}><span className="switch-toggle-thumb" /></span>
                         </span>
@@ -2032,7 +2101,7 @@ const SettingsModal = ({
                             step="0.01"
                             value={microphoneProcessing.sensitivity}
                             style={{ "--volume-progress": `${microphoneProcessing.sensitivity * 100}%` } as CSSProperties}
-                            onChange={(event) => { stopMicrophoneTest(); saveInputSensitivity(Number(event.target.value)); }}
+                            onChange={(event) => saveInputSensitivity(Number(event.target.value))}
                           />
                         </label>
                       )}
@@ -2043,7 +2112,7 @@ const SettingsModal = ({
                           aria-label="Supressão de ruído"
                           className="sfs-processing-select"
                           value={microphoneProcessing.noiseSuppression}
-                          onChange={(event) => { stopMicrophoneTest(); saveNoiseSuppression(event.target.value as NoiseSuppressionLevel); }}
+                          onChange={(event) => saveNoiseSuppression(event.target.value as NoiseSuppressionLevel)}
                         >
                           <option value="off">Desativada</option>
                           <option value="standard">Padrão</option>
@@ -2059,7 +2128,7 @@ const SettingsModal = ({
                             className="switch-toggle-input"
                             type="checkbox"
                             checked={microphoneProcessing.echoCancellation}
-                            onChange={(event) => { stopMicrophoneTest(); saveEchoCancellation(event.target.checked); }}
+                            onChange={(event) => saveEchoCancellation(event.target.checked)}
                           />
                           <span className={`switch-toggle-track ${microphoneProcessing.echoCancellation ? "is-checked" : ""}`}><span className="switch-toggle-thumb" /></span>
                         </span>
