@@ -2023,6 +2023,7 @@ export const App = (): ReactElement => {
   const [chatText, setChatText] = useState("");
   const [chatImage, setChatImage] = useState<{ data: string; name: string } | null>(null);
   const [chatError, setChatError] = useState("");
+  const [activeChatImage, setActiveChatImage] = useState<{ data: string; name: string } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
@@ -3111,12 +3112,32 @@ export const App = (): ReactElement => {
     });
   };
 
+  const mentionMatch = chatText.match(/(^|\s)@([^\s@]*)$/u);
+  const mentionQuery = mentionMatch?.[2]?.toLocaleLowerCase();
+  const mentionCandidates = (isConnected ? [state.remoteUserName, state.localUserName] : [state.localUserName])
+    .filter((name, index, names) => name && names.indexOf(name) === index)
+    .filter((name) => mentionQuery !== undefined && name.toLocaleLowerCase().includes(mentionQuery));
+  const insertMention = (name: string): void => {
+    setChatText((current) => current.replace(/(^|\s)@([^\s@]*)$/u, `$1@${name} `));
+  };
+
   const participantsCount = isConnected ? 2 : 1;
 
   return (
     <div className={`discord-app-layout ${isFullscreen ? "is-app-fullscreen" : ""}`}>
       {/* Background Remote System Audio Player */}
       <RemoteAudio stream={session.remoteStream} muted={remoteMuted} volume={remoteVolume} />
+
+      {activeChatImage && (
+        <div className="chat-image-viewer" role="dialog" aria-modal="true" aria-label={`Imagem: ${activeChatImage.name}`} onClick={() => setActiveChatImage(null)}>
+          <div className="chat-image-viewer-toolbar" onClick={(event) => event.stopPropagation()}>
+            <span>{activeChatImage.name}</span>
+            <button type="button" aria-label="Fechar imagem" onClick={() => setActiveChatImage(null)}><XCloseIcon /></button>
+          </div>
+          <img src={activeChatImage.data} alt={activeChatImage.name} onClick={(event) => event.stopPropagation()} />
+          <span className="chat-image-viewer-hint">Clique fora da imagem para fechar</span>
+        </div>
+      )}
 
       {/* Integrated Titlebar & Top Header */}
       <header className="discord-topbar window-drag-region" onDoubleClick={handleMaximizeWindow}>
@@ -4411,9 +4432,9 @@ export const App = (): ReactElement => {
                     </div>
                     {msg.text && <p className="chat-text">{renderChatText(msg.text)}</p>}
                     {msg.imageData && (
-                      <a className="chat-image-link" href={msg.imageData} target="_blank" rel="noreferrer" title={msg.imageName ?? "Abrir imagem"}>
+                      <button className="chat-image-link" type="button" onClick={() => setActiveChatImage({ data: msg.imageData!, name: msg.imageName ?? "Imagem enviada no chat" })} title="Abrir imagem em tela cheia">
                         <img className="chat-image" src={msg.imageData} alt={msg.imageName ?? "Imagem enviada no chat"} />
-                      </a>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -4447,6 +4468,18 @@ export const App = (): ReactElement => {
                 placeholder="Conversar no canal…"
                 title={`Use @${isConnected ? state.remoteUserName : "Usuario"} para mencionar`}
               />
+              {mentionQuery !== undefined && (
+                <div className="chat-mention-menu" role="listbox" aria-label="Mencionar participante">
+                  <div className="chat-mention-menu-label">Membros da sessão</div>
+                  {mentionCandidates.length > 0 ? mentionCandidates.map((name) => {
+                    const isLocal = name === state.localUserName;
+                    return <button key={name} type="button" className="chat-mention-option" role="option" onClick={() => insertMention(name)}>
+                      <UserAvatar name={name} avatar={isLocal ? state.localUserAvatar : state.remoteUserAvatar} isSelf={isLocal} className="chat-mention-avatar" />
+                      <span><strong>{name}</strong><small>{isLocal ? "Você" : "Conectado"}</small></span>
+                    </button>;
+                  }) : <span className="chat-mention-empty">Nenhum membro encontrado</span>}
+                </div>
+              )}
               <button className="chat-send-btn" type="submit" disabled={!chatText.trim() && !chatImage} aria-label="Enviar">
                 <SendIcon />
               </button>
