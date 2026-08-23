@@ -3087,6 +3087,9 @@ button:disabled {
 @keyframes mentionMenuIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
 
 /* ─── Sidebar & chat polish ─── */
+.discord-sidebar { overflow-x: hidden; overscroll-behavior: contain; }
+.discord-sidebar > * { min-width: 0; }
+.sidebar-room-card, .participant-item, .sidebar-voice-connected-bar { max-width: 100%; }
 .sidebar-header-row { min-height: 30px; padding: 0 3px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.055); }
 .sidebar-title-group { display: flex; align-items: center; gap: 7px; }
 .sidebar-count-badge { display: grid; min-width: 18px; height: 18px; padding: 0 5px; place-items: center; border-radius: 99px; color: #8df2b4; background: rgba(35,165,90,.14); border: 1px solid rgba(87,242,135,.22); font-size: .63rem; font-weight: 800; }
