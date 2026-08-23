@@ -8,7 +8,7 @@ const repository = 'FaxBRz/SFScreen_Forko';
 const rootDirectory = process.cwd();
 const packagePath = path.join(rootDirectory, 'package.json');
 const lockPath = path.join(rootDirectory, 'package-lock.json');
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmCliPath = process.env.npm_execpath;
 const gitCommand = process.platform === 'win32' ? 'git.exe' : 'git';
 const ghCommand = process.platform === 'win32' ? 'gh.exe' : 'gh';
 
@@ -32,6 +32,10 @@ const run = (command, args, options = {}) => {
 };
 
 const output = (command, args) => run(command, args, { capture: true }).stdout.trim();
+const runNpm = (args) => {
+  if (!npmCliPath) throw new Error('Execute este script por meio de npm run release.');
+  return run(process.execPath, [npmCliPath, ...args]);
+};
 
 const parseVersion = (version) => {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
@@ -92,17 +96,17 @@ const repositoryInfo = JSON.parse(output(ghCommand, ['repo', 'view', repository,
 if (repositoryInfo.isPrivate) throw new Error('O update público exige que o repositório permaneça público.');
 
 console.log(`\nPreparando SFScreen ${tag} a partir da branch ${branch}...\n`);
-run(npmCommand, ['run', 'typecheck']);
-run(npmCommand, ['run', 'lint']);
-run(npmCommand, ['test']);
+runNpm(['run', 'typecheck']);
+runNpm(['run', 'lint']);
+runNpm(['test']);
 
 let versionChanged = false;
 let releaseCommitCreated = false;
 try {
   versionChanged = true;
-  run(npmCommand, ['version', version, '--no-git-tag-version']);
-  run(npmCommand, ['run', 'make']);
-  run(npmCommand, ['run', 'test:e2e:packaged']);
+  runNpm(['version', version, '--no-git-tag-version']);
+  runNpm(['run', 'make']);
+  runNpm(['run', 'test:e2e:packaged']);
 
   const artifactDirectory = path.join(rootDirectory, 'out', 'make', 'squirrel.windows', 'x64');
   const artifacts = [
