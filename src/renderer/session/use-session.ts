@@ -620,13 +620,13 @@ export const useSession = (): SessionModel => {
       const strong = processing.noiseSuppression === 'strong';
 
       if (context && microphoneHighPassRef.current) {
-        microphoneHighPassRef.current.frequency.setTargetAtTime(noiseEnabled ? (strong ? 90 : 70) : 20, now, 0.03);
+        microphoneHighPassRef.current.frequency.setTargetAtTime(noiseEnabled ? (strong ? 80 : 65) : 20, now, 0.03);
       }
       if (context && microphoneLowPassRef.current) {
-        microphoneLowPassRef.current.frequency.setTargetAtTime(noiseEnabled ? (strong ? 11_500 : 14_500) : 20_000, now, 0.03);
+        microphoneLowPassRef.current.frequency.setTargetAtTime(noiseEnabled ? (strong ? 13_500 : 16_000) : 20_000, now, 0.03);
       }
       if (context && microphoneCompressorRef.current) {
-        microphoneCompressorRef.current.ratio.setTargetAtTime(noiseEnabled ? (strong ? 3 : 2) : 1, now, 0.03);
+        microphoneCompressorRef.current.ratio.setTargetAtTime(noiseEnabled ? (strong ? 2.2 : 1.5) : 1, now, 0.03);
       }
       if (!noiseEnabled && context && microphoneGateRef.current) {
         microphoneGateRef.current.gain.setTargetAtTime(1, now, 0.01);
@@ -639,6 +639,36 @@ export const useSession = (): SessionModel => {
           echoCancellation: processing.echoCancellation,
           autoGainControl: processing.autoGainControl,
         }).catch(() => undefined);
+      }
+
+      const rawStream = rawMicrophoneStreamRef.current;
+      const processedStream = microphoneStreamRef.current;
+      if (!noiseEnabled && readMicrophoneVolume() >= 0.999 && context && rawStream && rawTrack && processedStream && processedStream !== rawStream) {
+        const currentContext = context;
+        const currentRawStream = rawStream;
+        const currentRawTrack = rawTrack;
+        const currentProcessedStream = processedStream;
+        void (async () => {
+          try {
+            await controllerRef.current?.replaceAudioTrack(currentRawTrack);
+          } catch {
+            return;
+          }
+          if (getEffectiveMicrophoneProcessing().noiseSuppression !== 'off') return;
+          if (microphoneGateIntervalRef.current !== undefined) {
+            window.clearInterval(microphoneGateIntervalRef.current);
+            microphoneGateIntervalRef.current = undefined;
+          }
+          currentProcessedStream.getTracks().forEach((track) => track.stop());
+          microphoneStreamRef.current = currentRawStream;
+          microphoneAudioContextRef.current = undefined;
+          microphoneGainRef.current = undefined;
+          microphoneGateRef.current = undefined;
+          microphoneHighPassRef.current = undefined;
+          microphoneLowPassRef.current = undefined;
+          microphoneCompressorRef.current = undefined;
+          if (currentContext.state !== 'closed') void currentContext.close().catch(() => undefined);
+        })();
       }
     };
     window.addEventListener(MICROPHONE_PROCESSING_CHANGE_EVENT, handleMicrophoneProcessingChange);
@@ -1389,81 +1419,89 @@ recordDiagnostic('audio-unavailable');
     let lowPassNode: BiquadFilterNode | undefined;
     let compressorNode: DynamicsCompressorNode | undefined;
     let gateInterval: number | undefined;
+    const microphoneVolume = readMicrophoneVolume();
+    const needsAudioGraph = noiseEnabled || Math.abs(microphoneVolume - 1) > 0.001;
     try {
       const AudioContextConstructor = window.AudioContext;
-      if (AudioContextConstructor) {
+      if (AudioContextConstructor && needsAudioGraph) {
         audioContext = new AudioContextConstructor();
         if (audioContext.state === 'suspended') await audioContext.resume();
         const source = audioContext.createMediaStreamSource(rawStream);
         const destination = audioContext.createMediaStreamDestination();
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.58;
-        highPassNode = audioContext.createBiquadFilter();
-        highPassNode.type = 'highpass';
-        highPassNode.frequency.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === 'strong' ? 90 : 70) : 20, audioContext.currentTime);
-        highPassNode.Q.setValueAtTime(0.72, audioContext.currentTime);
-        lowPassNode = audioContext.createBiquadFilter();
-        lowPassNode.type = 'lowpass';
-        lowPassNode.frequency.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === 'strong' ? 11_500 : 14_500) : 20_000, audioContext.currentTime);
-        lowPassNode.Q.setValueAtTime(0.3, audioContext.currentTime);
-        gateNode = audioContext.createGain();
-        gateNode.gain.setValueAtTime(1, audioContext.currentTime);
-        compressorNode = audioContext.createDynamicsCompressor();
-        compressorNode.threshold.setValueAtTime(-24, audioContext.currentTime);
-        compressorNode.knee.setValueAtTime(18, audioContext.currentTime);
-        compressorNode.ratio.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === 'strong' ? 3 : 2) : 1, audioContext.currentTime);
-        compressorNode.attack.setValueAtTime(0.004, audioContext.currentTime);
-        compressorNode.release.setValueAtTime(0.18, audioContext.currentTime);
         gainNode = audioContext.createGain();
-        gainNode.gain.setValueAtTime(readMicrophoneVolume(), audioContext.currentTime);
+        gainNode.gain.setValueAtTime(microphoneVolume, audioContext.currentTime);
 
-        source.connect(highPassNode);
-        highPassNode.connect(lowPassNode);
-        lowPassNode.connect(analyser);
-        analyser.connect(gateNode);
-        gateNode.connect(compressorNode);
-        compressorNode.connect(gainNode);
+        if (noiseEnabled) {
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.68;
+          highPassNode = audioContext.createBiquadFilter();
+          highPassNode.type = 'highpass';
+          highPassNode.frequency.setValueAtTime(processing.noiseSuppression === 'strong' ? 80 : 65, audioContext.currentTime);
+          highPassNode.Q.setValueAtTime(0.66, audioContext.currentTime);
+          lowPassNode = audioContext.createBiquadFilter();
+          lowPassNode.type = 'lowpass';
+          lowPassNode.frequency.setValueAtTime(processing.noiseSuppression === 'strong' ? 13_500 : 16_000, audioContext.currentTime);
+          lowPassNode.Q.setValueAtTime(0.25, audioContext.currentTime);
+          gateNode = audioContext.createGain();
+          gateNode.gain.setValueAtTime(1, audioContext.currentTime);
+          compressorNode = audioContext.createDynamicsCompressor();
+          compressorNode.threshold.setValueAtTime(-26, audioContext.currentTime);
+          compressorNode.knee.setValueAtTime(22, audioContext.currentTime);
+          compressorNode.ratio.setValueAtTime(processing.noiseSuppression === 'strong' ? 2.2 : 1.5, audioContext.currentTime);
+          compressorNode.attack.setValueAtTime(0.008, audioContext.currentTime);
+          compressorNode.release.setValueAtTime(0.24, audioContext.currentTime);
+
+          source.connect(highPassNode);
+          highPassNode.connect(lowPassNode);
+          lowPassNode.connect(analyser);
+          analyser.connect(gateNode);
+          gateNode.connect(compressorNode);
+          compressorNode.connect(gainNode);
+
+          const samples = new Uint8Array(analyser.fftSize);
+          let noiseFloor = 0.006;
+          let hangoverFrames = 0;
+          let gateOpen = true;
+          gateInterval = window.setInterval(() => {
+            if (!audioContext || audioContext.state === 'closed' || !gateNode) return;
+            const current = microphoneProcessingRef.current;
+            if (current.noiseSuppression === 'off') {
+              if (!gateOpen) gateNode.gain.setTargetAtTime(1, audioContext.currentTime, 0.006);
+              gateOpen = true;
+              return;
+            }
+
+            analyser.getByteTimeDomainData(samples);
+            let energy = 0;
+            for (const sample of samples) {
+              const normalized = (sample - 128) / 128;
+              energy += normalized * normalized;
+            }
+            const rms = Math.sqrt(energy / samples.length);
+            const strongSuppression = current.noiseSuppression === 'strong';
+            if (current.autoSensitivity && rms < Math.max(0.032, noiseFloor * 1.6)) {
+              noiseFloor = (noiseFloor * 0.975) + (rms * 0.025);
+            }
+            const automaticThreshold = Math.max(0.006, Math.min(strongSuppression ? 0.038 : 0.028, noiseFloor * (strongSuppression ? 2.25 : 1.75)));
+            const manualThreshold = 0.004 + ((1 - current.sensitivity) * 0.052);
+            const threshold = current.autoSensitivity ? automaticThreshold : manualThreshold;
+            const voiceDetected = rms >= threshold;
+
+            if (voiceDetected) hangoverFrames = strongSuppression ? 28 : 22;
+            else if (hangoverFrames > 0) hangoverFrames -= 1;
+            const shouldOpen = voiceDetected || hangoverFrames > 0;
+            if (shouldOpen !== gateOpen) {
+              gateOpen = shouldOpen;
+              const closedLevel = strongSuppression ? 0.1 : 0.28;
+              gateNode.gain.setTargetAtTime(gateOpen ? 1 : closedLevel, audioContext.currentTime, gateOpen ? 0.004 : 0.12);
+            }
+          }, 16);
+        } else {
+          // Keep the Natural profile transparent: only apply the user's gain when needed.
+          source.connect(gainNode);
+        }
         gainNode.connect(destination);
-
-        const samples = new Uint8Array(analyser.fftSize);
-        let noiseFloor = 0.008;
-        let hangoverFrames = 0;
-        let gateOpen = true;
-        gateInterval = window.setInterval(() => {
-          if (!audioContext || audioContext.state === 'closed' || !gateNode) return;
-          const current = microphoneProcessingRef.current;
-          if (current.noiseSuppression === 'off') {
-            if (!gateOpen) gateNode.gain.setTargetAtTime(1, audioContext.currentTime, 0.008);
-            gateOpen = true;
-            return;
-          }
-
-          analyser.getByteTimeDomainData(samples);
-          let energy = 0;
-          for (const sample of samples) {
-            const normalized = (sample - 128) / 128;
-            energy += normalized * normalized;
-          }
-          const rms = Math.sqrt(energy / samples.length);
-          const strongSuppression = current.noiseSuppression === 'strong';
-          if (current.autoSensitivity && rms < Math.max(0.04, noiseFloor * 1.8)) {
-            noiseFloor = (noiseFloor * 0.96) + (rms * 0.04);
-          }
-          const automaticThreshold = Math.max(0.009, Math.min(strongSuppression ? 0.06 : 0.045, noiseFloor * (strongSuppression ? 3.1 : 2.35)));
-          const manualThreshold = 0.006 + ((1 - current.sensitivity) * 0.074);
-          const threshold = current.autoSensitivity ? automaticThreshold : manualThreshold;
-          const voiceDetected = rms >= threshold;
-
-          if (voiceDetected) hangoverFrames = strongSuppression ? 9 : 7;
-          else if (hangoverFrames > 0) hangoverFrames -= 1;
-          const shouldOpen = voiceDetected || hangoverFrames > 0;
-          if (shouldOpen !== gateOpen) {
-            gateOpen = shouldOpen;
-            const closedLevel = strongSuppression ? 0.025 : 0.14;
-            gateNode.gain.setTargetAtTime(gateOpen ? 1 : closedLevel, audioContext.currentTime, gateOpen ? 0.006 : 0.045);
-          }
-        }, 24);
 
         const processedTrack = destination.stream.getAudioTracks()[0];
         if (processedTrack) stream = new MediaStream([processedTrack]);

@@ -1370,33 +1370,39 @@ const SettingsModal = ({
 
       const analyser = context.createAnalyser();
       analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.72;
+      analyser.smoothingTimeConstant = 0.74;
       const source = context.createMediaStreamSource(stream);
       const highPass = context.createBiquadFilter();
       highPass.type = "highpass";
-      highPass.frequency.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === "strong" ? 90 : 70) : 20, context.currentTime);
-      highPass.Q.setValueAtTime(0.72, context.currentTime);
+      highPass.frequency.setValueAtTime(processing.noiseSuppression === "strong" ? 80 : 65, context.currentTime);
+      highPass.Q.setValueAtTime(0.66, context.currentTime);
       const lowPass = context.createBiquadFilter();
       lowPass.type = "lowpass";
-      lowPass.frequency.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === "strong" ? 11_500 : 14_500) : 20_000, context.currentTime);
-      lowPass.Q.setValueAtTime(0.3, context.currentTime);
+      lowPass.frequency.setValueAtTime(processing.noiseSuppression === "strong" ? 13_500 : 16_000, context.currentTime);
+      lowPass.Q.setValueAtTime(0.25, context.currentTime);
       const gate = context.createGain();
       gate.gain.setValueAtTime(1, context.currentTime);
       const compressor = context.createDynamicsCompressor();
-      compressor.threshold.setValueAtTime(-24, context.currentTime);
-      compressor.knee.setValueAtTime(18, context.currentTime);
-      compressor.ratio.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === "strong" ? 3 : 2) : 1, context.currentTime);
-      compressor.attack.setValueAtTime(0.004, context.currentTime);
-      compressor.release.setValueAtTime(0.18, context.currentTime);
+      compressor.threshold.setValueAtTime(-26, context.currentTime);
+      compressor.knee.setValueAtTime(22, context.currentTime);
+      compressor.ratio.setValueAtTime(processing.noiseSuppression === "strong" ? 2.2 : 1.5, context.currentTime);
+      compressor.attack.setValueAtTime(0.008, context.currentTime);
+      compressor.release.setValueAtTime(0.24, context.currentTime);
       const monitorGain = context.createGain();
       const monitorDestination = context.createMediaStreamDestination();
       monitorGain.gain.setValueAtTime(microphoneVolumeRef.current, context.currentTime);
-      source.connect(highPass);
-      highPass.connect(lowPass);
-      lowPass.connect(analyser);
-      analyser.connect(gate);
-      gate.connect(compressor);
-      compressor.connect(monitorGain);
+      if (noiseEnabled) {
+        source.connect(highPass);
+        highPass.connect(lowPass);
+        lowPass.connect(analyser);
+        analyser.connect(gate);
+        gate.connect(compressor);
+        compressor.connect(monitorGain);
+      } else {
+        // Natural/off must be a faithful monitor, without filters, gate or compressor.
+        source.connect(analyser);
+        source.connect(monitorGain);
+      }
       monitorGain.connect(monitorDestination);
       microphoneTestGainRef.current = monitorGain;
 
@@ -1417,7 +1423,7 @@ const SettingsModal = ({
       await player.play();
       if (runId !== microphoneTestRunRef.current) return;
       const samples = new Uint8Array(analyser.fftSize);
-      let noiseFloor = 0.008;
+      let noiseFloor = 0.006;
       let hangoverFrames = 0;
       let gateOpen = true;
 
@@ -1431,19 +1437,19 @@ const SettingsModal = ({
         }
         const rms = Math.sqrt(energy / samples.length);
         const strongSuppression = processing.noiseSuppression === "strong";
-        if (noiseEnabled && processing.autoSensitivity && rms < Math.max(0.04, noiseFloor * 1.8)) {
-          noiseFloor = (noiseFloor * 0.96) + (rms * 0.04);
+        if (noiseEnabled && processing.autoSensitivity && rms < Math.max(0.032, noiseFloor * 1.6)) {
+          noiseFloor = (noiseFloor * 0.975) + (rms * 0.025);
         }
-        const automaticThreshold = Math.max(0.009, Math.min(strongSuppression ? 0.06 : 0.045, noiseFloor * (strongSuppression ? 3.1 : 2.35)));
-        const manualThreshold = 0.006 + ((1 - processing.sensitivity) * 0.074);
+        const automaticThreshold = Math.max(0.006, Math.min(strongSuppression ? 0.038 : 0.028, noiseFloor * (strongSuppression ? 2.25 : 1.75)));
+        const manualThreshold = 0.004 + ((1 - processing.sensitivity) * 0.052);
         const threshold = processing.autoSensitivity ? automaticThreshold : manualThreshold;
         const voiceDetected = !noiseEnabled || rms >= threshold;
-        if (voiceDetected) hangoverFrames = strongSuppression ? 9 : 7;
+        if (voiceDetected) hangoverFrames = strongSuppression ? 28 : 22;
         else if (hangoverFrames > 0) hangoverFrames -= 1;
         const shouldOpen = voiceDetected || hangoverFrames > 0;
         if (shouldOpen !== gateOpen) {
           gateOpen = shouldOpen;
-          gate.gain.setTargetAtTime(gateOpen ? 1 : (strongSuppression ? 0.025 : 0.14), context.currentTime, gateOpen ? 0.006 : 0.045);
+          gate.gain.setTargetAtTime(gateOpen ? 1 : (strongSuppression ? 0.1 : 0.28), context.currentTime, gateOpen ? 0.004 : 0.12);
         }
         setMicrophoneLevel(gateOpen ? Math.min(100, Math.round(rms * 360)) : 0);
         microphoneTestFrameRef.current = window.requestAnimationFrame(updateLevel);

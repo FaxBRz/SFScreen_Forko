@@ -444,7 +444,7 @@ describe('SFScreen Discord layout', () => {
     }
   });
 
-  it('tests the selected microphone and stops its capture', async () => {
+  it('monitors the natural microphone without a processing chain and stops its capture', async () => {
     const originalMediaDevices = navigator.mediaDevices;
     const originalAudioContext = Object.getOwnPropertyDescriptor(globalThis, 'AudioContext');
     const originalSetSinkId = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'setSinkId');
@@ -457,6 +457,8 @@ describe('SFScreen Discord layout', () => {
     const testStream = { getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream;
     const getUserMedia = vi.fn(async () => testStream);
     const close = vi.fn(async () => undefined);
+    const sourceConnect = vi.fn();
+    const filterConnect = vi.fn();
 
     class FakeAudioContext {
       state: AudioContextState = 'running';
@@ -469,7 +471,7 @@ describe('SFScreen Discord layout', () => {
         getByteTimeDomainData: vi.fn((samples: Uint8Array) => samples.fill(128)),
         connect: vi.fn(),
       }));
-      createMediaStreamSource = vi.fn(() => ({ connect: vi.fn() }));
+      createMediaStreamSource = vi.fn(() => ({ connect: sourceConnect }));
       createGain = vi.fn(() => ({
         gain: { setValueAtTime: vi.fn(), setTargetAtTime: vi.fn() },
         connect: vi.fn(),
@@ -478,7 +480,7 @@ describe('SFScreen Discord layout', () => {
         type: 'highpass',
         frequency: { setValueAtTime: vi.fn() },
         Q: { setValueAtTime: vi.fn() },
-        connect: vi.fn(),
+        connect: filterConnect,
       }));
       createDynamicsCompressor = vi.fn(() => ({
         threshold: { setValueAtTime: vi.fn() },
@@ -500,6 +502,7 @@ describe('SFScreen Discord layout', () => {
     Object.defineProperty(window, 'requestAnimationFrame', { configurable: true, value: vi.fn(() => 1) });
     Object.defineProperty(window, 'cancelAnimationFrame', { configurable: true, value: vi.fn() });
     localStorage.setItem('sfscreen_preferred_audio_output', 'default');
+    localStorage.setItem('sfscreen_input_profile', 'studio');
 
     try {
       const current = model();
@@ -515,6 +518,8 @@ describe('SFScreen Discord layout', () => {
       expect(screen.getByRole('meter', { name: /nível do microfone/i })).toBeTruthy();
       expect(setSinkId).toHaveBeenCalledWith('default');
       expect(playSpy).toHaveBeenCalled();
+      expect(sourceConnect).toHaveBeenCalledTimes(2);
+      expect(filterConnect).not.toHaveBeenCalled();
 
       fireEvent.click(stopButton);
       expect(stopTrack).toHaveBeenCalledOnce();
