@@ -16,7 +16,10 @@ export default defineConfig(() => {
         fileName: () => 'main.js',
       },
       rollupOptions: {
-        external: ['electron', 'loopback-capture'],
+        // The main process runs in Node/Electron, not in the browser. Keeping
+        // Node built-ins external prevents Vite from replacing them with empty
+        // browser shims in the standalone portable build.
+        external: ['electron', 'loopback-capture', /^node:/],
       },
     },
   };

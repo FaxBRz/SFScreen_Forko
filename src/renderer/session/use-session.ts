@@ -1387,6 +1387,10 @@ recordDiagnostic('audio-unavailable');
     controllerRef.current?.sendRemoteInput(input);
   }, []);
 
+  const sendRemoteClipboard = useCallback((text: string): void => {
+    if (text.trim()) controllerRef.current?.sendRemoteClipboard(text);
+  }, []);
+
   const switchMonitorByViewer = useCallback(async (monitorIndex: number): Promise<void> => {
     try {
       const res = await window.sfscreen.listScreenSources();
