@@ -498,7 +498,6 @@ export class SessionServer {
   async discoverRooms(status: TailscaleStatus): Promise<RoomSummary[]> {
     if (status.state !== 'ready') throw fault('tailscale-unavailable', status.message ?? 'Tailscale indisponível.', true);
     const peers = status.peers.filter((peer) => peer.online).slice(0, 16);
-    let protocolMismatchFound = false;
     const rooms = await Promise.all(peers.map(async (peer): Promise<RoomSummary | undefined> => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 1_500);
@@ -506,10 +505,7 @@ export class SessionServer {
         const result = await this.request(tailscaleHttpUrl(peer.ip, this.port, '/v1/room/info'), {
           method: 'POST', body: JSON.stringify({ protocolVersion: sessionProtocolVersion }), headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
         });
-        if (result.status === 426) {
-          protocolMismatchFound = true;
-          return undefined;
-        }
+        if (result.status === 426) return undefined;
         if (!result.ok) return undefined;
         const body = envelope(await result.json());
         const room = body?.room;
@@ -531,9 +527,7 @@ export class SessionServer {
         clearTimeout(timeout);
       }
     }));
-    const discovered = rooms.filter((room): room is RoomSummary => room !== undefined);
-    if (discovered.length === 0 && protocolMismatchFound) throw fault('update-required', protocolUpdateMessage, false);
-    return discovered;
+    return rooms.filter((room): room is RoomSummary => room !== undefined);
   }
 
   async findRoom(roomId: string, password: string, status: TailscaleStatus): Promise<DiscoveredSession> {
@@ -556,7 +550,6 @@ export class SessionServer {
     if (!isSessionCode(code)) throw fault('invalid-request', 'Digite um código válido no formato XXX-XXX-X.');
     if (status.state !== 'ready') throw fault('tailscale-unavailable', status.message ?? 'Tailscale indisponível.', true);
     const peers = status.peers.filter((peer) => peer.online).slice(0, 16);
-    let protocolMismatchFound = false;
     let full = false;
     let badPassword = false;
     const results = await Promise.all(peers.map(async (peer): Promise<DiscoveredRoomSession | undefined> => {
@@ -569,10 +562,7 @@ export class SessionServer {
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
         });
-        if (result.status === 426) {
-          protocolMismatchFound = true;
-          return undefined;
-        }
+        if (result.status === 426) return undefined;
         if (result.status === 409) {
           full = true;
           return undefined;
@@ -583,10 +573,7 @@ export class SessionServer {
         }
         if (!result.ok) return undefined;
         const body = envelope(await result.json());
-        if (!body || !isSessionDescription(body.offer, 'offer') || !isRoomConfigV2(body.room)) {
-          protocolMismatchFound = true;
-          return undefined;
-        }
+        if (!body || !isSessionDescription(body.offer, 'offer') || !isRoomConfigV2(body.room)) return undefined;
         const wireRoom = body.room as unknown as Record<string, unknown>;
         const memberCount = typeof wireRoom.memberCount === 'number' && Number.isSafeInteger(wireRoom.memberCount) && wireRoom.memberCount >= 1 && wireRoom.memberCount <= roomMaxCapacity
           ? wireRoom.memberCount
@@ -614,7 +601,6 @@ export class SessionServer {
     if (rooms.length === 1) return rooms[0];
     if (badPassword) throw fault('invalid-request', 'Senha incorreta.', true);
     if (full) throw fault('room-full', 'A sala já possui quatro participantes.', true);
-    if (protocolMismatchFound) throw fault('update-required', protocolUpdateMessage, false);
     throw fault('session-not-found', 'Nenhuma sala foi encontrada para este código.', true);
   }
 

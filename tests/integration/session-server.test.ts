@@ -106,6 +106,14 @@ describe('session server integration', () => {
     await expect(server.find('222-222-2', loopbackStatus)).rejects.toMatchObject({ sessionError: { code: 'update-required' } });
   });
 
+  it('does not treat an unrelated older peer as a room-code update requirement', async () => {
+    const server = new SessionServer(async () => loopbackStatus, { fetch: async () => new Response(undefined, { status: 426 }), isAllowedIp: () => true });
+    servers.push(server);
+
+    await expect(server.discoverRooms(loopbackStatus)).resolves.toEqual([]);
+    await expect(server.findRoomByCode('222-222-2', undefined, loopbackStatus)).rejects.toMatchObject({ sessionError: { code: 'session-not-found' } });
+  });
+
   it('uses protocol V6 for signaling and room-code envelopes', async () => {
     const bodies: Record<string, unknown>[] = [];
     const server = new SessionServer(async () => loopbackStatus, {
