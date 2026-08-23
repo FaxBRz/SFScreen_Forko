@@ -3270,7 +3270,6 @@ export const App = (): ReactElement => {
             <div className="sidebar-header-row">
               <div className="sidebar-title-group">
                 <div className="section-title">Pessoas na sala ({participantsCount})</div>
-                <span className="sidebar-count-badge">{participantsCount}</span>
               </div>
               <button
                 className="icon-action-button sidebar-collapse-btn"

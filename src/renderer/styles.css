@@ -3092,7 +3092,6 @@ button:disabled {
 .sidebar-room-card, .participant-item, .sidebar-voice-connected-bar { max-width: 100%; }
 .sidebar-header-row { min-height: 30px; padding: 0 3px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.055); }
 .sidebar-title-group { display: flex; align-items: center; gap: 7px; }
-.sidebar-count-badge { display: grid; min-width: 18px; height: 18px; padding: 0 5px; place-items: center; border-radius: 99px; color: #8df2b4; background: rgba(35,165,90,.14); border: 1px solid rgba(87,242,135,.22); font-size: .63rem; font-weight: 800; }
 .sidebar-participant-label { margin: 2px 4px -9px; color: #6f7783; font-size: .61rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .participant-list { gap: 6px; }
 .participant-item { border-radius: 10px; background: rgba(255,255,255,.025); border-color: rgba(255,255,255,.025); transition: background .15s ease,border-color .15s ease,transform .15s ease; }
