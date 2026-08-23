@@ -310,6 +310,7 @@ describe('SFScreen Discord layout', () => {
 
 
   it('opens and navigates settings tabs', () => {
+    localStorage.setItem('sfscreen_input_profile', 'voice-isolation');
     const current = model();
     vi.mocked(useSession).mockReturnValue(current);
     render(<App />);
@@ -328,6 +329,10 @@ describe('SFScreen Discord layout', () => {
     // Switch to Media tab
     fireEvent.click(screen.getByRole('button', { name: /vídeo & áudio/i }));
     expect(screen.getByText('Voz e Vídeo')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: /isolamento de voz/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: /personalizado/i }));
+    expect(screen.getByRole('combobox', { name: /supressão de ruído/i })).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: /cancelamento de eco/i })).toBeTruthy();
     const microphoneVolume = screen.getByRole('slider', { name: /volume do microfone/i });
     const outputVolume = screen.getByRole('slider', { name: /volume do alto-falante/i });
     fireEvent.change(microphoneVolume, { target: { value: '0.65' } });
@@ -336,6 +341,7 @@ describe('SFScreen Discord layout', () => {
     expect(localStorage.getItem('sfscreen_output_volume')).toBe('0.7');
     fireEvent.change(microphoneVolume, { target: { value: '1' } });
     fireEvent.change(outputVolume, { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('radio', { name: /isolamento de voz/i }));
   });
 
   it('lists audio outputs and saves the selected headset', async () => {
@@ -461,10 +467,25 @@ describe('SFScreen Discord layout', () => {
         fftSize: 256,
         smoothingTimeConstant: 0,
         getByteTimeDomainData: vi.fn((samples: Uint8Array) => samples.fill(128)),
+        connect: vi.fn(),
       }));
       createMediaStreamSource = vi.fn(() => ({ connect: vi.fn() }));
       createGain = vi.fn(() => ({
         gain: { setValueAtTime: vi.fn(), setTargetAtTime: vi.fn() },
+        connect: vi.fn(),
+      }));
+      createBiquadFilter = vi.fn(() => ({
+        type: 'highpass',
+        frequency: { setValueAtTime: vi.fn() },
+        Q: { setValueAtTime: vi.fn() },
+        connect: vi.fn(),
+      }));
+      createDynamicsCompressor = vi.fn(() => ({
+        threshold: { setValueAtTime: vi.fn() },
+        knee: { setValueAtTime: vi.fn() },
+        ratio: { setValueAtTime: vi.fn() },
+        attack: { setValueAtTime: vi.fn() },
+        release: { setValueAtTime: vi.fn() },
         connect: vi.fn(),
       }));
       createMediaStreamDestination = vi.fn(() => ({ stream: {} }));

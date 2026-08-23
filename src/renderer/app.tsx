@@ -15,13 +15,23 @@ import type { LocalRoomConfig, RoomSummary } from "../shared/session/types";
 import { type SessionModel, type StreamFps, type StreamResolution, useSession } from "./session/use-session";
 import {
   AUDIO_OUTPUT_CHANGE_EVENT,
+  MICROPHONE_PROCESSING_CHANGE_EVENT,
   MICROPHONE_VOLUME_CHANGE_EVENT,
   OUTPUT_VOLUME_CHANGE_EVENT,
+  type InputProfile,
+  type NoiseSuppressionLevel,
+  getEffectiveMicrophoneProcessing,
   readMicrophoneVolume,
+  readMicrophoneProcessingPreferences,
   readOutputVolume,
   readPreferredAudioOutput,
   saveAudioOutputPreference,
+  saveAutoSensitivity,
+  saveEchoCancellation,
+  saveInputProfile,
+  saveInputSensitivity,
   saveMicrophoneVolume,
+  saveNoiseSuppression,
   saveOutputVolume,
 } from "./audio-preferences";
 import sfLogoPng from "./assets/icon.png";
@@ -349,6 +359,18 @@ const useAudioVolumePreference = (
   }, [eventName]);
 
   return value;
+};
+
+const useMicrophoneProcessingPreferences = (): ReturnType<typeof readMicrophoneProcessingPreferences> => {
+  const [preferences, setPreferences] = useState(readMicrophoneProcessingPreferences);
+
+  useEffect(() => {
+    const refresh = (): void => setPreferences(readMicrophoneProcessingPreferences());
+    window.addEventListener(MICROPHONE_PROCESSING_CHANGE_EVENT, refresh);
+    return () => window.removeEventListener(MICROPHONE_PROCESSING_CHANGE_EVENT, refresh);
+  }, []);
+
+  return preferences;
 };
 
 /* ─── Video Renderer ─── */
@@ -1174,6 +1196,7 @@ const SettingsModal = ({
   const preferredAudioOutput = usePreferredAudioOutput();
   const microphoneVolume = useAudioVolumePreference(readMicrophoneVolume, MICROPHONE_VOLUME_CHANGE_EVENT);
   const outputVolume = useAudioVolumePreference(readOutputVolume, OUTPUT_VOLUME_CHANGE_EVENT);
+  const microphoneProcessing = useMicrophoneProcessingPreferences();
   const microphoneVolumeRef = useRef(microphoneVolume);
   const [microphoneTestStatus, setMicrophoneTestStatus] = useState<"idle" | "starting" | "active" | "error">("idle");
   const [microphoneLevel, setMicrophoneLevel] = useState(0);
@@ -1324,12 +1347,14 @@ const SettingsModal = ({
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("media-unavailable");
       }
+      const processing = getEffectiveMicrophoneProcessing();
+      const noiseEnabled = processing.noiseSuppression !== "off";
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: preferredMicrophone === "default" ? "default" : { exact: preferredMicrophone },
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+          echoCancellation: processing.echoCancellation,
+          noiseSuppression: noiseEnabled,
+          autoGainControl: processing.autoGainControl,
         },
         video: false,
       });
@@ -1347,11 +1372,31 @@ const SettingsModal = ({
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.72;
       const source = context.createMediaStreamSource(stream);
+      const highPass = context.createBiquadFilter();
+      highPass.type = "highpass";
+      highPass.frequency.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === "strong" ? 90 : 70) : 20, context.currentTime);
+      highPass.Q.setValueAtTime(0.72, context.currentTime);
+      const lowPass = context.createBiquadFilter();
+      lowPass.type = "lowpass";
+      lowPass.frequency.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === "strong" ? 11_500 : 14_500) : 20_000, context.currentTime);
+      lowPass.Q.setValueAtTime(0.3, context.currentTime);
+      const gate = context.createGain();
+      gate.gain.setValueAtTime(1, context.currentTime);
+      const compressor = context.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-24, context.currentTime);
+      compressor.knee.setValueAtTime(18, context.currentTime);
+      compressor.ratio.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === "strong" ? 3 : 2) : 1, context.currentTime);
+      compressor.attack.setValueAtTime(0.004, context.currentTime);
+      compressor.release.setValueAtTime(0.18, context.currentTime);
       const monitorGain = context.createGain();
       const monitorDestination = context.createMediaStreamDestination();
       monitorGain.gain.setValueAtTime(microphoneVolumeRef.current, context.currentTime);
-      source.connect(monitorGain);
-      monitorGain.connect(analyser);
+      source.connect(highPass);
+      highPass.connect(lowPass);
+      lowPass.connect(analyser);
+      analyser.connect(gate);
+      gate.connect(compressor);
+      compressor.connect(monitorGain);
       monitorGain.connect(monitorDestination);
       microphoneTestGainRef.current = monitorGain;
 
@@ -1372,6 +1417,9 @@ const SettingsModal = ({
       await player.play();
       if (runId !== microphoneTestRunRef.current) return;
       const samples = new Uint8Array(analyser.fftSize);
+      let noiseFloor = 0.008;
+      let hangoverFrames = 0;
+      let gateOpen = true;
 
       const updateLevel = (): void => {
         if (runId !== microphoneTestRunRef.current) return;
@@ -1382,7 +1430,22 @@ const SettingsModal = ({
           energy += normalized * normalized;
         }
         const rms = Math.sqrt(energy / samples.length);
-        setMicrophoneLevel(Math.min(100, Math.round(rms * 360)));
+        const strongSuppression = processing.noiseSuppression === "strong";
+        if (noiseEnabled && processing.autoSensitivity && rms < Math.max(0.04, noiseFloor * 1.8)) {
+          noiseFloor = (noiseFloor * 0.96) + (rms * 0.04);
+        }
+        const automaticThreshold = Math.max(0.009, Math.min(strongSuppression ? 0.06 : 0.045, noiseFloor * (strongSuppression ? 3.1 : 2.35)));
+        const manualThreshold = 0.006 + ((1 - processing.sensitivity) * 0.074);
+        const threshold = processing.autoSensitivity ? automaticThreshold : manualThreshold;
+        const voiceDetected = !noiseEnabled || rms >= threshold;
+        if (voiceDetected) hangoverFrames = strongSuppression ? 9 : 7;
+        else if (hangoverFrames > 0) hangoverFrames -= 1;
+        const shouldOpen = voiceDetected || hangoverFrames > 0;
+        if (shouldOpen !== gateOpen) {
+          gateOpen = shouldOpen;
+          gate.gain.setTargetAtTime(gateOpen ? 1 : (strongSuppression ? 0.025 : 0.14), context.currentTime, gateOpen ? 0.006 : 0.045);
+        }
+        setMicrophoneLevel(gateOpen ? Math.min(100, Math.round(rms * 360)) : 0);
         microphoneTestFrameRef.current = window.requestAnimationFrame(updateLevel);
       };
 
@@ -1905,6 +1968,92 @@ const SettingsModal = ({
                 </div>
                 {microphoneTestError && <p className="discord-microphone-error" role="alert">{microphoneTestError}</p>}
                 <p className="discord-voice-help">Fale normalmente durante o teste: você ouvirá sua própria voz no alto-falante selecionado e o indicador mostrará o nível enviado.</p>
+
+                <div className="discord-input-processing">
+                  <h4>Perfil de entrada</h4>
+                  <div className="discord-input-profiles" role="radiogroup" aria-label="Perfil de entrada">
+                    {([
+                      ["voice-isolation", "Isolamento de voz", "Prioriza sua voz e reduz teclado, ventilador e ruído constante."],
+                      ["studio", "Estúdio", "Microfone aberto, sem gate, filtros ou tratamento adicional."],
+                      ["custom", "Personalizado", "Controle manual da supressão, sensibilidade e cancelamento de eco."],
+                    ] as Array<[InputProfile, string, string]>).map(([value, label, description]) => (
+                      <label key={value} className={`discord-profile-option ${microphoneProcessing.profile === value ? "is-selected" : ""}`}>
+                        <input
+                          type="radio"
+                          name="input-profile"
+                          value={value}
+                          checked={microphoneProcessing.profile === value}
+                          onChange={(event) => { stopMicrophoneTest(); saveInputProfile(event.target.value as InputProfile); }}
+                        />
+                        <span className="discord-radio-dot" />
+                        <span><strong>{label}</strong><small>{description}</small></span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {microphoneProcessing.profile === "custom" && (
+                    <div className="discord-custom-processing">
+                      <label className="discord-processing-row">
+                        <span><strong>Ajustar automaticamente a sensibilidade</strong><small>Detecta o piso de ruído e abre o microfone quando sua voz aparece.</small></span>
+                        <span className="switch-toggle-wrapper">
+                          <input
+                            aria-label="Ajustar automaticamente a sensibilidade"
+                            className="switch-toggle-input"
+                            type="checkbox"
+                            checked={microphoneProcessing.autoSensitivity}
+                            onChange={(event) => { stopMicrophoneTest(); saveAutoSensitivity(event.target.checked); }}
+                          />
+                          <span className={`switch-toggle-track ${microphoneProcessing.autoSensitivity ? "is-checked" : ""}`}><span className="switch-toggle-thumb" /></span>
+                        </span>
+                      </label>
+
+                      {!microphoneProcessing.autoSensitivity && (
+                        <label className="discord-processing-sensitivity">
+                          <span>Sensibilidade de entrada <output>{Math.round(microphoneProcessing.sensitivity * 100)}%</output></span>
+                          <input
+                            aria-label="Sensibilidade de entrada"
+                            className="discord-volume-slider"
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={microphoneProcessing.sensitivity}
+                            style={{ "--volume-progress": `${microphoneProcessing.sensitivity * 100}%` } as CSSProperties}
+                            onChange={(event) => { stopMicrophoneTest(); saveInputSensitivity(Number(event.target.value)); }}
+                          />
+                        </label>
+                      )}
+
+                      <label className="discord-processing-select-row">
+                        <span><strong>Supressão de ruído</strong><small>Combina o DSP do WebRTC com o filtro adaptativo local.</small></span>
+                        <select
+                          aria-label="Supressão de ruído"
+                          className="discord-processing-select"
+                          value={microphoneProcessing.noiseSuppression}
+                          onChange={(event) => { stopMicrophoneTest(); saveNoiseSuppression(event.target.value as NoiseSuppressionLevel); }}
+                        >
+                          <option value="off">Desativada</option>
+                          <option value="standard">Padrão</option>
+                          <option value="strong">Forte</option>
+                        </select>
+                      </label>
+
+                      <label className="discord-processing-row">
+                        <span><strong>Cancelamento de eco</strong><small>Evita que o áudio do alto-falante retorne para a chamada.</small></span>
+                        <span className="switch-toggle-wrapper">
+                          <input
+                            aria-label="Cancelamento de eco"
+                            className="switch-toggle-input"
+                            type="checkbox"
+                            checked={microphoneProcessing.echoCancellation}
+                            onChange={(event) => { stopMicrophoneTest(); saveEchoCancellation(event.target.checked); }}
+                          />
+                          <span className={`switch-toggle-track ${microphoneProcessing.echoCancellation ? "is-checked" : ""}`}><span className="switch-toggle-thumb" /></span>
+                        </span>
+                      </label>
+                    </div>
+                  )}
+                </div>
               </section>
 
               <section className="discord-media-section discord-video-summary" aria-labelledby="video-settings-title">

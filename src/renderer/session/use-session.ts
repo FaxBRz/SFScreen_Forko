@@ -6,7 +6,13 @@ import type { CameraState, ChatMessagePayload, RemoteControlConfig, RemoteContro
 import type { HostedRoom, RoomSummary, SessionError, TailscaleStatus } from '../../shared/session/types';
 import { initialSessionState, normalizeUserName, sessionReducer, type AudioPhase, type MediaPhase, type SessionUiState } from './session-machine';
 import { WebRtcSession } from './webrtc-session';
-import { MICROPHONE_VOLUME_CHANGE_EVENT, readMicrophoneVolume } from '../audio-preferences';
+import {
+  MICROPHONE_PROCESSING_CHANGE_EVENT,
+  MICROPHONE_VOLUME_CHANGE_EVENT,
+  getEffectiveMicrophoneProcessing,
+  readMicrophoneVolume,
+  type EffectiveMicrophoneProcessing,
+} from '../audio-preferences';
 
 const errorMessage = (error: SessionError | Error | unknown): string => {
   if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') return error.message;
@@ -510,6 +516,12 @@ export const useSession = (): SessionModel => {
   const rawMicrophoneStreamRef = useRef<MediaStream | undefined>(undefined);
   const microphoneAudioContextRef = useRef<AudioContext | undefined>(undefined);
   const microphoneGainRef = useRef<GainNode | undefined>(undefined);
+  const microphoneGateRef = useRef<GainNode | undefined>(undefined);
+  const microphoneHighPassRef = useRef<BiquadFilterNode | undefined>(undefined);
+  const microphoneLowPassRef = useRef<BiquadFilterNode | undefined>(undefined);
+  const microphoneCompressorRef = useRef<DynamicsCompressorNode | undefined>(undefined);
+  const microphoneGateIntervalRef = useRef<number | undefined>(undefined);
+  const microphoneProcessingRef = useRef<EffectiveMicrophoneProcessing>(getEffectiveMicrophoneProcessing());
   const activeRoomRef = useRef<HostedRoom | undefined>(undefined);
   const roomCallActiveRef = useRef(false);
   const [resolution, setResolutionState] = useState<StreamResolution>(getSavedStreamResolution);
@@ -568,11 +580,19 @@ export const useSession = (): SessionModel => {
   const switchMonitorByViewerRef = useRef<((monitorIndex: number) => Promise<void>) | undefined>(undefined);
 
   const stopMicrophoneCapture = useCallback((): void => {
+    if (microphoneGateIntervalRef.current !== undefined) {
+      window.clearInterval(microphoneGateIntervalRef.current);
+      microphoneGateIntervalRef.current = undefined;
+    }
     microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
     rawMicrophoneStreamRef.current?.getTracks().forEach((track) => track.stop());
     microphoneStreamRef.current = undefined;
     rawMicrophoneStreamRef.current = undefined;
     microphoneGainRef.current = undefined;
+    microphoneGateRef.current = undefined;
+    microphoneHighPassRef.current = undefined;
+    microphoneLowPassRef.current = undefined;
+    microphoneCompressorRef.current = undefined;
     const context = microphoneAudioContextRef.current;
     microphoneAudioContextRef.current = undefined;
     if (context && context.state !== 'closed') void context.close().catch(() => undefined);
@@ -588,6 +608,41 @@ export const useSession = (): SessionModel => {
     };
     window.addEventListener(MICROPHONE_VOLUME_CHANGE_EVENT, handleMicrophoneVolumeChange);
     return () => window.removeEventListener(MICROPHONE_VOLUME_CHANGE_EVENT, handleMicrophoneVolumeChange);
+  }, []);
+
+  useEffect(() => {
+    const handleMicrophoneProcessingChange = (): void => {
+      const processing = getEffectiveMicrophoneProcessing();
+      microphoneProcessingRef.current = processing;
+      const context = microphoneAudioContextRef.current;
+      const now = context?.currentTime ?? 0;
+      const noiseEnabled = processing.noiseSuppression !== 'off';
+      const strong = processing.noiseSuppression === 'strong';
+
+      if (context && microphoneHighPassRef.current) {
+        microphoneHighPassRef.current.frequency.setTargetAtTime(noiseEnabled ? (strong ? 90 : 70) : 20, now, 0.03);
+      }
+      if (context && microphoneLowPassRef.current) {
+        microphoneLowPassRef.current.frequency.setTargetAtTime(noiseEnabled ? (strong ? 11_500 : 14_500) : 20_000, now, 0.03);
+      }
+      if (context && microphoneCompressorRef.current) {
+        microphoneCompressorRef.current.ratio.setTargetAtTime(noiseEnabled ? (strong ? 3 : 2) : 1, now, 0.03);
+      }
+      if (!noiseEnabled && context && microphoneGateRef.current) {
+        microphoneGateRef.current.gain.setTargetAtTime(1, now, 0.01);
+      }
+
+      const rawTrack = rawMicrophoneStreamRef.current?.getAudioTracks()[0];
+      if (rawTrack?.applyConstraints) {
+        void rawTrack.applyConstraints({
+          noiseSuppression: noiseEnabled,
+          echoCancellation: processing.echoCancellation,
+          autoGainControl: processing.autoGainControl,
+        }).catch(() => undefined);
+      }
+    };
+    window.addEventListener(MICROPHONE_PROCESSING_CHANGE_EVENT, handleMicrophoneProcessingChange);
+    return () => window.removeEventListener(MICROPHONE_PROCESSING_CHANGE_EVENT, handleMicrophoneProcessingChange);
   }, []);
 
   useEffect(() => {
@@ -1314,18 +1369,26 @@ recordDiagnostic('audio-unavailable');
       return;
     }
     const preferred = (() => { try { return localStorage.getItem('sfscreen_preferred_microphone') || 'default'; } catch { return 'default'; } })();
+    const processing = getEffectiveMicrophoneProcessing();
+    microphoneProcessingRef.current = processing;
+    const noiseEnabled = processing.noiseSuppression !== 'off';
     const rawStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: preferred === 'default' ? 'default' : { exact: preferred },
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+        echoCancellation: processing.echoCancellation,
+        noiseSuppression: noiseEnabled,
+        autoGainControl: processing.autoGainControl,
       },
       video: false,
     });
     let stream = rawStream;
     let audioContext: AudioContext | undefined;
     let gainNode: GainNode | undefined;
+    let gateNode: GainNode | undefined;
+    let highPassNode: BiquadFilterNode | undefined;
+    let lowPassNode: BiquadFilterNode | undefined;
+    let compressorNode: DynamicsCompressorNode | undefined;
+    let gateInterval: number | undefined;
     try {
       const AudioContextConstructor = window.AudioContext;
       if (AudioContextConstructor) {
@@ -1333,23 +1396,100 @@ recordDiagnostic('audio-unavailable');
         if (audioContext.state === 'suspended') await audioContext.resume();
         const source = audioContext.createMediaStreamSource(rawStream);
         const destination = audioContext.createMediaStreamDestination();
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.58;
+        highPassNode = audioContext.createBiquadFilter();
+        highPassNode.type = 'highpass';
+        highPassNode.frequency.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === 'strong' ? 90 : 70) : 20, audioContext.currentTime);
+        highPassNode.Q.setValueAtTime(0.72, audioContext.currentTime);
+        lowPassNode = audioContext.createBiquadFilter();
+        lowPassNode.type = 'lowpass';
+        lowPassNode.frequency.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === 'strong' ? 11_500 : 14_500) : 20_000, audioContext.currentTime);
+        lowPassNode.Q.setValueAtTime(0.3, audioContext.currentTime);
+        gateNode = audioContext.createGain();
+        gateNode.gain.setValueAtTime(1, audioContext.currentTime);
+        compressorNode = audioContext.createDynamicsCompressor();
+        compressorNode.threshold.setValueAtTime(-24, audioContext.currentTime);
+        compressorNode.knee.setValueAtTime(18, audioContext.currentTime);
+        compressorNode.ratio.setValueAtTime(noiseEnabled ? (processing.noiseSuppression === 'strong' ? 3 : 2) : 1, audioContext.currentTime);
+        compressorNode.attack.setValueAtTime(0.004, audioContext.currentTime);
+        compressorNode.release.setValueAtTime(0.18, audioContext.currentTime);
         gainNode = audioContext.createGain();
         gainNode.gain.setValueAtTime(readMicrophoneVolume(), audioContext.currentTime);
-        source.connect(gainNode);
+
+        source.connect(highPassNode);
+        highPassNode.connect(lowPassNode);
+        lowPassNode.connect(analyser);
+        analyser.connect(gateNode);
+        gateNode.connect(compressorNode);
+        compressorNode.connect(gainNode);
         gainNode.connect(destination);
+
+        const samples = new Uint8Array(analyser.fftSize);
+        let noiseFloor = 0.008;
+        let hangoverFrames = 0;
+        let gateOpen = true;
+        gateInterval = window.setInterval(() => {
+          if (!audioContext || audioContext.state === 'closed' || !gateNode) return;
+          const current = microphoneProcessingRef.current;
+          if (current.noiseSuppression === 'off') {
+            if (!gateOpen) gateNode.gain.setTargetAtTime(1, audioContext.currentTime, 0.008);
+            gateOpen = true;
+            return;
+          }
+
+          analyser.getByteTimeDomainData(samples);
+          let energy = 0;
+          for (const sample of samples) {
+            const normalized = (sample - 128) / 128;
+            energy += normalized * normalized;
+          }
+          const rms = Math.sqrt(energy / samples.length);
+          const strongSuppression = current.noiseSuppression === 'strong';
+          if (current.autoSensitivity && rms < Math.max(0.04, noiseFloor * 1.8)) {
+            noiseFloor = (noiseFloor * 0.96) + (rms * 0.04);
+          }
+          const automaticThreshold = Math.max(0.009, Math.min(strongSuppression ? 0.06 : 0.045, noiseFloor * (strongSuppression ? 3.1 : 2.35)));
+          const manualThreshold = 0.006 + ((1 - current.sensitivity) * 0.074);
+          const threshold = current.autoSensitivity ? automaticThreshold : manualThreshold;
+          const voiceDetected = rms >= threshold;
+
+          if (voiceDetected) hangoverFrames = strongSuppression ? 9 : 7;
+          else if (hangoverFrames > 0) hangoverFrames -= 1;
+          const shouldOpen = voiceDetected || hangoverFrames > 0;
+          if (shouldOpen !== gateOpen) {
+            gateOpen = shouldOpen;
+            const closedLevel = strongSuppression ? 0.025 : 0.14;
+            gateNode.gain.setTargetAtTime(gateOpen ? 1 : closedLevel, audioContext.currentTime, gateOpen ? 0.006 : 0.045);
+          }
+        }, 24);
+
         const processedTrack = destination.stream.getAudioTracks()[0];
         if (processedTrack) stream = new MediaStream([processedTrack]);
       }
     } catch {
+      if (gateInterval !== undefined) window.clearInterval(gateInterval);
       if (audioContext && audioContext.state !== 'closed') void audioContext.close().catch(() => undefined);
       audioContext = undefined;
       gainNode = undefined;
+      gateNode = undefined;
+      highPassNode = undefined;
+      lowPassNode = undefined;
+      compressorNode = undefined;
+      gateInterval = undefined;
       stream = rawStream;
     }
     if (stream === rawStream && audioContext) {
+      if (gateInterval !== undefined) window.clearInterval(gateInterval);
       if (audioContext.state !== 'closed') void audioContext.close().catch(() => undefined);
       audioContext = undefined;
       gainNode = undefined;
+      gateNode = undefined;
+      highPassNode = undefined;
+      lowPassNode = undefined;
+      compressorNode = undefined;
+      gateInterval = undefined;
     }
     const track = stream.getAudioTracks()[0];
     if (!track) {
@@ -1370,6 +1510,11 @@ recordDiagnostic('audio-unavailable');
     rawMicrophoneStreamRef.current = rawStream;
     microphoneAudioContextRef.current = stream === rawStream ? undefined : audioContext;
     microphoneGainRef.current = stream === rawStream ? undefined : gainNode;
+    microphoneGateRef.current = stream === rawStream ? undefined : gateNode;
+    microphoneHighPassRef.current = stream === rawStream ? undefined : highPassNode;
+    microphoneLowPassRef.current = stream === rawStream ? undefined : lowPassNode;
+    microphoneCompressorRef.current = stream === rawStream ? undefined : compressorNode;
+    microphoneGateIntervalRef.current = stream === rawStream ? undefined : gateInterval;
     try {
       if (controller) {
         await controller.replaceAudioTrack(track);
