@@ -3064,6 +3064,7 @@ export const App = (): ReactElement => {
             <span className="session-name">
               {isConnected ? `Sessão com ${state.remoteUserName}` : "Sua Sala Privada"}
             </span>
+            {!isConnected && <span className="session-waiting-status"><span />Aguardando convidado</span>}
             <span className="participant-counter" title={`${participantsCount} participante(s)`}>
               <UsersIcon /> {participantsCount}
             </span>
@@ -3822,13 +3823,14 @@ export const App = (): ReactElement => {
                   <span>Ver tela</span>
                 </button>
               </div>
-            ) : (
-              <div className={`stage-call-participants-view ${isConnected ? "has-two-peers" : "is-single-peer"}`}>
+            ) : isConnected ? (
+              <div className="stage-call-participants-view has-two-peers">
                 {/* Local Participant Card */}
                 <div className="call-participant-card is-self-card">
                   <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="call-card-avatar is-self" />
                   <div className="call-card-name-tag">
-                    <span className="name-text">{state.localUserName} (Você)</span>
+                    <span className="name-text">{state.localUserName}</span>
+                    <span className="self-name-badge">Você</span>
                     {state.role === "host" && <span className="crown-icon" title="Host da sessão"><CrownIcon /></span>}
                   </div>
                 </div>
@@ -3844,7 +3846,28 @@ export const App = (): ReactElement => {
                   </div>
                 )}
               </div>
-
+            ) : (
+              <div className="stage-welcome-state">
+                <div className="welcome-orbit welcome-orbit-one" />
+                <div className="welcome-orbit welcome-orbit-two" />
+                <div className="welcome-content-card">
+                  <div className="welcome-kicker"><span />Sala privada pronta</div>
+                  <div className="welcome-avatar-ring">
+                    <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="welcome-avatar" />
+                  </div>
+                  <h2>Pronto para conectar</h2>
+                  <p>Convide uma pessoa para sua sala ou comece a compartilhar a tela quando estiver pronto.</p>
+                  <div className="welcome-actions">
+                    <button className="button primary welcome-primary-action" type="button" onClick={() => session.toggleSessionModal(true)}>
+                      <UsersIcon /> Convidar pessoa
+                    </button>
+                    <button className="button ghost welcome-secondary-action" type="button" onClick={() => void session.openSourcePicker()}>
+                      <ScreenCastIcon /> Compartilhar tela
+                    </button>
+                  </div>
+                  <div className="welcome-security-note"><LockShieldIcon /> Conexão protegida por DTLS-SRTP</div>
+                </div>
+              </div>
             )}
 
 
@@ -4268,8 +4291,10 @@ export const App = (): ReactElement => {
 
             <div className="chat-messages-container">
               {state.chatMessages.length === 0 && !isConnected && (
-                <div className="chat-notice">
-                  Você está sozinho na chamada. As mensagens serão entregues assim que um participante se conectar.
+                <div className="chat-notice chat-empty-state">
+                  <MessageSquareIcon />
+                  <strong>Nenhuma mensagem ainda</strong>
+                  <span>As mensagens serão entregues assim que um participante se conectar.</span>
                 </div>
               )}
               {state.chatMessages.map((msg) => (

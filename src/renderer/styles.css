@@ -148,6 +148,24 @@ button:disabled {
   font-weight: 600;
 }
 
+.session-waiting-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #a6adb8;
+  font-size: 0.67rem;
+  font-weight: 700;
+}
+
+.session-waiting-status > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #23a55a;
+  box-shadow: 0 0 0 4px rgba(35, 165, 90, 0.12);
+  animation: waitingPulse 2s ease-in-out infinite;
+}
+
 .participant-counter {
   display: inline-flex;
   align-items: center;
@@ -817,7 +835,22 @@ button:disabled {
 }
 
 .main-stage-box.is-idle-stream {
-  background: radial-gradient(circle at 50% 40%, #15171e 0%, #090a0d 75%);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(35, 165, 90, 0.11) 0%, rgba(35, 165, 90, 0) 28%),
+    radial-gradient(circle at 76% 18%, rgba(88, 101, 242, 0.09) 0%, rgba(88, 101, 242, 0) 30%),
+    radial-gradient(circle at 22% 78%, rgba(35, 165, 90, 0.05) 0%, rgba(35, 165, 90, 0) 26%),
+    #090a0d;
+}
+
+.main-stage-box.is-idle-stream::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.3) 0.6px, transparent 0.6px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse at center, black 0%, transparent 68%);
 }
 
 .stage-top-pill {
@@ -1910,6 +1943,191 @@ button:disabled {
   stroke: #f1c40f;
 }
 
+.self-name-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(35, 165, 90, 0.14);
+  color: #57f287;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.stage-welcome-state {
+  position: relative;
+  z-index: 1;
+  width: min(520px, calc(100% - 32px));
+  display: grid;
+  place-items: center;
+}
+
+.welcome-content-card {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 34px 38px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(28, 30, 37, 0.94), rgba(15, 17, 22, 0.9));
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  text-align: center;
+  animation: welcomeCardIn 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.welcome-content-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(130deg, rgba(35, 165, 90, 0.08), transparent 38%, rgba(88, 101, 242, 0.07));
+}
+
+.welcome-kicker,
+.welcome-security-note,
+.welcome-actions {
+  position: relative;
+  z-index: 1;
+}
+
+.welcome-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 19px;
+  color: #aeb6c1;
+  font-size: 0.69rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.welcome-kicker > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #23a55a;
+  box-shadow: 0 0 12px rgba(35, 165, 90, 0.8);
+}
+
+.welcome-avatar-ring {
+  position: relative;
+  z-index: 1;
+  width: 104px;
+  height: 104px;
+  margin: 0 auto 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(35, 165, 90, 0.42);
+  border-radius: 50%;
+  background: rgba(35, 165, 90, 0.08);
+  box-shadow: 0 0 0 9px rgba(35, 165, 90, 0.04), 0 16px 30px rgba(0, 0, 0, 0.32);
+  animation: welcomeFloat 4s ease-in-out infinite;
+}
+
+.welcome-avatar {
+  width: 82px;
+  height: 82px;
+  font-size: 2rem;
+}
+
+.welcome-content-card h2 {
+  position: relative;
+  z-index: 1;
+  margin: 0 0 8px;
+  color: #f7f8fa;
+  font-size: 1.35rem;
+  letter-spacing: -0.025em;
+}
+
+.welcome-content-card p {
+  position: relative;
+  z-index: 1;
+  max-width: 350px;
+  margin: 0 auto 23px;
+  color: #9ba3af;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.welcome-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.welcome-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  border-radius: 10px;
+}
+
+.welcome-actions svg,
+.welcome-security-note svg {
+  width: 16px;
+  height: 16px;
+}
+
+.welcome-primary-action {
+  box-shadow: 0 8px 22px rgba(35, 165, 90, 0.24);
+}
+
+.welcome-secondary-action {
+  color: #dce1e8;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.welcome-security-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 20px;
+  color: #77818e;
+  font-size: 0.7rem;
+}
+
+.welcome-security-note svg {
+  color: #23a55a;
+}
+
+.welcome-orbit {
+  position: absolute;
+  border: 1px solid rgba(35, 165, 90, 0.12);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.welcome-orbit-one { width: 600px; height: 600px; }
+.welcome-orbit-two { width: 760px; height: 760px; border-color: rgba(88, 101, 242, 0.1); }
+
+@keyframes welcomeCardIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes welcomeFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes waitingPulse {
+  50% { opacity: 0.5; transform: scale(0.82); }
+}
+
+@media (max-width: 700px) {
+  .session-waiting-status { display: none; }
+  .welcome-content-card { padding: 28px 22px 23px; }
+  .welcome-orbit-two { display: none; }
+}
+
 .stage-empty-state {
   display: flex;
   flex-direction: column;
@@ -2561,6 +2779,33 @@ button:disabled {
   background: rgba(88, 101, 242, 0.05);
   border: 1px dashed rgba(88, 101, 242, 0.22);
   color: #949ba4;
+}
+
+.chat-empty-state {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-style: solid;
+  background: linear-gradient(145deg, rgba(35, 165, 90, 0.055), rgba(88, 101, 242, 0.035));
+}
+
+.chat-empty-state svg {
+  width: 26px;
+  height: 26px;
+  color: #23a55a;
+  opacity: 0.8;
+}
+
+.chat-empty-state strong {
+  color: #dce1e8;
+  font-size: 0.78rem;
+}
+
+.chat-empty-state span {
+  max-width: 220px;
 }
 
 .chat-message-item {
