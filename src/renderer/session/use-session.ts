@@ -6,6 +6,7 @@ import type { CameraState, ChatMessagePayload, RemoteControlConfig, RemoteContro
 import type { HostedRoom, RoomSummary, SessionError, TailscaleStatus } from '../../shared/session/types';
 import { initialSessionState, normalizeUserName, sessionReducer, type AudioPhase, type MediaPhase, type SessionUiState } from './session-machine';
 import { WebRtcSession } from './webrtc-session';
+import { MICROPHONE_VOLUME_CHANGE_EVENT, readMicrophoneVolume } from '../audio-preferences';
 
 const errorMessage = (error: SessionError | Error | unknown): string => {
   if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') return error.message;
@@ -506,6 +507,9 @@ export const useSession = (): SessionModel => {
   const [roomCallActive, setRoomCallActive] = useState(false);
   const [remoteRoomCallActive, setRemoteRoomCallActive] = useState(false);
   const microphoneStreamRef = useRef<MediaStream | undefined>(undefined);
+  const rawMicrophoneStreamRef = useRef<MediaStream | undefined>(undefined);
+  const microphoneAudioContextRef = useRef<AudioContext | undefined>(undefined);
+  const microphoneGainRef = useRef<GainNode | undefined>(undefined);
   const activeRoomRef = useRef<HostedRoom | undefined>(undefined);
   const roomCallActiveRef = useRef(false);
   const [resolution, setResolutionState] = useState<StreamResolution>(getSavedStreamResolution);
@@ -562,6 +566,29 @@ export const useSession = (): SessionModel => {
   const localUserNameRef = useRef(state.localUserName);
   const localUserAvatarRef = useRef(state.localUserAvatar);
   const switchMonitorByViewerRef = useRef<((monitorIndex: number) => Promise<void>) | undefined>(undefined);
+
+  const stopMicrophoneCapture = useCallback((): void => {
+    microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
+    rawMicrophoneStreamRef.current?.getTracks().forEach((track) => track.stop());
+    microphoneStreamRef.current = undefined;
+    rawMicrophoneStreamRef.current = undefined;
+    microphoneGainRef.current = undefined;
+    const context = microphoneAudioContextRef.current;
+    microphoneAudioContextRef.current = undefined;
+    if (context && context.state !== 'closed') void context.close().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const handleMicrophoneVolumeChange = (event: Event): void => {
+      const value = Math.max(0, Math.min(1, Number((event as CustomEvent<string>).detail)));
+      const context = microphoneAudioContextRef.current;
+      const gain = microphoneGainRef.current;
+      if (!context || !gain || !Number.isFinite(value)) return;
+      gain.gain.setTargetAtTime(value, context.currentTime, 0.02);
+    };
+    window.addEventListener(MICROPHONE_VOLUME_CHANGE_EVENT, handleMicrophoneVolumeChange);
+    return () => window.removeEventListener(MICROPHONE_VOLUME_CHANGE_EVENT, handleMicrophoneVolumeChange);
+  }, []);
 
   useEffect(() => {
     localUserNameRef.current = state.localUserName;
@@ -659,14 +686,13 @@ export const useSession = (): SessionModel => {
     roomCallActiveRef.current = false;
     setRoomCallActive(false);
     setRemoteRoomCallActive(false);
-    microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
-    microphoneStreamRef.current = undefined;
+    stopMicrophoneCapture();
     setVoiceActive(false);
     setVoiceMuted(false);
     await window.sfscreen.stopHostedSession();
     recordDiagnostic('session-closed');
     dispatch({ type: 'closed' });
-  }, [recordDiagnostic]);
+  }, [recordDiagnostic, stopMicrophoneCapture]);
 
 
   const createController = useCallback((): WebRtcSession => {
@@ -1274,8 +1300,7 @@ recordDiagnostic('audio-unavailable');
     if (activeRoomRef.current && !roomCallActiveRef.current) return;
     if (!controller && !testNetworkEnabledRef.current) return;
     if (voiceActive) {
-      microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
-      microphoneStreamRef.current = undefined;
+      stopMicrophoneCapture();
       const systemTrack = state.includeSystemAudio ? localStreamRef.current?.getAudioTracks().find((track) => track.readyState === 'live') : undefined;
       if (controller && systemTrack) {
         await controller.replaceAudioTrack(systemTrack);
@@ -1289,7 +1314,7 @@ recordDiagnostic('audio-unavailable');
       return;
     }
     const preferred = (() => { try { return localStorage.getItem('sfscreen_preferred_microphone') || 'default'; } catch { return 'default'; } })();
-    const stream = await navigator.mediaDevices.getUserMedia({
+    const rawStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: preferred === 'default' ? 'default' : { exact: preferred },
         echoCancellation: true,
@@ -1298,19 +1323,65 @@ recordDiagnostic('audio-unavailable');
       },
       video: false,
     });
+    let stream = rawStream;
+    let audioContext: AudioContext | undefined;
+    let gainNode: GainNode | undefined;
+    try {
+      const AudioContextConstructor = window.AudioContext;
+      if (AudioContextConstructor) {
+        audioContext = new AudioContextConstructor();
+        if (audioContext.state === 'suspended') await audioContext.resume();
+        const source = audioContext.createMediaStreamSource(rawStream);
+        const destination = audioContext.createMediaStreamDestination();
+        gainNode = audioContext.createGain();
+        gainNode.gain.setValueAtTime(readMicrophoneVolume(), audioContext.currentTime);
+        source.connect(gainNode);
+        gainNode.connect(destination);
+        const processedTrack = destination.stream.getAudioTracks()[0];
+        if (processedTrack) stream = new MediaStream([processedTrack]);
+      }
+    } catch {
+      if (audioContext && audioContext.state !== 'closed') void audioContext.close().catch(() => undefined);
+      audioContext = undefined;
+      gainNode = undefined;
+      stream = rawStream;
+    }
+    if (stream === rawStream && audioContext) {
+      if (audioContext.state !== 'closed') void audioContext.close().catch(() => undefined);
+      audioContext = undefined;
+      gainNode = undefined;
+    }
     const track = stream.getAudioTracks()[0];
-    if (!track) throw new Error('O microfone selecionado não ficou disponível.');
+    if (!track) {
+      rawStream.getTracks().forEach((rawTrack) => rawTrack.stop());
+      throw new Error('O microfone selecionado não ficou disponível.');
+    }
     track.enabled = true;
-    track.onended = () => { if (microphoneStreamRef.current === stream) { setVoiceActive(false); setVoiceMuted(false); } };
-    microphoneStreamRef.current?.getTracks().forEach((previous) => previous.stop());
+    const handleEnded = (): void => {
+      if (microphoneStreamRef.current === stream || rawMicrophoneStreamRef.current === rawStream) {
+        setVoiceActive(false);
+        setVoiceMuted(false);
+      }
+    };
+    track.onended = handleEnded;
+    rawStream.getAudioTracks()[0].onended = handleEnded;
+    stopMicrophoneCapture();
     microphoneStreamRef.current = stream;
-    if (controller) {
-      await controller.replaceAudioTrack(track);
-      controller.sendAudioState('active');
+    rawMicrophoneStreamRef.current = rawStream;
+    microphoneAudioContextRef.current = stream === rawStream ? undefined : audioContext;
+    microphoneGainRef.current = stream === rawStream ? undefined : gainNode;
+    try {
+      if (controller) {
+        await controller.replaceAudioTrack(track);
+        controller.sendAudioState('active');
+      }
+    } catch (error) {
+      stopMicrophoneCapture();
+      throw error;
     }
     setVoiceActive(true);
     setVoiceMuted(false);
-  }, [state.includeSystemAudio, state.phase, voiceActive]);
+  }, [state.includeSystemAudio, state.phase, stopMicrophoneCapture, voiceActive]);
 
   const toggleVoiceMute = useCallback((): void => {
     const track = microphoneStreamRef.current?.getAudioTracks()[0];

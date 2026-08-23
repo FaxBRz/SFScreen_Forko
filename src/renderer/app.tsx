@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type FormEvent,
   type ReactElement,
   useCallback,
@@ -12,6 +13,17 @@ import type { ScreenSource } from "../shared/screen-source";
 import type { RemoteControlConfig } from "../shared/session/media-control";
 import type { LocalRoomConfig, RoomSummary } from "../shared/session/types";
 import { type SessionModel, type StreamFps, type StreamResolution, useSession } from "./session/use-session";
+import {
+  AUDIO_OUTPUT_CHANGE_EVENT,
+  MICROPHONE_VOLUME_CHANGE_EVENT,
+  OUTPUT_VOLUME_CHANGE_EVENT,
+  readMicrophoneVolume,
+  readOutputVolume,
+  readPreferredAudioOutput,
+  saveAudioOutputPreference,
+  saveMicrophoneVolume,
+  saveOutputVolume,
+} from "./audio-preferences";
 import sfLogoPng from "./assets/icon.png";
 
 /* ─── Vector Icons (Sleek, Minimalist, No Emojis) ─── */
@@ -307,26 +319,6 @@ const getStreamTrackInfo = (
   return { resolution: res, fps };
 };
 
-const AUDIO_OUTPUT_STORAGE_KEY = "sfscreen_preferred_audio_output";
-const AUDIO_OUTPUT_CHANGE_EVENT = "sfscreen:audio-output-changed";
-
-const readPreferredAudioOutput = (): string => {
-  try {
-    return localStorage.getItem(AUDIO_OUTPUT_STORAGE_KEY) || "default";
-  } catch {
-    return "default";
-  }
-};
-
-const saveAudioOutputPreference = (deviceId: string): void => {
-  try {
-    localStorage.setItem(AUDIO_OUTPUT_STORAGE_KEY, deviceId);
-  } catch {
-    // The current session still receives the change even when storage is unavailable.
-  }
-  window.dispatchEvent(new CustomEvent<string>(AUDIO_OUTPUT_CHANGE_EVENT, { detail: deviceId }));
-};
-
 const usePreferredAudioOutput = (): string => {
   const [deviceId, setDeviceId] = useState(readPreferredAudioOutput);
 
@@ -339,6 +331,24 @@ const usePreferredAudioOutput = (): string => {
   }, []);
 
   return deviceId;
+};
+
+const useAudioVolumePreference = (
+  readValue: () => number,
+  eventName: string
+): number => {
+  const [value, setValue] = useState(readValue);
+
+  useEffect(() => {
+    const handleChange = (event: Event): void => {
+      const next = Number((event as CustomEvent<string>).detail);
+      setValue(Math.max(0, Math.min(1, Number.isFinite(next) ? next : 1)));
+    };
+    window.addEventListener(eventName, handleChange);
+    return () => window.removeEventListener(eventName, handleChange);
+  }, [eventName]);
+
+  return value;
 };
 
 /* ─── Video Renderer ─── */
@@ -1162,6 +1172,9 @@ const SettingsModal = ({
     try { return localStorage.getItem("sfscreen_preferred_microphone") || "default"; } catch { return "default"; }
   });
   const preferredAudioOutput = usePreferredAudioOutput();
+  const microphoneVolume = useAudioVolumePreference(readMicrophoneVolume, MICROPHONE_VOLUME_CHANGE_EVENT);
+  const outputVolume = useAudioVolumePreference(readOutputVolume, OUTPUT_VOLUME_CHANGE_EVENT);
+  const microphoneVolumeRef = useRef(microphoneVolume);
   const [microphoneTestStatus, setMicrophoneTestStatus] = useState<"idle" | "starting" | "active" | "error">("idle");
   const [microphoneLevel, setMicrophoneLevel] = useState(0);
   const [microphoneTestError, setMicrophoneTestError] = useState<string>();
@@ -1178,6 +1191,10 @@ const SettingsModal = ({
     timer?: number;
   } | null>(null);
   const audioOutputPreviewRunRef = useRef(0);
+
+  useEffect(() => {
+    microphoneVolumeRef.current = microphoneVolume;
+  }, [microphoneVolume]);
 
   const releaseAudioOutputPreview = useCallback((): void => {
     audioOutputPreviewRunRef.current += 1;
@@ -1204,7 +1221,7 @@ const SettingsModal = ({
       const destination = context.createMediaStreamDestination();
       const player = new Audio();
       player.srcObject = destination.stream;
-      player.volume = 0.62;
+      player.volume = Math.max(0.08, outputVolume * 0.62);
       audioOutputPreviewRef.current = { context, player };
 
       if (typeof player.setSinkId === "function") {
@@ -1256,7 +1273,7 @@ const SettingsModal = ({
       );
       setAudioOutputTestStatus("error");
     }
-  }, [releaseAudioOutputPreview]);
+  }, [outputVolume, releaseAudioOutputPreview]);
 
   const releaseMicrophoneTest = useCallback((): void => {
     microphoneTestRunRef.current += 1;
@@ -1325,7 +1342,7 @@ const SettingsModal = ({
           energy += normalized * normalized;
         }
         const rms = Math.sqrt(energy / samples.length);
-        setMicrophoneLevel(Math.min(100, Math.round(rms * 360)));
+        setMicrophoneLevel(Math.min(100, Math.round(rms * 360 * microphoneVolumeRef.current)));
         microphoneTestFrameRef.current = window.requestAnimationFrame(updateLevel);
       };
 
@@ -1612,7 +1629,7 @@ const SettingsModal = ({
               <h2 className="settings-section-heading">
                 {activeTab === "profile" && "Perfil de Usuário"}
                 {activeTab === "network" && "Rede & Tailscale"}
-                {activeTab === "media" && "Qualidade & Parâmetros de Mídia"}
+                {activeTab === "media" && "Voz e Vídeo"}
                 {activeTab === "diagnostics" && "Telemetria & Diagnóstico"}
                 {activeTab === "testing" && "Simulador de Chamada e Testes"}
                 {activeTab === "about" && "Sobre o SFScreen"}
@@ -1620,7 +1637,7 @@ const SettingsModal = ({
               <p className="settings-section-caption">
                 {activeTab === "profile" && "Defina como você aparece para as outras pessoas."}
                 {activeTab === "network" && "Acompanhe o estado da sua conexão privada."}
-                {activeTab === "media" && "Consulte os parâmetros ativos de áudio e vídeo."}
+                {activeTab === "media" && "Escolha seus dispositivos e ajuste como você ouve e é ouvido."}
                 {activeTab === "diagnostics" && "Exporte informações para investigar uma sessão."}
                 {activeTab === "testing" && "Simule uma chamada sem precisar de outro computador."}
                 {activeTab === "about" && "Informações sobre o aplicativo e a conexão."}
@@ -1759,92 +1776,100 @@ const SettingsModal = ({
           )}
 
           {activeTab === "media" && (
-            <div className="settings-info-grid">
-              <div className="setting-card media-device-card">
-                <span className="card-key">Microfone para o modo voz</span>
-                <select aria-label="Microfone" className="text-input media-device-select" value={preferredMicrophone} onChange={(event) => savePreferredMicrophone(event.target.value)}>
-                  <option value="default">Padrão do sistema (detecção automática)</option>
-                  {microphones.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Microfone ${index + 1}`}</option>)}
-                </select>
-                <p className="setting-field-hint">A escolha será usada ao entrar na voz. O modo padrão acompanha o dispositivo definido no Windows.</p>
-                <div className={`microphone-test ${microphoneTestStatus === "active" ? "is-active" : ""}`}>
-                  <div className="microphone-test-header">
-                    <button
-                      className={`button microphone-test-button ${microphoneTestStatus === "active" ? "is-testing" : ""}`}
-                      type="button"
-                      disabled={microphoneTestStatus === "starting"}
-                      onClick={() => microphoneTestStatus === "active" ? stopMicrophoneTest() : void startMicrophoneTest()}
-                    >
-                      {microphoneTestStatus === "active" ? <MicrophoneOffIcon /> : <MicrophoneIcon />}
-                      {microphoneTestStatus === "starting" ? "Iniciando…" : microphoneTestStatus === "active" ? "Parar teste" : "Testar microfone"}
-                    </button>
-                    <span className="microphone-test-status" aria-live="polite">
-                      {microphoneTestStatus === "active" ? `${microphoneLevel}%` : microphoneTestStatus === "error" ? "Falhou" : "Aguardando"}
-                    </span>
-                  </div>
+            <div className="discord-voice-settings">
+              <section className="discord-media-section" aria-labelledby="voice-settings-title">
+                <h3 id="voice-settings-title">Voz</h3>
+                <div className="discord-voice-grid">
+                  <label className="discord-media-field">
+                    <span>Microfone</span>
+                    <select aria-label="Microfone" className="discord-device-select" value={preferredMicrophone} onChange={(event) => savePreferredMicrophone(event.target.value)}>
+                      <option value="default">Padrão do Windows</option>
+                      {microphones.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Microfone ${index + 1}`}</option>)}
+                    </select>
+                  </label>
+                  <label className="discord-media-field">
+                    <span>Alto-falante</span>
+                    <select aria-label="Saída de áudio" className="discord-device-select" value={preferredAudioOutput} onChange={(event) => savePreferredAudioOutput(event.target.value)}>
+                      <option value="default">Padrão do Windows</option>
+                      {audioOutputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Saída de áudio ${index + 1}`}</option>)}
+                    </select>
+                    <small className={`discord-output-status is-${audioOutputTestStatus}`} aria-live="polite">
+                      {audioOutputTestStatus === "playing"
+                        ? "Reproduzindo bip…"
+                        : audioOutputTestStatus === "success"
+                          ? "Bip enviado para esta saída"
+                          : audioOutputTestStatus === "error"
+                            ? audioOutputTestError
+                            : "Ao trocar, você ouvirá um bip de confirmação."}
+                    </small>
+                  </label>
+
+                  <label className="discord-volume-field">
+                    <span>Volume do microfone <output>{Math.round(microphoneVolume * 100)}%</output></span>
+                    <input
+                      aria-label="Volume do microfone"
+                      className="discord-volume-slider"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={microphoneVolume}
+                      style={{ "--volume-progress": `${microphoneVolume * 100}%` } as CSSProperties}
+                      onChange={(event) => saveMicrophoneVolume(Number(event.target.value))}
+                    />
+                  </label>
+                  <label className="discord-volume-field">
+                    <span>Volume do alto-falante <output>{Math.round(outputVolume * 100)}%</output></span>
+                    <input
+                      aria-label="Volume do alto-falante"
+                      className="discord-volume-slider"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={outputVolume}
+                      style={{ "--volume-progress": `${outputVolume * 100}%` } as CSSProperties}
+                      onChange={(event) => saveOutputVolume(Number(event.target.value))}
+                    />
+                  </label>
+                </div>
+
+                <div className={`discord-microphone-test ${microphoneTestStatus === "active" ? "is-active" : ""}`}>
+                  <button
+                    className={`button primary discord-microphone-test-button ${microphoneTestStatus === "active" ? "is-testing" : ""}`}
+                    type="button"
+                    disabled={microphoneTestStatus === "starting"}
+                    onClick={() => microphoneTestStatus === "active" ? stopMicrophoneTest() : void startMicrophoneTest()}
+                  >
+                    {microphoneTestStatus === "active" ? <MicrophoneOffIcon /> : <MicrophoneIcon />}
+                    {microphoneTestStatus === "starting" ? "Iniciando…" : microphoneTestStatus === "active" ? "Parar teste" : "Teste do microfone"}
+                  </button>
                   <div
-                    className="microphone-level-track"
+                    className="discord-level-meter"
                     role="meter"
                     aria-label="Nível do microfone"
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={microphoneLevel}
                   >
-                    <span className="microphone-level-fill" style={{ width: `${microphoneLevel}%` }} />
+                    {Array.from({ length: 36 }, (_, index) => (
+                      <span key={index} className={index < Math.ceil((microphoneLevel / 100) * 36) ? "is-lit" : ""} />
+                    ))}
                   </div>
-                  {microphoneTestError && <p className="microphone-test-error" role="alert">{microphoneTestError}</p>}
                 </div>
-              </div>
-              <div className="setting-card media-device-card">
-                <span className="card-key">Fone de ouvido ou alto-falante</span>
-                <select aria-label="Saída de áudio" className="text-input media-device-select" value={preferredAudioOutput} onChange={(event) => savePreferredAudioOutput(event.target.value)}>
-                  <option value="default">Padrão do sistema (detecção automática)</option>
-                  {audioOutputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Saída de áudio ${index + 1}`}</option>)}
-                </select>
-                <p className="setting-field-hint">Todo o áudio recebido será reproduzido nesta saída. Se ela for desconectada, o SFScreen volta ao padrão do Windows.</p>
-                <div className={`audio-output-feedback is-${audioOutputTestStatus}`} aria-live="polite">
-                  <span className="audio-output-feedback-icon"><SpeakerOnIcon /></span>
-                  <span>
-                    {audioOutputTestStatus === "playing"
-                      ? "Reproduzindo som de teste…"
-                      : audioOutputTestStatus === "success"
-                        ? "Som enviado para esta saída"
-                        : audioOutputTestStatus === "error"
-                          ? audioOutputTestError
-                          : "Ao trocar, você ouvirá um bip de confirmação."}
-                  </span>
+                {microphoneTestError && <p className="discord-microphone-error" role="alert">{microphoneTestError}</p>}
+                <p className="discord-voice-help">Fale normalmente durante o teste. O indicador deve reagir sem chegar ao máximo o tempo todo.</p>
+              </section>
+
+              <section className="discord-media-section discord-video-summary" aria-labelledby="video-settings-title">
+                <h3 id="video-settings-title">Vídeo</h3>
+                <div className="discord-video-summary-grid">
+                  <div><span>Qualidade máxima</span><strong>1080p · 60 FPS</strong></div>
+                  <div><span>Codec</span><strong>VP8 com aceleração</strong></div>
+                  <div><span>Câmera</span><strong>{session.cameraActive ? "Ativa · 720p" : "Desativada"}</strong></div>
+                  <div><span>Áudio do sistema</span><strong>WASAPI protegido contra eco</strong></div>
                 </div>
-              </div>
-              <div className="setting-card">
-                <span className="card-key">Resolução Máxima</span>
-                <span className="card-value">1920 × 1080 (Full HD)</span>
-              </div>
-              <div className="setting-card">
-                <span className="card-key">Taxa de Quadros</span>
-                <span className="card-value">60 FPS Fluido</span>
-              </div>
-              <div className="setting-card">
-                <span className="card-key">Codec de Vídeo</span>
-                <span className="card-value">VP8 (WebRTC Hardware Accel)</span>
-              </div>
-              <div className="setting-card">
-                <span className="card-key">Câmera WebRTC</span>
-                <span className="card-value status-highlight">
-                  <span className={`status-dot ${session.cameraActive ? "is-online" : "is-offline"}`} />
-                  {session.cameraActive ? "Câmera Ativa (720p · 30 FPS)" : "Câmera Desativada"}
-                </span>
-              </div>
-              <div className="setting-card">
-                <span className="card-key">Isolamento de Áudio</span>
-                <span className="card-value status-highlight">
-                  <span className="status-dot is-online" />
-                  WASAPI Filtered Loopback Ativo
-                </span>
-              </div>
-              <div className="setting-card full-span">
-                <span className="card-key">Proteção de Eco do Discord</span>
-                <span className="card-value">O SFScreen exclui o som do aplicativo Discord automaticamente do mix transmitido.</span>
-              </div>
+              </section>
             </div>
           )}
 
@@ -2523,7 +2548,7 @@ export const App = (): ReactElement => {
   const [controlsVisible, setControlsVisible] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [remoteMuted, setRemoteMuted] = useState(false);
-  const [remoteVolume, setRemoteVolume] = useState(1);
+  const remoteVolume = useAudioVolumePreference(readOutputVolume, OUTPUT_VOLUME_CHANGE_EVENT);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [streamMenuOpen, setStreamMenuOpen] = useState(false);
   const [qualitySubmenuOpen, setQualitySubmenuOpen] = useState(false);
@@ -4619,7 +4644,7 @@ export const App = (): ReactElement => {
                       value={remoteMuted ? 0 : remoteVolume}
                       onChange={(e) => {
                         const val = Number(e.target.value);
-                        setRemoteVolume(val);
+                        saveOutputVolume(val);
                         if (val > 0 && remoteMuted) setRemoteMuted(false);
                         if (val === 0 && !remoteMuted) setRemoteMuted(true);
                       }}

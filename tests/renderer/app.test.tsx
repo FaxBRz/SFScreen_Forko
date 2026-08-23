@@ -327,7 +327,15 @@ describe('SFScreen Discord layout', () => {
 
     // Switch to Media tab
     fireEvent.click(screen.getByRole('button', { name: /vídeo & áudio/i }));
-    expect(screen.getByText('Qualidade & Parâmetros de Mídia')).toBeTruthy();
+    expect(screen.getByText('Voz e Vídeo')).toBeTruthy();
+    const microphoneVolume = screen.getByRole('slider', { name: /volume do microfone/i });
+    const outputVolume = screen.getByRole('slider', { name: /volume do alto-falante/i });
+    fireEvent.change(microphoneVolume, { target: { value: '0.65' } });
+    fireEvent.change(outputVolume, { target: { value: '0.7' } });
+    expect(localStorage.getItem('sfscreen_microphone_volume')).toBe('0.65');
+    expect(localStorage.getItem('sfscreen_output_volume')).toBe('0.7');
+    fireEvent.change(microphoneVolume, { target: { value: '1' } });
+    fireEvent.change(outputVolume, { target: { value: '1' } });
   });
 
   it('lists audio outputs and saves the selected headset', async () => {
@@ -415,7 +423,7 @@ describe('SFScreen Discord layout', () => {
       fireEvent.change(outputSelector, { target: { value: 'headset-1' } });
 
       await waitFor(() => expect(setSinkId).toHaveBeenCalledWith('headset-1'));
-      expect(await screen.findByText(/som enviado para esta saída/i)).toBeTruthy();
+      expect(await screen.findByText(/bip enviado para esta saída/i)).toBeTruthy();
       expect(playSpy).toHaveBeenCalled();
       expect(localStorage.getItem('sfscreen_preferred_audio_output')).toBe('headset-1');
     } finally {
@@ -467,7 +475,7 @@ describe('SFScreen Discord layout', () => {
 
       fireEvent.click(screen.getAllByRole('button', { name: /configurações/i })[0]);
       fireEvent.click(screen.getByRole('button', { name: /vídeo & áudio/i }));
-      fireEvent.click(screen.getByRole('button', { name: /testar microfone/i }));
+      fireEvent.click(screen.getByRole('button', { name: /teste do microfone/i }));
 
       await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: expect.any(Object), video: false })));
       const stopButton = await screen.findByRole('button', { name: /parar teste/i });

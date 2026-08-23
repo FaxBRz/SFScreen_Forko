@@ -3330,26 +3330,38 @@ button:disabled {
 .chat-image-preview button { width:22px; height:22px; padding:0; border:0; border-radius:6px; color:#9ba4af; background:transparent; cursor:pointer; font-size:1.1rem; }
 .chat-image-preview button:hover { background:rgba(218,55,60,.18); color:#ff9397; }
 .chat-upload-error { width:100%; color:#ff9195; font-size:.65rem; }
-.media-device-select { width:100%; margin-top:8px; appearance:auto; cursor:pointer; }
-.media-device-select option { background:#191b23; color:#f2f3f5; }
-.media-device-card { min-width:0; }
-.microphone-test { margin-top:auto; padding-top:10px; display:flex; flex-direction:column; gap:8px; }
-.microphone-test-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.microphone-test-button { min-height:32px; padding:6px 10px; gap:7px; font-size:.72rem; }
-.microphone-test-button svg { width:15px; height:15px; }
-.microphone-test-button.is-testing { color:#fff; border-color:rgba(218,55,60,.45); background:rgba(218,55,60,.18); }
-.microphone-test-status { color:#7f8794; font-size:.68rem; font-weight:700; font-variant-numeric:tabular-nums; }
-.microphone-test.is-active .microphone-test-status { color:#57f287; }
-.microphone-level-track { position:relative; width:100%; height:7px; overflow:hidden; border-radius:999px; background:#0d0f14; border:1px solid rgba(255,255,255,.06); }
-.microphone-level-fill { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#23a55a 0%,#57f287 72%,#f0c24b 90%,#da373c 100%); transition:width 80ms linear; }
-.microphone-test-error { margin:0; color:#ff9195; font-size:.68rem; line-height:1.35; }
-.audio-output-feedback { margin-top:auto; padding-top:12px; display:flex; align-items:center; gap:8px; color:#7f8794; font-size:.69rem; line-height:1.35; }
-.audio-output-feedback-icon { width:28px; height:28px; flex:0 0 auto; display:grid; place-items:center; border-radius:8px; color:#8b94a2; background:#101219; border:1px solid rgba(255,255,255,.06); }
-.audio-output-feedback-icon svg { width:15px; height:15px; }
-.audio-output-feedback.is-playing,.audio-output-feedback.is-success { color:#73c993; }
-.audio-output-feedback.is-playing .audio-output-feedback-icon,.audio-output-feedback.is-success .audio-output-feedback-icon { color:#57f287; background:rgba(35,165,90,.12); border-color:rgba(35,165,90,.25); }
-.audio-output-feedback.is-error { color:#ff9195; }
-.audio-output-feedback.is-error .audio-output-feedback-icon { color:#ff9195; background:rgba(218,55,60,.12); border-color:rgba(218,55,60,.25); }
+.discord-voice-settings { display:flex; flex-direction:column; gap:28px; padding:2px 2px 10px; }
+.discord-media-section { display:flex; flex-direction:column; gap:18px; }
+.discord-media-section h3 { margin:0; color:#f2f3f5; font-size:1.08rem; font-weight:600; }
+.discord-voice-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px 16px; }
+.discord-media-field,.discord-volume-field { min-width:0; display:flex; flex-direction:column; gap:8px; color:#c7c9cc; font-size:.78rem; font-weight:500; }
+.discord-device-select { width:100%; height:40px; padding:0 38px 0 12px; overflow:hidden; color:#dcdee1; background:#111218; border:1px solid #2d3038; border-radius:8px; font:inherit; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; outline:none; }
+.discord-device-select:hover { border-color:#3b3f49; }
+.discord-device-select:focus { border-color:#5865f2; box-shadow:0 0 0 2px rgba(88,101,242,.16); }
+.discord-device-select option { color:#f2f3f5; background:#18191f; }
+.discord-output-status { min-height:16px; color:#72767d; font-size:.66rem; font-weight:400; line-height:1.35; }
+.discord-output-status.is-playing,.discord-output-status.is-success { color:#57a978; }
+.discord-output-status.is-error { color:#ed777c; }
+.discord-volume-field > span { display:flex; justify-content:space-between; gap:10px; }
+.discord-volume-field output { color:#72767d; font-size:.68rem; font-variant-numeric:tabular-nums; }
+.discord-volume-slider { --volume-progress:100%; width:100%; height:18px; margin:0; appearance:none; background:transparent; cursor:pointer; }
+.discord-volume-slider::-webkit-slider-runnable-track { height:4px; border-radius:999px; background:linear-gradient(90deg,#5865f2 0 var(--volume-progress),#35373f var(--volume-progress) 100%); }
+.discord-volume-slider::-webkit-slider-thumb { width:16px; height:16px; margin-top:-6px; appearance:none; border:0; border-radius:50%; background:#f2f3f5; box-shadow:0 1px 4px rgba(0,0,0,.45); }
+.discord-volume-slider:focus-visible { outline:2px solid rgba(88,101,242,.72); outline-offset:3px; border-radius:4px; }
+.discord-microphone-test { display:grid; grid-template-columns:170px minmax(0,1fr); align-items:center; gap:18px; }
+.discord-microphone-test-button { min-height:40px; justify-content:center; border-radius:7px; background:#5865f2; color:#fff; box-shadow:none; }
+.discord-microphone-test-button:hover { background:#4752c4; }
+.discord-microphone-test-button.is-testing { background:#da373c; }
+.discord-level-meter { height:28px; display:grid; grid-template-columns:repeat(36,minmax(2px,1fr)); align-items:center; gap:4px; }
+.discord-level-meter span { height:24px; border-radius:2px; background:#2a2c34; transition:background 70ms linear,transform 70ms linear; }
+.discord-level-meter span.is-lit { background:#23a55a; transform:scaleY(1.08); }
+.discord-microphone-error { margin:-8px 0 0 188px; color:#ff9195; font-size:.7rem; }
+.discord-voice-help { margin:0; color:#72767d; font-size:.7rem; line-height:1.45; }
+.discord-video-summary { padding-top:22px; border-top:1px solid rgba(255,255,255,.07); }
+.discord-video-summary-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.discord-video-summary-grid > div { display:flex; flex-direction:column; gap:4px; padding:11px 12px; background:#111318; border:1px solid rgba(255,255,255,.06); border-radius:8px; }
+.discord-video-summary-grid span { color:#72767d; font-size:.65rem; text-transform:uppercase; letter-spacing:.04em; }
+.discord-video-summary-grid strong { color:#d7d9dc; font-size:.76rem; font-weight:600; }
 .session-entry-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); height:auto; padding:4px; gap:3px; }
 .session-entry-tabs .tab-pill { min-height:34px; }
 .room-create-form,.room-saved-card { display:flex; flex-direction:column; gap:9px; }
