@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, autoUpdater, BrowserWindow, ipcMain, session } from 'electron';
+import squirrelStartup from 'electron-squirrel-startup';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ipcChannels } from '../shared/ipc';
@@ -13,6 +14,13 @@ import { TailscaleStunServer } from './tailscale/stun-server';
 import { TailscaleService } from './tailscale/tailscale-service';
 import { RemoteInputService } from './input/remote-input-service';
 import { RoomConfigService } from './rooms/room-config-service';
+import { startWindowsAutoUpdates } from './update/update-service';
+
+const windowsAppUserModelId = 'com.squirrel.SFScreen.SFScreen';
+if (process.platform === 'win32') app.setAppUserModelId(windowsAppUserModelId);
+
+const ownsSingleInstanceLock = !squirrelStartup && app.requestSingleInstanceLock();
+if (!ownsSingleInstanceLock) app.quit();
 
 let mainWindow: BrowserWindow | null = null;
 const tailscale = new TailscaleService();
@@ -26,6 +34,7 @@ const screenCapture = new ScreenCaptureService();
 const diagnostics = new DiagnosticsService();
 const audioCapture = new DiscordAudioCaptureService();
 const remoteInput = new RemoteInputService();
+let stopAutoUpdates = (): void => undefined;
 
 const getAppIconPath = (): string => {
   const possiblePaths = [
@@ -101,7 +110,7 @@ const createWindow = (): void => {
   }
 };
 
-app.whenReady().then(() => {
+if (ownsSingleInstanceLock) void app.whenReady().then(() => {
   roomConfig = new RoomConfigService(path.join(app.getPath('userData'), 'rooms'));
   const isAuthorizedWebContents = (webContents: Electron.WebContents | null): boolean => mainWindow !== null
     && !mainWindow.isDestroyed()
@@ -148,10 +157,25 @@ app.whenReady().then(() => {
   });
   registerRuntimeIpc({ ipcMain, audioCapture, remoteInput, isAuthorizedSender });
   createWindow();
+  stopAutoUpdates = startWindowsAutoUpdates(() => mainWindow);
 });
 
-app.on('before-quit', () => {
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
+
+let isShuttingDown = false;
+const shutdown = (): void => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  stopAutoUpdates();
   audioCapture.stop();
   void Promise.all([sessionServer.stop(), stunServer.stop()]);
-});
+};
+
+app.on('before-quit', shutdown);
+autoUpdater.on('before-quit-for-update', shutdown);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

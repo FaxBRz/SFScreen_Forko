@@ -1,7 +1,7 @@
 {
   "name": "sfscreen",
   "productName": "SFScreen",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Teste privado de compartilhamento de tela e áudio por Tailscale e WebRTC.",
   "main": ".vite/build/main.js",
   "scripts": {
@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "test:e2e": "npm run make && playwright test",
     "build:portable": "node scripts/build-portable-release.mjs",
-    "make": "electron-forge make && node scripts/write-installer-checksum.mjs"
+    "make": "electron-forge make --platform=win32 --arch=x64 && node scripts/write-installer-checksum.mjs"
   },
   "author": "SFScreen Contributors",
   "license": "UNLICENSED",
@@ -22,6 +22,7 @@
     "@playwright/test": "1.58.2",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
+    "@types/electron-squirrel-startup": "1.0.2",
     "@types/node": "22.19.15",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
@@ -38,6 +39,7 @@
     "vitest": "4.1.11"
   },
   "dependencies": {
+    "electron-squirrel-startup": "1.0.1",
     "loopback-capture": "2.0.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"

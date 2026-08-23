@@ -9,7 +9,8 @@ console.log('🚀 Iniciando build da versão Portable do SFScreen...');
 const rootDir = process.cwd();
 const outDir = path.join(rootDir, 'out');
 const portableDir = path.join(outDir, 'SFScreen-win32-x64');
-const zipFile = path.join(outDir, 'SFScreen-0.1.3-Portable-x64.zip');
+const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+const zipFile = path.join(outDir, `SFScreen-${pkg.version}-Portable-x64.zip`);
 
 // 1. Build Vite bundles
 console.log('📦 Compilando bundles de produção com Vite...');
@@ -61,7 +62,8 @@ const iconPath = path.join(rootDir, 'assets', 'icon.ico');
 if (fs.existsSync(rceditPath) && fs.existsSync(iconPath)) {
   console.log('🎨 Aplicando ícone e metadados no SFScreen.exe...');
   try {
-    execSync(`"${rceditPath}" "${targetExe}" --set-icon "${iconPath}" --set-version-string "ProductName" "SFScreen" --set-version-string "FileDescription" "SFScreen" --set-version-string "CompanyName" "SFScreen" --set-version-string "LegalCopyright" "SFScreen Contributors" --set-file-version "0.1.3.0" --set-product-version "0.1.3.0"`, { stdio: 'inherit' });
+    const windowsVersion = `${pkg.version}.0`;
+    execSync(`"${rceditPath}" "${targetExe}" --set-icon "${iconPath}" --set-version-string "ProductName" "SFScreen" --set-version-string "FileDescription" "SFScreen" --set-version-string "CompanyName" "SFScreen" --set-version-string "LegalCopyright" "SFScreen Contributors" --set-file-version "${windowsVersion}" --set-product-version "${windowsVersion}"`, { stdio: 'inherit' });
   } catch (err) {
     console.warn('Aviso: rcedit encontrou um erro não crítico:', err);
   }
@@ -78,7 +80,6 @@ fs.cpSync(path.join(rootDir, '.vite'), path.join(appResourcesDir, '.vite'), { re
 fs.cpSync(path.join(rootDir, 'assets'), path.join(appResourcesDir, 'assets'), { recursive: true });
 
 // Copiar package.json
-const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
 const prodPkg = {
   name: pkg.name,
   productName: pkg.productName,

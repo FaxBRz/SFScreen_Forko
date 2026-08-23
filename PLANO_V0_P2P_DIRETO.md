@@ -70,6 +70,8 @@ Uma falha desse tipo será considerada um resultado válido do experimento. A V0
 - Estatísticas técnicas.
 - Logs locais sem conteúdo ou segredos.
 - Teste contínuo de até 12 horas.
+- Instalador Windows por usuário com atalhos no menu Iniciar e na Área de Trabalho.
+- Atualização automática opcional quando um feed Squirrel HTTPS for configurado no build.
 
 ### Fora da V0
 
@@ -81,7 +83,6 @@ Uma falha desse tipo será considerada um resultado válido do experimento. A V0
 - Chamada com nome de usuário.
 - Bandeja do Windows.
 - Reconexão completa após mudança de rede.
-- Atualização automática.
 - Instalador assinado de produção.
 - Cloudflare, Tailscale, Radmin ou ZeroTier.
 - TURN ou relay próprio.
