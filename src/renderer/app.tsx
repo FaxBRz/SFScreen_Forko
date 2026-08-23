@@ -98,6 +98,11 @@ const MessageSquareIcon = (): ReactElement => (
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
+const ImageIcon = (): ReactElement => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-4.5-4.5L6 21" />
+  </svg>
+);
 const ActivityIcon = (): ReactElement => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
@@ -2016,8 +2021,11 @@ export const App = (): ReactElement => {
   const [streamMenuOpen, setStreamMenuOpen] = useState(false);
   const [qualitySubmenuOpen, setQualitySubmenuOpen] = useState(false);
   const [chatText, setChatText] = useState("");
+  const [chatImage, setChatImage] = useState<{ data: string; name: string } | null>(null);
+  const [chatError, setChatError] = useState("");
   const stageRef = useRef<HTMLDivElement>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+  const chatFileInputRef = useRef<HTMLInputElement>(null);
   const streamMenuRef = useRef<HTMLDivElement>(null);
   const hideControlsTimerRef = useRef<number | null>(null);
 
@@ -3045,12 +3053,62 @@ export const App = (): ReactElement => {
   };
 
 
+  const handleChatImageChange = (file?: File): void => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setChatError("Selecione uma imagem PNG, JPG, WEBP ou GIF.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setChatError("A imagem deve ter no máximo 8 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const maxSide = 1600;
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const data = canvas.toDataURL("image/jpeg", 0.82);
+        if (data.length > 1_500_000) {
+          setChatError("A imagem ficou grande demais. Escolha uma foto menor.");
+          return;
+        }
+        setChatImage({ data, name: file.name });
+        setChatError("");
+      };
+      image.onerror = () => setChatError("Não foi possível ler esta imagem.");
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSendChat = (e: FormEvent): void => {
     e.preventDefault();
-    if (chatText.trim()) {
-      session.sendChatMessage(chatText);
+    if (chatText.trim() || chatImage) {
+      if (chatImage) session.sendChatMessage(chatText, chatImage);
+      else session.sendChatMessage(chatText);
       setChatText("");
+      setChatImage(null);
+      setChatError("");
+      if (chatFileInputRef.current) chatFileInputRef.current.value = "";
     }
+  };
+
+  const renderChatText = (text: string): ReactElement[] => {
+    const mentionNames = [state.localUserName, state.remoteUserName].filter(Boolean).map((name) => name.toLocaleLowerCase());
+    return text.split(/(@[\p{L}\p{N}_-]+)/gu).map((part, index) => {
+      const isMention = part.startsWith("@") && mentionNames.includes(part.slice(1).toLocaleLowerCase());
+      return isMention
+        ? <button key={`${part}-${index}`} className="chat-mention" type="button" onClick={() => setChatText(`${part} `)}>{part}</button>
+        : <span key={`${part}-${index}`}>{part}</span>;
+    });
   };
 
   const participantsCount = isConnected ? 2 : 1;
@@ -3176,7 +3234,10 @@ export const App = (): ReactElement => {
         {sidebarOpen && (
           <aside className="discord-sidebar" style={{ width: `${sidebarWidth}px` }}>
             <div className="sidebar-header-row">
-              <div className="section-title">Pessoas na sala ({participantsCount})</div>
+              <div className="sidebar-title-group">
+                <div className="section-title">Pessoas na sala ({participantsCount})</div>
+                <span className="sidebar-count-badge">{participantsCount}</span>
+              </div>
               <button
                 className="icon-action-button sidebar-collapse-btn"
                 type="button"
@@ -3203,6 +3264,7 @@ export const App = (): ReactElement => {
                 </button>
               </section>
             )}
+            <div className="sidebar-participant-label">Na chamada</div>
             <div className="participant-list">
               {isConnected && (
                 <div className="participant-item">
@@ -4307,7 +4369,10 @@ export const App = (): ReactElement => {
             />
 
             <div className="chat-header">
-              <h3>Chat da Chamada</h3>
+              <div className="chat-title-group">
+                <span className="chat-title-icon"><MessageSquareIcon /></span>
+                <div><h3>Chat da Chamada</h3><span>{participantsCount} {participantsCount === 1 ? "pessoa" : "pessoas"} na sala</span></div>
+              </div>
               <button className="icon-action-button" type="button" onClick={handleCloseChat} aria-label="Fechar chat">
                 <XCloseIcon />
               </button>
@@ -4344,7 +4409,12 @@ export const App = (): ReactElement => {
                         <TrashIcon />
                       </button>
                     </div>
-                    <p className="chat-text">{msg.text}</p>
+                    {msg.text && <p className="chat-text">{renderChatText(msg.text)}</p>}
+                    {msg.imageData && (
+                      <a className="chat-image-link" href={msg.imageData} target="_blank" rel="noreferrer" title={msg.imageName ?? "Abrir imagem"}>
+                        <img className="chat-image" src={msg.imageData} alt={msg.imageName ?? "Imagem enviada no chat"} />
+                      </a>
+                    )}
                   </div>
                 </div>
               ))}
@@ -4358,13 +4428,26 @@ export const App = (): ReactElement => {
 
 
             <form className="chat-input-box" onSubmit={handleSendChat}>
+              {chatImage && (
+                <div className="chat-image-preview">
+                  <img src={chatImage.data} alt="Prévia da imagem selecionada" />
+                  <div><strong>{chatImage.name}</strong><span>Pronta para enviar</span></div>
+                  <button type="button" aria-label="Remover imagem" title="Remover imagem" onClick={() => { setChatImage(null); if (chatFileInputRef.current) chatFileInputRef.current.value = ""; }}>×</button>
+                </div>
+              )}
+              {chatError && <span className="chat-upload-error">{chatError}</span>}
+              <input ref={chatFileInputRef} className="chat-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(e) => handleChatImageChange(e.target.files?.[0])} />
+              <button className="chat-attach-btn" type="button" title="Enviar imagem" aria-label="Enviar imagem" onClick={() => chatFileInputRef.current?.click()}>
+                <ImageIcon />
+              </button>
               <input
                 className="chat-text-input"
                 value={chatText}
                 onChange={(e) => setChatText(e.target.value)}
                 placeholder="Conversar no canal…"
+                title={`Use @${isConnected ? state.remoteUserName : "Usuario"} para mencionar`}
               />
-              <button className="chat-send-btn" type="submit" disabled={!chatText.trim()} aria-label="Enviar">
+              <button className="chat-send-btn" type="submit" disabled={!chatText.trim() && !chatImage} aria-label="Enviar">
                 <SendIcon />
               </button>
             </form>

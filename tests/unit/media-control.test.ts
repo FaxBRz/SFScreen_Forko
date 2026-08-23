@@ -51,6 +51,17 @@ describe('media control protocol', () => {
     expect(parseControlMessage(serializeControlMessage(del))).toEqual(del);
   });
 
+  it('accepts a chat image without text and rejects an oversized image payload', () => {
+    const image = {
+      protocolVersion: sessionProtocolVersion,
+      type: 'chat-message' as const,
+      message: { id: 'image-1', senderName: 'Rafael', text: '', imageData: 'data:image/jpeg;base64,abc', imageName: 'foto.jpg', timestamp: 1700000000000 },
+    };
+    expect(parseControlMessage(serializeControlMessage(image))).toEqual(image);
+    const tooLarge = { ...image, message: { ...image.message, imageData: `data:image/jpeg;base64,${'a'.repeat(1_500_001)}` } };
+    expect(parseControlMessage(serializeControlMessage(tooLarge))).toBeUndefined();
+  });
+
   it('round-trips remote-control-config and remote-control-status', () => {
     const config = {
       protocolVersion: sessionProtocolVersion,

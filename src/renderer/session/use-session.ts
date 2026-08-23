@@ -444,7 +444,7 @@ export interface SessionModel {
   close: () => Promise<void>;
   copyCode: () => Promise<boolean>;
   exportDiagnostics: () => Promise<boolean>;
-  sendChatMessage: (text: string) => void;
+  sendChatMessage: (text: string, image?: { data: string; name: string }) => void;
   deleteChatMessage: (id: string) => void;
   setUserName: (name: string) => void;
   setUserAvatar: (avatar?: string) => void;
@@ -1205,13 +1205,15 @@ recordDiagnostic('audio-unavailable');
     }
   }, [state.phase]);
 
-  const sendChatMessage = useCallback((text: string): void => {
+  const sendChatMessage = useCallback((text: string, image?: { data: string; name: string }): void => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed && !image) return;
     const message: ChatMessagePayload = {
       id: crypto.randomUUID(),
       senderName: state.localUserName,
       text: trimmed,
+      imageData: image?.data,
+      imageName: image?.name,
       timestamp: Date.now(),
       isSelf: true,
     };

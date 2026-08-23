@@ -24,6 +24,8 @@ export interface ChatMessagePayload {
   id: string;
   senderName: string;
   text: string;
+  imageData?: string;
+  imageName?: string;
   timestamp: number;
   isSelf?: boolean;
 }
@@ -67,8 +69,9 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
       if (
         typeof msg.id === 'string' && msg.id.length > 0 && msg.id.length <= 128
         && typeof msg.senderName === 'string' && msg.senderName.length > 0 && msg.senderName.length <= 64
-        && typeof msg.text === 'string' && msg.text.trim().length > 0 && msg.text.length <= 4096
+        && typeof msg.text === 'string' && msg.text.length <= 4096
         && typeof msg.timestamp === 'number' && Number.isFinite(msg.timestamp)
+        && (msg.text.trim().length > 0 || (typeof msg.imageData === 'string' && msg.imageData.startsWith('data:image/') && msg.imageData.length <= 1_500_000))
       ) {
         return {
           protocolVersion: sessionProtocolVersion,
@@ -77,6 +80,8 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
             id: msg.id,
             senderName: msg.senderName,
             text: msg.text,
+            imageData: typeof msg.imageData === 'string' && msg.imageData.startsWith('data:image/') && msg.imageData.length <= 1_500_000 ? msg.imageData : undefined,
+            imageName: typeof msg.imageName === 'string' && msg.imageName.length <= 128 ? msg.imageName : undefined,
             timestamp: msg.timestamp,
           },
         };
