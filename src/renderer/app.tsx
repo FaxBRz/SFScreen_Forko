@@ -2024,6 +2024,7 @@ export const App = (): ReactElement => {
   const [chatImage, setChatImage] = useState<{ data: string; name: string } | null>(null);
   const [chatError, setChatError] = useState("");
   const [activeChatImage, setActiveChatImage] = useState<{ data: string; name: string } | null>(null);
+  const [isChatDropActive, setIsChatDropActive] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
@@ -3088,6 +3089,12 @@ export const App = (): ReactElement => {
       image.src = String(reader.result);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleChatDrop = (event: React.DragEvent<HTMLElement>): void => {
+    event.preventDefault();
+    setIsChatDropActive(false);
+    handleChatImageChange(event.dataTransfer.files?.[0]);
   };
 
   const handleSendChat = (e: FormEvent): void => {
@@ -4388,7 +4395,14 @@ export const App = (): ReactElement => {
 
         {/* Right Collapsible Chat Drawer (Resizable) */}
         {state.chatPanelOpen && (
-          <aside className="discord-chat-drawer" style={{ width: `${chatWidth}px` }}>
+          <aside
+            className={`discord-chat-drawer ${isChatDropActive ? "is-drop-active" : ""}`}
+            style={{ width: `${chatWidth}px` }}
+            onDragEnter={(event) => { event.preventDefault(); if (event.dataTransfer.types.includes("Files")) setIsChatDropActive(true); }}
+            onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsChatDropActive(false); }}
+            onDrop={handleChatDrop}
+          >
             {/* Chat Resize Handle */}
             <div
               className="resize-handle resize-handle-left"
@@ -4405,6 +4419,14 @@ export const App = (): ReactElement => {
                 <XCloseIcon />
               </button>
             </div>
+
+            {isChatDropActive && (
+              <div className="chat-drop-overlay" aria-hidden="true">
+                <ImageIcon />
+                <strong>Solte a imagem para enviar</strong>
+                <span>PNG, JPG, WEBP ou GIF</span>
+              </div>
+            )}
 
             <div className="chat-messages-container">
               {state.chatMessages.length === 0 && !isConnected && (
