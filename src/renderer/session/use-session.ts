@@ -4,7 +4,7 @@ import { diagnosticsFormatVersion, type DiagnosticEvent, type DiagnosticsReport,
 import type { ScreenSelection, ScreenSource } from '../../shared/screen-source';
 import type { ChatMessagePayload } from '../../shared/session/media-control';
 import type { SessionError, TailscaleStatus } from '../../shared/session/types';
-import { initialSessionState, sessionReducer, type AudioPhase, type MediaPhase, type SessionUiState } from './session-machine';
+import { initialSessionState, normalizeUserName, sessionReducer, type AudioPhase, type MediaPhase, type SessionUiState } from './session-machine';
 import { WebRtcSession } from './webrtc-session';
 
 const errorMessage = (error: SessionError | Error | unknown): string => {
@@ -412,7 +412,7 @@ export interface SessionModel {
   refresh: () => Promise<TailscaleStatus | undefined>;
   openSourcePicker: () => Promise<void>;
   closeSourcePicker: () => void;
-  selectSource: (source: ScreenSource, includeSystemAudio: boolean, remoteControl?: Partial<import('../../shared/session/media-control').RemoteControlConfig>) => Promise<void>;
+  selectSource: (source: ScreenSource, includeSystemAudio: boolean, remoteControl?: Partial<import('../../shared/session/media-control').RemoteControlConfig>, allowWithoutGesture?: boolean) => Promise<void>;
   host: () => Promise<void>;
   join: () => Promise<void>;
   confirmSecurity: () => void;
@@ -610,7 +610,7 @@ export const useSession = (): SessionModel => {
           return;
         }
         if (message.type === 'chat-message') {
-          dispatch({ type: 'add-chat-message', message: message.message });
+          dispatch({ type: 'add-chat-message', message: { ...message.message, isSelf: false } });
           return;
         }
         if (message.type === 'delete-chat-message') {
@@ -923,8 +923,8 @@ recordDiagnostic('audio-unavailable');
     return status;
   }, [refresh]);
 
-  const selectSource = useCallback(async (source: ScreenSource, includeSystemAudio: boolean, remoteControl?: Partial<RemoteControlConfig>): Promise<void> => {
-    const selection: ScreenSelection = { sourceId: source.id, includeSystemAudio };
+  const selectSource = useCallback(async (source: ScreenSource, includeSystemAudio: boolean, remoteControl?: Partial<RemoteControlConfig>, allowWithoutGesture = false): Promise<void> => {
+    const selection: ScreenSelection = { sourceId: source.id, includeSystemAudio, allowWithoutGesture };
     const result = await window.sfscreen.selectScreenSource(selection);
     if (!result.ok) return dispatch({ type: 'media', phase: 'failed', error: result.error.message });
     dispatch({ type: 'source-selected', source, includeSystemAudio });
@@ -1170,6 +1170,7 @@ recordDiagnostic('audio-unavailable');
       senderName: state.localUserName,
       text: trimmed,
       timestamp: Date.now(),
+      isSelf: true,
     };
     dispatch({ type: 'add-chat-message', message });
     if (state.phase === 'connected') {
@@ -1178,11 +1179,10 @@ recordDiagnostic('audio-unavailable');
   }, [state.localUserName, state.phase]);
 
   const setUserName = useCallback((name: string): void => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    dispatch({ type: 'set-user-name', name: trimmed });
+    const normalized = normalizeUserName(name);
+    dispatch({ type: 'set-user-name', name: normalized });
     if (state.phase === 'connected') {
-      controllerRef.current?.sendUserProfile(trimmed, localUserAvatarRef.current);
+      controllerRef.current?.sendUserProfile(normalized, localUserAvatarRef.current);
     }
   }, [state.phase]);
 
@@ -1400,13 +1400,11 @@ recordDiagnostic('audio-unavailable');
       const target = screens[monitorIndex] || screens[screens.length - 1] || screens[0];
       if (!target) return;
 
-      capturedSourceIdRef.current = target.id;
-      await selectSource(target, state.includeSystemAudio);
-      await startSharing();
+      await selectSource(target, state.includeSystemAudio, undefined, true);
     } catch {
       // Ignored
     }
-  }, [selectSource, startSharing, state.includeSystemAudio]);
+  }, [selectSource, state.includeSystemAudio]);
 
   useEffect(() => {
     switchMonitorByViewerRef.current = switchMonitorByViewer;

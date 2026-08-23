@@ -16,6 +16,10 @@ console.log('📦 Compilando bundles de produção com Vite...');
 execSync('npx vite build --config vite.main.config.mts', { stdio: 'inherit', env: { ...process.env, SFSCREEN_STANDALONE: '1' } });
 execSync('npx vite build --config vite.preload.config.mts', { stdio: 'inherit', env: { ...process.env, SFSCREEN_STANDALONE: '1' } });
 execSync('npx vite build --config vite.renderer.config.mts', { stdio: 'inherit', env: { ...process.env, SFSCREEN_STANDALONE: '1' } });
+fs.copyFileSync(
+  path.join(rootDir, 'src', 'main', 'input', 'native-input-helper.cs'),
+  path.join(rootDir, '.vite', 'build', 'native-input-helper.cs'),
+);
 
 // 2. Preparar diretório out
 try {

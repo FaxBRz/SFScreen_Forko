@@ -50,4 +50,13 @@ describe('screen capture authorization', () => {
     await service.handleDisplayRequest(request({ securityOrigin: 'https://example.test' }), granted, frame as never, 9);
     expect(granted).toHaveBeenCalledWith({ video: source });
   });
+
+  it('allows a pre-authorized remote monitor switch without a new local click', async () => {
+    const service = new ScreenCaptureService(vi.fn(async () => [source]) as never);
+    await service.selectSource(9, { sourceId: source.id, includeSystemAudio: false, allowWithoutGesture: true });
+    const granted = vi.fn();
+    await service.handleDisplayRequest(request({ userGesture: false }), granted, frame as never, 9);
+    expect(granted).toHaveBeenCalledWith({ video: source });
+    expect(service.getAuthorizationState(9)).toBe('authorized');
+  });
 });

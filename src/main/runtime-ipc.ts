@@ -31,6 +31,21 @@ export const registerRuntimeIpc = ({ ipcMain, audioCapture, remoteInput, isAutho
     return window.isFullScreen();
   });
 
+  ipcMain.handle(ipcChannels.setRemoteInputLock, (event, enabled: unknown): boolean => {
+    if (!authorized(event.sender) || typeof enabled !== 'boolean') return false;
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed()) return false;
+
+    remoteInput.setViewerInputLock(enabled);
+    window.setKiosk(enabled);
+    window.setAlwaysOnTop(enabled, enabled ? 'screen-saver' : 'normal');
+    if (enabled) {
+      window.show();
+      window.focus();
+    }
+    return window.isKiosk();
+  });
+
   ipcMain.handle(ipcChannels.minimizeWindow, (event): void => {
     if (!authorized(event.sender)) return;
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -101,6 +116,18 @@ export const registerRuntimeIpc = ({ ipcMain, audioCapture, remoteInput, isAutho
       if (!win.isDestroyed()) {
         win.webContents.send(ipcChannels.remoteControlStatusChanged, status);
       }
+    });
+  });
+
+  remoteInput.onCapturedInput((input) => {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) win.webContents.send(ipcChannels.capturedRemoteInput, input);
+    });
+  });
+
+  remoteInput.onViewerUnlockRequested(() => {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) win.webContents.send(ipcChannels.remoteInputLockReleased);
     });
   });
 };

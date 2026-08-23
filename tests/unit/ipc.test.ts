@@ -26,6 +26,9 @@ describe('IPC channels', () => {
       filteredAudioChunk: 'audio:filtered-chunk',
       executeRemoteInput: 'remote-input:execute',
       setRemoteControlHostConfig: 'remote-input:set-config',
+      setRemoteInputLock: 'remote-input:set-viewer-lock',
+      capturedRemoteInput: 'remote-input:captured-key',
+      remoteInputLockReleased: 'remote-input:viewer-lock-released',
       resumeRemoteControlOverride: 'remote-input:resume-override',
       remoteControlStatusChanged: 'remote-input:status-changed',
     });

@@ -63,14 +63,20 @@ export type SessionAction =
 
 const emptyStatus: TailscaleStatus = { state: 'offline', peers: [] };
 
+export const normalizeUserName = (value?: string): string => {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed || /^(voc[eê])(\s*\(\s*voc[eê]\s*\))?$/i.test(trimmed)) return 'Usuario';
+  return trimmed;
+};
+
 export const getSavedUserName = (): string => {
   try {
     const saved = localStorage.getItem('sfscreen_username');
-    if (saved && saved.trim()) return saved.trim();
+    if (saved && saved.trim()) return normalizeUserName(saved);
   } catch {
     // Local storage may be restricted in some test environments
   }
-  return 'Você';
+  return 'Usuario';
 };
 
 export const getSavedUserAvatar = (): string | undefined => {
@@ -221,11 +227,11 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
         message: 'Chamada ativa. Você está sozinho na sala.',
       };
     case 'set-user-name':
-      try { localStorage.setItem('sfscreen_username', action.name); } catch { /* ignore */ }
-      return { ...state, localUserName: action.name };
+      try { localStorage.setItem('sfscreen_username', normalizeUserName(action.name)); } catch { /* ignore */ }
+      return { ...state, localUserName: normalizeUserName(action.name) };
     case 'set-local-user-name':
-      try { localStorage.setItem('sfscreen_username', action.userName); } catch { /* ignore */ }
-      return { ...state, localUserName: action.userName };
+      try { localStorage.setItem('sfscreen_username', normalizeUserName(action.userName)); } catch { /* ignore */ }
+      return { ...state, localUserName: normalizeUserName(action.userName) };
     case 'set-local-user-avatar':
       try {
         if (action.avatar) {
@@ -238,11 +244,11 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
     case 'set-remote-user-profile':
       return {
         ...state,
-        remoteUserName: action.userName || 'Outra pessoa',
+        remoteUserName: normalizeUserName(action.userName),
         remoteUserAvatar: action.userAvatar,
       };
     case 'set-remote-user-name':
-      return { ...state, remoteUserName: (action.userName ?? action.name) || 'Outra pessoa' };
+      return { ...state, remoteUserName: normalizeUserName(action.userName ?? action.name) };
     case 'set-remote-user-avatar':
       return { ...state, remoteUserAvatar: action.avatar };
     case 'add-chat-message':

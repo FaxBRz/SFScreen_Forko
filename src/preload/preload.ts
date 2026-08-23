@@ -40,6 +40,17 @@ const api: SFScreenApi = {
     return () => ipcRenderer.removeListener(ipcChannels.filteredAudioChunk, callback);
   },
   setRemoteControlHostConfig: (config) => ipcRenderer.invoke(ipcChannels.setRemoteControlHostConfig, config),
+  setRemoteInputLock: (enabled) => ipcRenderer.invoke(ipcChannels.setRemoteInputLock, enabled),
+  onCapturedRemoteInput: (listener) => {
+    const callback = (_event: Electron.IpcRendererEvent, input: Parameters<typeof listener>[0]): void => listener(input);
+    ipcRenderer.on(ipcChannels.capturedRemoteInput, callback);
+    return () => ipcRenderer.removeListener(ipcChannels.capturedRemoteInput, callback);
+  },
+  onRemoteInputLockReleased: (listener) => {
+    const callback = (): void => listener();
+    ipcRenderer.on(ipcChannels.remoteInputLockReleased, callback);
+    return () => ipcRenderer.removeListener(ipcChannels.remoteInputLockReleased, callback);
+  },
   executeRemoteInput: (input, sourceId) => ipcRenderer.invoke(ipcChannels.executeRemoteInput, input, sourceId),
   resumeRemoteControlOverride: () => ipcRenderer.invoke(ipcChannels.resumeRemoteControlOverride),
   onRemoteControlStatusChanged: (listener) => {

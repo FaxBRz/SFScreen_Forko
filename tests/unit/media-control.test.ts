@@ -86,7 +86,7 @@ describe('media control protocol', () => {
     const key = {
       protocolVersion: sessionProtocolVersion,
       type: 'remote-control-input' as const,
-      input: { kind: 'key-down' as const, code: 'KeyA', key: 'a', ctrlKey: true, shiftKey: false, altKey: false, metaKey: false },
+      input: { kind: 'key-down' as const, code: 'KeyA', key: 'a', nativeKeyCode: 0x41, ctrlKey: true, shiftKey: false, altKey: false, metaKey: false },
     };
     expect(parseControlMessage(serializeControlMessage(key))).toEqual(key);
 

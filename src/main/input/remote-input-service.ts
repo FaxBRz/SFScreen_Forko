@@ -1,5 +1,6 @@
 import { app, screen } from 'electron';
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { RemoteControlConfig, RemoteControlStatus, RemoteInputPayload } from '../../shared/session/media-control';
@@ -20,6 +21,10 @@ export class RemoteInputService {
   private lastInjectedPos: { x: number; y: number; time: number } | null = null;
   private helperProcess: ChildProcess | null = null;
   private helperReady = false;
+  private helperStdoutBuffer = '';
+  private viewerInputLocked = false;
+  private capturedInputListeners = new Set<(input: RemoteInputPayload) => void>();
+  private viewerUnlockListeners = new Set<() => void>();
 
   constructor() {
     this.initNativeHelper();
@@ -39,9 +44,11 @@ export class RemoteInputService {
       });
 
       this.helperProcess.stdout?.on('data', (data) => {
-        const text = data.toString().trim();
-        if (text.includes('READY') || text.includes('PONG')) {
-          this.helperReady = true;
+        this.helperStdoutBuffer += data.toString();
+        const lines = this.helperStdoutBuffer.split(/\r?\n/);
+        this.helperStdoutBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+          this.handleHelperEvent(line.trim());
         }
       });
 
@@ -59,12 +66,6 @@ export class RemoteInputService {
   private getOrCompileHelperExe(): string | null {
     try {
       const userData = app?.getPath ? app.getPath('userData') : process.env.TEMP || process.cwd();
-      const targetExe = path.join(userData, 'sfscreen-input-helper.exe');
-
-      if (fs.existsSync(targetExe)) {
-        return targetExe;
-      }
-
       const possibleCsPaths = [
         path.join(__dirname, 'native-input-helper.cs'),
         path.join(__dirname, '..', 'src', 'main', 'input', 'native-input-helper.cs'),
@@ -73,6 +74,10 @@ export class RemoteInputService {
 
       const csFile = possibleCsPaths.find((p) => fs.existsSync(p));
       if (!csFile) return null;
+
+      const sourceHash = createHash('sha256').update(fs.readFileSync(csFile)).digest('hex').slice(0, 12);
+      const targetExe = path.join(userData, `sfscreen-input-helper-${sourceHash}.exe`);
+      if (fs.existsSync(targetExe)) return targetExe;
 
       const cscPaths = [
         'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe',
@@ -96,6 +101,64 @@ export class RemoteInputService {
         // Ignored
       }
     }
+  }
+
+  private handleHelperEvent(line: string): void {
+    if (line === 'READY' || line === 'PONG') {
+      this.helperReady = true;
+      if (this.viewerInputLocked) this.sendCommand('LOCK 1');
+      return;
+    }
+
+    if (line === 'UNLOCK_REQUEST') {
+      for (const listener of this.viewerUnlockListeners) listener();
+      return;
+    }
+
+    const key = /^KEY (D|U) (\d+) (\d+) (\d+)$/.exec(line);
+    if (!key || !this.viewerInputLocked) return;
+    const nativeKeyCode = Number(key[2]);
+    const input: RemoteInputPayload = {
+      kind: key[1] === 'D' ? 'key-down' : 'key-up',
+      code: this.codeForVirtualKey(nativeKeyCode),
+      key: '',
+      nativeKeyCode,
+    };
+    for (const listener of this.capturedInputListeners) listener(input);
+  }
+
+  setViewerInputLock(enabled: boolean): boolean {
+    this.viewerInputLocked = enabled;
+    this.sendCommand(`LOCK ${enabled ? 1 : 0}`);
+    return process.platform !== 'win32' || this.helperReady;
+  }
+
+  onCapturedInput(listener: (input: RemoteInputPayload) => void): () => void {
+    this.capturedInputListeners.add(listener);
+    return () => this.capturedInputListeners.delete(listener);
+  }
+
+  onViewerUnlockRequested(listener: () => void): () => void {
+    this.viewerUnlockListeners.add(listener);
+    return () => this.viewerUnlockListeners.delete(listener);
+  }
+
+  private codeForVirtualKey(vk: number): string {
+    if (vk >= 0x41 && vk <= 0x5A) return `Key${String.fromCharCode(vk)}`;
+    if (vk >= 0x30 && vk <= 0x39) return `Digit${String.fromCharCode(vk)}`;
+    if (vk >= 0x60 && vk <= 0x69) return `Numpad${vk - 0x60}`;
+    if (vk >= 0x70 && vk <= 0x87) return `F${vk - 0x6F}`;
+    const codes: Record<number, string> = {
+      0x08: 'Backspace', 0x09: 'Tab', 0x0D: 'Enter', 0x10: 'ShiftLeft', 0x11: 'ControlLeft',
+      0x12: 'AltLeft', 0x14: 'CapsLock', 0x1B: 'Escape', 0x20: 'Space', 0x21: 'PageUp',
+      0x22: 'PageDown', 0x23: 'End', 0x24: 'Home', 0x25: 'ArrowLeft', 0x26: 'ArrowUp',
+      0x27: 'ArrowRight', 0x28: 'ArrowDown', 0x2D: 'Insert', 0x2E: 'Delete', 0x5B: 'MetaLeft',
+      0x5C: 'MetaRight', 0xA0: 'ShiftLeft', 0xA1: 'ShiftRight', 0xA2: 'ControlLeft',
+      0xA3: 'ControlRight', 0xA4: 'AltLeft', 0xA5: 'AltRight', 0xBA: 'Semicolon',
+      0xBB: 'Equal', 0xBC: 'Comma', 0xBD: 'Minus', 0xBE: 'Period', 0xBF: 'Slash',
+      0xC0: 'Backquote', 0xDB: 'BracketLeft', 0xDC: 'Backslash', 0xDD: 'BracketRight', 0xDE: 'Quote',
+    };
+    return codes[vk] ?? 'Unidentified';
   }
 
   setConfig(config: RemoteControlConfig): void {
@@ -261,7 +324,9 @@ export class RemoteInputService {
     }
 
     if (input.kind === 'key-down' || input.kind === 'key-up') {
-      const vk = this.mapCodeToVk(input.code, input.key);
+      const vk = input.nativeKeyCode && input.nativeKeyCode > 0 && input.nativeKeyCode < 256
+        ? input.nativeKeyCode
+        : this.mapCodeToVk(input.code, input.key);
       if (vk) {
         const isExtended = this.isExtendedKey(vk) ? 1 : 0;
         const cmd = input.kind === 'key-down' ? 'KD' : 'KU';
@@ -374,6 +439,9 @@ export class RemoteInputService {
     }
     this.clearOverride();
     this.statusListeners.clear();
+    this.capturedInputListeners.clear();
+    this.viewerUnlockListeners.clear();
+    this.setViewerInputLock(false);
 
     if (this.helperProcess) {
       try {

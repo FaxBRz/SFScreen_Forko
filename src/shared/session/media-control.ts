@@ -17,7 +17,7 @@ export type RemoteInputPayload =
   | { kind: 'mouse-move'; x: number; y: number }
   | { kind: 'mouse-down' | 'mouse-up'; button: 'left' | 'right' | 'middle'; x: number; y: number }
   | { kind: 'mouse-wheel'; deltaX: number; deltaY: number; x: number; y: number }
-  | { kind: 'key-down' | 'key-up'; code: string; key: string; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean }
+  | { kind: 'key-down' | 'key-up'; code: string; key: string; nativeKeyCode?: number; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean }
   | { kind: 'special'; action: 'ctrl-alt-del' | 'win' | 'taskmgr' };
 
 export interface ChatMessagePayload {
@@ -25,6 +25,7 @@ export interface ChatMessagePayload {
   senderName: string;
   text: string;
   timestamp: number;
+  isSelf?: boolean;
 }
 
 export type SessionControlMessage =
@@ -123,6 +124,7 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
             kind: inp.kind,
             code: inp.code,
             key: inp.key,
+            nativeKeyCode: typeof inp.nativeKeyCode === 'number' && Number.isInteger(inp.nativeKeyCode) && inp.nativeKeyCode > 0 && inp.nativeKeyCode < 256 ? inp.nativeKeyCode : undefined,
             ctrlKey: Boolean(inp.ctrlKey),
             shiftKey: Boolean(inp.shiftKey),
             altKey: Boolean(inp.altKey),

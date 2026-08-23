@@ -28,10 +28,14 @@ export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, stunServ
   ipcMain.handle(ipcChannels.selectScreenSource, (event, selection: unknown) => {
     if (!authorized(event.sender)) return unauthorized();
     if (typeof selection !== 'object' || selection === null || !('sourceId' in selection) || !('includeSystemAudio' in selection)) return invalid('O monitor selecionado é inválido.');
-    const value = selection as { sourceId?: unknown; includeSystemAudio?: unknown };
-    if (typeof value.sourceId !== 'string' || value.sourceId.length === 0 || value.sourceId.length > 256 || typeof value.includeSystemAudio !== 'boolean') return invalid('O monitor selecionado é inválido.');
+    const value = selection as { sourceId?: unknown; includeSystemAudio?: unknown; allowWithoutGesture?: unknown };
+    if (typeof value.sourceId !== 'string' || value.sourceId.length === 0 || value.sourceId.length > 256 || typeof value.includeSystemAudio !== 'boolean' || (value.allowWithoutGesture !== undefined && typeof value.allowWithoutGesture !== 'boolean')) return invalid('O monitor selecionado é inválido.');
     return toSessionResult(async () => {
-      await screenCapture.selectSource(event.sender.id, { sourceId: value.sourceId as string, includeSystemAudio: value.includeSystemAudio as boolean });
+      await screenCapture.selectSource(event.sender.id, {
+        sourceId: value.sourceId as string,
+        includeSystemAudio: value.includeSystemAudio as boolean,
+        allowWithoutGesture: value.allowWithoutGesture === true,
+      });
       return undefined;
     });
   });

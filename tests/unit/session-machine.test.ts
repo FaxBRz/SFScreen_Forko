@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { initialSessionState, sessionReducer } from '../../src/renderer/session/session-machine';
+import { initialSessionState, normalizeUserName, sessionReducer } from '../../src/renderer/session/session-machine';
 
 const ready = { state: 'ready' as const, selfIp: '100.90.1.2', peers: [] };
 
 describe('session machine', () => {
+  it('uses Usuario instead of legacy Você profile names', () => {
+    expect(normalizeUserName()).toBe('Usuario');
+    expect(normalizeUserName('Você')).toBe('Usuario');
+    expect(normalizeUserName('Você (Você)')).toBe('Usuario');
+    expect(normalizeUserName('Rafael')).toBe('Rafael');
+  });
+
   it('moves a hosted session through verification to connected', () => {
     const idle = sessionReducer(initialSessionState, { type: 'status', status: ready });
     const hosting = sessionReducer(idle, { type: 'begin', role: 'host', phase: 'hosting', message: 'Preparando' });

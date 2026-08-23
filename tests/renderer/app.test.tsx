@@ -426,7 +426,7 @@ describe('SFScreen Discord layout', () => {
     render(<App />);
 
     // Check viewer badge
-    expect(screen.getAllByText('Você').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Usuario').length).toBeGreaterThanOrEqual(1);
 
     // Click "Parar de ver"
 
@@ -463,7 +463,7 @@ describe('SFScreen Discord layout', () => {
 
     // Both tiles rendered side by side
     expect(screen.getAllByText(/Clique para focar/i).length).toBe(2);
-    expect(screen.getAllByText(/Você/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Usuario/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Alex (Simulado)').length).toBeGreaterThanOrEqual(1);
 
     // Click on Alex's screenshare tile to focus
@@ -487,7 +487,7 @@ describe('SFScreen Discord layout', () => {
     render(<App />);
 
     // Initially window is focused, showing normal stream video
-    expect(screen.getByText(/Você está apresentando/i)).toBeTruthy();
+    expect(screen.getByText(/Usuario está apresentando/i)).toBeTruthy();
 
     // Window loses focus (blur event)
     fireEvent.blur(window);
@@ -514,7 +514,7 @@ describe('SFScreen Discord layout', () => {
     render(<App />);
 
     // Double click viewport to zoom in to 1.5x (150%)
-    const viewport = screen.getByText(/Você está apresentando/i).closest('.stage-video-viewport')!;
+    const viewport = screen.getByText(/Usuario está apresentando/i).closest('.stage-video-viewport')!;
     fireEvent.doubleClick(viewport);
 
     // Zoom Navigator Card is rendered with title, minimap preview and blue viewfinder box
@@ -705,7 +705,7 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(cameraBoxes[0]);
 
     // Focuses local camera
-    expect(screen.getByText(/Você \(Câmera\) está apresentando/i)).toBeTruthy();
+    expect(screen.getByText(/Usuario \(Câmera\) está apresentando/i)).toBeTruthy();
   });
 
   it('toggles camera via dock button and opens Discord-style network telemetry popover', async () => {
@@ -774,7 +774,7 @@ describe('SFScreen Discord layout', () => {
     render(<App />);
 
     // PiP should display showing local camera while viewing remote screen
-    expect(screen.getByText(/Você \(Câmera\)/i)).toBeTruthy();
+    expect(screen.getByText(/Usuario \(Câmera\)/i)).toBeTruthy();
     expect(screen.getByTitle(/Fechar miniatura flutuante/i)).toBeTruthy();
 
     // Grid Mode button should be available
@@ -820,8 +820,8 @@ describe('SFScreen Discord layout', () => {
     vi.mocked(useSession).mockReturnValue(current);
     render(<App />);
 
-    // Should state that "Você está apresentando"
-    expect(screen.getByText(/Você está apresentando/i)).toBeTruthy();
+    // Should state that the default local user is presenting.
+    expect(screen.getByText(/Usuario está apresentando/i)).toBeTruthy();
 
     // No PiP and no "Parar de ver" remote viewer button
     expect(screen.queryByText(/Parar de ver/i)).toBeNull();
@@ -893,14 +893,16 @@ describe('SFScreen Discord layout', () => {
     current.remoteMediaPhase = 'sharing';
     current.remotePeerControlConfig = { enabled: true, allowMouse: true, allowKeyboard: true, allowClipboard: true };
     vi.mocked(useSession).mockReturnValue(current);
-    render(<App />);
+    const { container } = render(<App />);
 
     // Floating action bar
     expect(screen.getByRole('button', { name: /ativar controle/i })).toBeTruthy();
+    expect((container.querySelector('.stage-video-viewport') as HTMLElement).style.cursor).toBe('default');
 
     // Click to lock
     fireEvent.click(screen.getByRole('button', { name: /ativar controle/i }));
     expect(screen.getByRole('button', { name: /lock ativo/i })).toBeTruthy();
+    expect((container.querySelector('.stage-video-viewport') as HTMLElement).style.cursor).toBe('crosshair');
     expect(screen.getByRole('button', { name: /clipboard/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /win/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /ctrl\+alt\+del/i })).toBeTruthy();

@@ -2185,11 +2185,11 @@ export const App = (): ReactElement => {
       if (localScreenActive) {
         otherStream = session.localStream;
         otherTarget = "local-screen";
-        otherLabel = "Você (Tela)";
+        otherLabel = `${state.localUserName} (Tela)`;
       } else if (localCameraActive) {
         otherStream = session.localCameraStream;
         otherTarget = "local-camera";
-        otherLabel = "Você (Câmera)";
+        otherLabel = `${state.localUserName} (Câmera)`;
       } else if (remoteCameraActive) {
         otherStream = session.remoteCameraStream;
         otherTarget = "remote-camera";
@@ -2207,7 +2207,7 @@ export const App = (): ReactElement => {
       } else if (localCameraActive) {
         otherStream = session.localCameraStream;
         otherTarget = "local-camera";
-        otherLabel = "Você (Câmera)";
+        otherLabel = `${state.localUserName} (Câmera)`;
       }
     } else if (effectiveFocused === "local-camera") {
       if (remoteScreenActive) {
@@ -2221,7 +2221,7 @@ export const App = (): ReactElement => {
       } else if (localScreenActive) {
         otherStream = session.localStream;
         otherTarget = "local-screen";
-        otherLabel = "Você (Tela)";
+        otherLabel = `${state.localUserName} (Tela)`;
       }
     } else if (effectiveFocused === "remote-camera") {
       if (remoteScreenActive) {
@@ -2231,22 +2231,22 @@ export const App = (): ReactElement => {
       } else if (localScreenActive) {
         otherStream = session.localStream;
         otherTarget = "local-screen";
-        otherLabel = "Você (Tela)";
+        otherLabel = `${state.localUserName} (Tela)`;
       } else if (localCameraActive) {
         otherStream = session.localCameraStream;
         otherTarget = "local-camera";
-        otherLabel = "Você (Câmera)";
+        otherLabel = `${state.localUserName} (Câmera)`;
       }
     }
   } else if (localScreenActive && localCameraActive) {
     if (effectiveFocused === "local-screen") {
       otherStream = session.localCameraStream;
       otherTarget = "local-camera";
-      otherLabel = "Você (Câmera)";
+      otherLabel = `${state.localUserName} (Câmera)`;
     } else {
       otherStream = session.localStream;
       otherTarget = "local-screen";
-      otherLabel = "Você (Tela)";
+      otherLabel = `${state.localUserName} (Tela)`;
     }
   }
 
@@ -2254,7 +2254,7 @@ export const App = (): ReactElement => {
   const showPip = !!otherStream && !isGridActive && !pipDismissed;
 
   const presenterName = focusedIsLocal
-    ? (focusedIsCamera ? `${state.localUserName} (Câmera)` : "Você")
+    ? (focusedIsCamera ? `${state.localUserName} (Câmera)` : state.localUserName)
     : (focusedIsCamera ? `${state.remoteUserName} (Câmera)` : state.remoteUserName);
 
   const showControls = useCallback((): void => {
@@ -2444,6 +2444,8 @@ export const App = (): ReactElement => {
   const [monitorToast, setMonitorToast] = useState<string | null>(null);
   const scrollHoldStartRef = useRef<number>(0);
   const scrollHoldIntervalRef = useRef<number | null>(null);
+  const capturedModifierStateRef = useRef({ ctrl: false, alt: false });
+  const capturedMonitorShortcutsRef = useRef(new Set<number>());
 
   const isControllingRemote = session.remotePeerControlConfig.enabled;
   const [clipboardToast, setClipboardToast] = useState(false);
@@ -2451,13 +2453,81 @@ export const App = (): ReactElement => {
 
   const setLockMode = useCallback((locked: boolean): void => {
     setIsAnyDeskLocked(locked);
+    setIsFullscreen(locked);
     if (locked) {
       playLockModeSound();
-      void window.sfscreen?.setFullscreen?.(true);
     } else {
       playUnlockModeSound();
-      void window.sfscreen?.setFullscreen?.(false);
     }
+    const lockRequest = window.sfscreen?.setRemoteInputLock?.(locked);
+    if (!lockRequest) void window.sfscreen?.setFullscreen?.(locked);
+  }, []);
+
+  const releaseRemoteModifiers = useCallback((): void => {
+    const modifiers = [
+      { code: "ControlLeft", nativeKeyCode: 0xA2 },
+      { code: "ControlRight", nativeKeyCode: 0xA3 },
+      { code: "AltLeft", nativeKeyCode: 0xA4 },
+      { code: "AltRight", nativeKeyCode: 0xA5 },
+      { code: "ShiftLeft", nativeKeyCode: 0xA0 },
+      { code: "ShiftRight", nativeKeyCode: 0xA1 },
+      { code: "MetaLeft", nativeKeyCode: 0x5B },
+      { code: "MetaRight", nativeKeyCode: 0x5C },
+    ];
+    modifiers.forEach(({ code, nativeKeyCode }) => {
+      session.sendRemoteInput({ kind: "key-up", code, key: "", nativeKeyCode });
+    });
+  }, [session]);
+
+  useEffect(() => {
+    const stopCapturedInput = window.sfscreen?.onCapturedRemoteInput?.((input) => {
+      if (focusedIsLocal || !isControllingRemote || !isAnyDeskLocked) return;
+
+      if ((input.kind === "key-down" || input.kind === "key-up") && input.nativeKeyCode) {
+        const isDown = input.kind === "key-down";
+        if (input.nativeKeyCode === 0x11 || input.nativeKeyCode === 0xA2 || input.nativeKeyCode === 0xA3) {
+          capturedModifierStateRef.current.ctrl = isDown;
+        }
+        if (input.nativeKeyCode === 0x12 || input.nativeKeyCode === 0xA4 || input.nativeKeyCode === 0xA5) {
+          capturedModifierStateRef.current.alt = isDown;
+        }
+
+        const isMonitorDigit = input.nativeKeyCode >= 0x31 && input.nativeKeyCode <= 0x39;
+        if (isDown && isMonitorDigit && capturedModifierStateRef.current.ctrl && capturedModifierStateRef.current.alt) {
+          const monitorIndex = input.nativeKeyCode - 0x31;
+          capturedMonitorShortcutsRef.current.add(input.nativeKeyCode);
+          session.sendSelectMonitor(monitorIndex);
+          setMonitorToast(`Monitor ${monitorIndex + 1}`);
+          window.setTimeout(() => setMonitorToast(null), 2500);
+          return;
+        }
+        if (!isDown && capturedMonitorShortcutsRef.current.delete(input.nativeKeyCode)) return;
+      }
+
+      session.sendRemoteInput(input);
+    });
+    const stopUnlock = window.sfscreen?.onRemoteInputLockReleased?.(() => {
+      if (!isAnyDeskLocked) return;
+      releaseRemoteModifiers();
+      setLockMode(false);
+    });
+    return () => {
+      stopCapturedInput?.();
+      stopUnlock?.();
+    };
+  }, [focusedIsLocal, isControllingRemote, isAnyDeskLocked, releaseRemoteModifiers, session, setLockMode]);
+
+  useEffect(() => {
+    if (!isAnyDeskLocked || (!focusedIsLocal && isControllingRemote)) return;
+    const timer = window.setTimeout(() => {
+      releaseRemoteModifiers();
+      setLockMode(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [focusedIsLocal, isControllingRemote, isAnyDeskLocked, releaseRemoteModifiers, setLockMode]);
+
+  useEffect(() => () => {
+    void window.sfscreen?.setRemoteInputLock?.(false);
   }, []);
 
   // Intercept Windows Key sent from Main Process
@@ -2508,9 +2578,6 @@ export const App = (): ReactElement => {
 
       if (!isControllingRemote || !isAnyDeskLocked) return;
 
-      const activeTag = (document.activeElement?.tagName || "").toLowerCase();
-      if (activeTag === "input" || activeTag === "textarea") return;
-
       // Handle Meta/Win key if received in web event
       if (e.key === "Meta" || e.code === "MetaLeft" || e.code === "MetaRight" || e.key === "OS") {
         e.preventDefault();
@@ -2520,8 +2587,6 @@ export const App = (): ReactElement => {
         }
         return;
       }
-
-      if (e.key === "F11") return; // Allow F11 for native toggle
 
       e.preventDefault();
       e.stopPropagation();
@@ -3452,7 +3517,7 @@ export const App = (): ReactElement => {
                 onWheel={handleVideoWheel}
                 onDoubleClick={handleVideoDoubleClick}
                 style={{
-                  cursor: isPanning ? "grabbing" : zoomLevel > 1 ? "grab" : !focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote ? "crosshair" : dualSharing ? "pointer" : "default",
+                  cursor: isPanning ? "grabbing" : zoomLevel > 1 ? "grab" : !focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && isAnyDeskLocked ? "crosshair" : dualSharing ? "pointer" : "default",
                 }}
               >
                 {/* AnyDesk Interactive Remote Control Floating Action Bar */}
@@ -4126,11 +4191,11 @@ export const App = (): ReactElement => {
                 </div>
               )}
               {state.chatMessages.map((msg) => (
-                <div key={msg.id} className={`chat-message-item ${msg.senderName === state.localUserName ? "is-self" : ""}`}>
+                <div key={msg.id} className={`chat-message-item ${msg.isSelf === true || (msg.isSelf === undefined && msg.senderName === state.localUserName) ? "is-self" : ""}`}>
                   <UserAvatar
                     name={msg.senderName}
-                    avatar={msg.senderName === state.localUserName ? state.localUserAvatar : state.remoteUserAvatar}
-                    isSelf={msg.senderName === state.localUserName}
+                    avatar={msg.isSelf === true || (msg.isSelf === undefined && msg.senderName === state.localUserName) ? state.localUserAvatar : state.remoteUserAvatar}
+                    isSelf={msg.isSelf === true || (msg.isSelf === undefined && msg.senderName === state.localUserName)}
                     className="chat-avatar"
                   />
                   <div className="chat-bubble">

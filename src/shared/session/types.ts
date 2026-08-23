@@ -111,6 +111,9 @@ export interface SFScreenApi {
   stopFilteredSystemAudio: (captureId?: string) => Promise<SessionResult<void>>;
   onFilteredAudioChunk: (listener: (chunk: ArrayBuffer) => void) => () => void;
   setRemoteControlHostConfig: (config: import('./media-control').RemoteControlConfig) => Promise<SessionResult<void>>;
+  setRemoteInputLock: (enabled: boolean) => Promise<boolean>;
+  onCapturedRemoteInput: (listener: (input: import('./media-control').RemoteInputPayload) => void) => () => void;
+  onRemoteInputLockReleased: (listener: () => void) => () => void;
   executeRemoteInput: (input: import('./media-control').RemoteInputPayload, sourceId?: string) => Promise<SessionResult<boolean>>;
   resumeRemoteControlOverride: () => Promise<SessionResult<void>>;
   onRemoteControlStatusChanged: (listener: (status: { state: import('./media-control').RemoteControlStatus; timeoutMs?: number }) => void) => () => void;

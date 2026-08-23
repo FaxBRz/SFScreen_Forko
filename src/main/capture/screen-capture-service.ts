@@ -21,7 +21,11 @@ export class ScreenCaptureService {
   async selectSource(webContentsId: number, selection: ScreenSelection): Promise<void> {
     const source = await this.findSource(selection.sourceId);
     if (!source) throw fault('source-unavailable', 'O monitor selecionado não está mais disponível.', true);
-    this.selections.set(webContentsId, { sourceId: source.id, includeSystemAudio: selection.includeSystemAudio });
+    this.selections.set(webContentsId, {
+      sourceId: source.id,
+      includeSystemAudio: selection.includeSystemAudio,
+      allowWithoutGesture: selection.allowWithoutGesture === true,
+    });
     this.authorizationStates.set(webContentsId, 'selected');
   }
 
@@ -46,13 +50,13 @@ export class ScreenCaptureService {
   ): Promise<void> {
     if (expectedWebContentsId === undefined || !this.isExpectedFrame(request.frame, expectedFrame)) return this.reject(expectedWebContentsId, 'rejected-frame');
     if (!request.videoRequested) return this.reject(expectedWebContentsId, 'rejected-video');
-    if (!request.userGesture) return this.reject(expectedWebContentsId, 'rejected-gesture');
     const selection = this.selections.get(expectedWebContentsId);
     this.selections.delete(expectedWebContentsId);
     if (!selection) {
       this.authorizationStates.set(expectedWebContentsId, 'rejected-selection');
       return;
     }
+    if (!request.userGesture && !selection.allowWithoutGesture) return this.reject(expectedWebContentsId, 'rejected-gesture');
     if (request.audioRequested !== selection.includeSystemAudio) {
       this.authorizationStates.set(expectedWebContentsId, 'rejected-audio');
       return;
