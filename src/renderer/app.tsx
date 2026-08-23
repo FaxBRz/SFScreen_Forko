@@ -2312,11 +2312,24 @@ export const App = (): ReactElement => {
   const presenterName = focusedIsLocal
     ? (focusedIsCamera ? `${state.localUserName} (Câmera)` : state.localUserName)
     : (focusedIsCamera ? `${state.remoteUserName} (Câmera)` : state.remoteUserName);
+  const isRemoteControlView = !focusedIsLocal && session.remotePeerControlConfig.enabled;
   const localScreenQualityLabel = isConnected && session.outgoingFps !== undefined
     ? `${session.resolution} · ${session.outgoingFps} FPS reais`
     : session.captureFps !== undefined
       ? `${session.resolution} · captura ${session.captureFps} FPS`
       : `${session.resolution} · alvo ${session.fps} FPS`;
+
+  useEffect(() => {
+    if (!isRemoteControlView) return;
+    const resetTimer = window.setTimeout(() => {
+      setZoomLevel(1);
+      setPanOffset({ x: 0, y: 0 });
+      setIsPanning(false);
+      panStartRef.current = null;
+      setContextZoomOpen(false);
+    }, 0);
+    return () => window.clearTimeout(resetTimer);
+  }, [isRemoteControlView]);
 
   const showControls = useCallback((): void => {
     setControlsVisible(true);
@@ -2743,7 +2756,7 @@ export const App = (): ReactElement => {
       return;
     }
 
-    if (zoomLevel <= 1 || isAnyDeskLocked) return;
+    if (isRemoteControlView || zoomLevel <= 1 || isAnyDeskLocked) return;
     if (e.button !== 0) return;
     setIsPanning(true);
     panStartRef.current = {
@@ -2813,7 +2826,18 @@ export const App = (): ReactElement => {
   };
 
   const handleVideoWheel = (e: React.WheelEvent): void => {
-    if (!isAnyDeskLocked && (e.ctrlKey || e.metaKey)) {
+    if (isRemoteControlView) {
+      e.preventDefault();
+      if (isAnyDeskLocked) {
+        const pt = getNormalizedPoint(e);
+        if (pt) {
+          session.sendRemoteInput({ kind: "mouse-wheel", deltaX: e.deltaX, deltaY: e.deltaY, x: pt.normX, y: pt.normY });
+        }
+      }
+      return;
+    }
+
+    if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const delta = e.deltaY < 0 ? 0.25 : -0.25;
       setZoomLevel((prev) => {
@@ -2824,16 +2848,11 @@ export const App = (): ReactElement => {
       return;
     }
 
-    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && isAnyDeskLocked) {
-      const pt = getNormalizedPoint(e);
-      if (pt) {
-        session.sendRemoteInput({ kind: "mouse-wheel", deltaX: e.deltaX, deltaY: e.deltaY, x: pt.normX, y: pt.normY });
-      }
-    }
   };
 
   const handleVideoDoubleClick = (e: React.MouseEvent): void => {
     e.stopPropagation();
+    if (isRemoteControlView) return;
     if (zoomLevel === 1) {
       setZoomLevel(1.5);
     } else {
@@ -3773,7 +3792,9 @@ export const App = (): ReactElement => {
                   <div
                     className="stage-video-transform-layer"
                     style={{
-                      transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+                      transform: isRemoteControlView
+                        ? "scale(1) translate(0px, 0px)"
+                        : `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
                       transition: isPanning ? "none" : "transform 0.15s ease-out",
                     }}
                   >
@@ -3830,7 +3851,7 @@ export const App = (): ReactElement => {
 
 
             {/* Discord-style Zoom Navigator & Mini-map Viewfinder Widget */}
-            {focusedSharing && zoomLevel > 1 && (
+            {focusedSharing && !isRemoteControlView && zoomLevel > 1 && (
               <div className="stage-zoom-navigator-card">
                 {/* Live Screen Preview Mini-map with draggable blue viewfinder box */}
                 <div
@@ -4349,7 +4370,7 @@ export const App = (): ReactElement => {
               )}
 
               {/* Zoom Submenu */}
-              <div className="context-menu-submenu-wrapper">
+              {!session.remotePeerControlConfig.enabled && <div className="context-menu-submenu-wrapper">
                 <button
                   className="context-menu-item with-chevron"
                   type="button"
@@ -4379,7 +4400,7 @@ export const App = (): ReactElement => {
                     ))}
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* Ajuste de Vídeo */}
               <button

@@ -566,6 +566,28 @@ describe('SFScreen Discord layout', () => {
     expect(screen.queryByTitle(/Arraste a caixa azul/i)).toBeNull();
   });
 
+  it('disables wheel, double-click and menu zoom while viewing a remote-control stream', () => {
+    const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({
+      phase: 'connected',
+      mediaPhase: 'selected',
+      remoteUserName: 'Alex',
+    }));
+    current.remoteStream = fakeStream;
+    current.remoteMediaPhase = 'sharing';
+    current.remotePeerControlConfig = { enabled: true, allowMouse: true, allowKeyboard: true, allowClipboard: true };
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    const viewport = screen.getByText(/Alex está apresentando/i).closest('.stage-video-viewport')!;
+    fireEvent.doubleClick(viewport);
+    fireEvent.wheel(viewport, { ctrlKey: true, deltaY: -100 });
+    fireEvent.contextMenu(viewport, { clientX: 100, clientY: 100 });
+
+    expect(screen.queryByTitle(/Arraste a caixa azul ou clique para mover o zoom/i)).toBeNull();
+    expect(screen.queryByText(/Zoom da tela/i)).toBeNull();
+  });
+
   it('does not display speaker button or context menu audio option when viewing own screen share', () => {
     const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
     const current = model(readyState({
