@@ -2395,13 +2395,41 @@ export const App = (): ReactElement => {
     };
   }, [focusedIsLocal, session, isControllingRemote]);
 
+  const pendingRemoteMoveRef = useRef<{ x: number; y: number } | null>(null);
+  const remoteMoveRafRef = useRef<number | null>(null);
+
   const getNormalizedPoint = (e: React.MouseEvent | React.PointerEvent | React.WheelEvent): { normX: number; normY: number } | null => {
     const el = videoViewportRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
-    const normX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const normY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+
+    // Compensa barras pretas / letterbox do object-fit: contain (estilo SelfDesk)
+    const video = el.querySelector("video");
+    const videoWidth = video && video.videoWidth > 0 ? video.videoWidth : 1920;
+    const videoHeight = video && video.videoHeight > 0 ? video.videoHeight : 1080;
+
+    const elemRatio = rect.width / rect.height;
+    const videoRatio = videoWidth / videoHeight;
+
+    let renderedW = rect.width;
+    let renderedH = rect.height;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (elemRatio > videoRatio) {
+      renderedW = rect.height * videoRatio;
+      offsetX = (rect.width - renderedW) / 2;
+    } else {
+      renderedH = rect.width / videoRatio;
+      offsetY = (rect.height - renderedH) / 2;
+    }
+
+    const clickX = e.clientX - rect.left - offsetX;
+    const clickY = e.clientY - rect.top - offsetY;
+
+    const normX = Math.max(0, Math.min(1, clickX / renderedW));
+    const normY = Math.max(0, Math.min(1, clickY / renderedH));
     return { normX, normY };
   };
 
@@ -2441,7 +2469,16 @@ export const App = (): ReactElement => {
     if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
       const pt = getNormalizedPoint(e);
       if (pt) {
-        session.sendRemoteInput({ kind: "mouse-move", x: pt.normX, y: pt.normY });
+        pendingRemoteMoveRef.current = { x: pt.normX, y: pt.normY };
+        if (!remoteMoveRafRef.current) {
+          remoteMoveRafRef.current = requestAnimationFrame(() => {
+            if (pendingRemoteMoveRef.current) {
+              session.sendRemoteInput({ kind: "mouse-move", x: pendingRemoteMoveRef.current.x, y: pendingRemoteMoveRef.current.y });
+              pendingRemoteMoveRef.current = null;
+            }
+            remoteMoveRafRef.current = null;
+          });
+        }
       }
       return;
     }
