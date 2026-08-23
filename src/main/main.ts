@@ -70,6 +70,10 @@ const createWindow = (): void => {
   const createdWebContentsId = createdWindow.webContents.id;
 
   createdWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key === 'I')) {
+      createdWindow.webContents.toggleDevTools();
+      return;
+    }
     if (input.code === 'MetaLeft' || input.code === 'MetaRight' || input.key === 'Meta' || input.key === 'OS') {
       event.preventDefault();
       if (!createdWindow.isDestroyed()) {
@@ -83,10 +87,12 @@ const createWindow = (): void => {
     if (mainWindow === createdWindow) mainWindow = null;
   });
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  const localIndexPath = path.join(__dirname, '../renderer/main_window/index.html');
+  if (fs.existsSync(localIndexPath)) {
+    void mainWindow.loadFile(localIndexPath);
   } else {
-    void mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    const devServerUrl = typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== 'undefined' ? MAIN_WINDOW_VITE_DEV_SERVER_URL : 'http://localhost:5173';
+    void mainWindow.loadURL(devServerUrl);
   }
 };
 

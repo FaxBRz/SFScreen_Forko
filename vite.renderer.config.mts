@@ -5,8 +5,8 @@ export default defineConfig(({ command }) => ({
   plugins: [react(), {
     name: 'sfscreen-csp',
     transformIndexHtml: (html) => html
-      .replace('%CONNECT_SRC%', command === 'serve' ? "'self' ws://localhost:* http://localhost:*" : "'self'")
-      .replace('%STYLE_SRC%', command === 'serve' ? "'self' 'unsafe-inline'" : "'self'"),
+      .replace('%CONNECT_SRC%', "'self' http: https: ws: wss: data: blob:")
+      .replace('%STYLE_SRC%', "'self' 'unsafe-inline'"),
   }],
   root: 'src/renderer',
   base: './',
