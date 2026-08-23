@@ -534,7 +534,7 @@ const VoiceConnectionPopover = ({
   );
 };
 
-/* ─── Modal: Source Picker (Screenshare & AnyDesk Remote Control) ─── */
+/* ─── Modal: Source Picker (Screenshare & Remote Control) ─── */
 const SourceModal = ({
   sources,
   resolution,
@@ -596,7 +596,7 @@ const SourceModal = ({
             <h2 id="source-title">Escolha o que compartilhar</h2>
             <p className="modal-subtext">
               {mode === "remote-control"
-                ? "Selecione o monitor para transmitir com controle interativo de mouse e teclado (estilo AnyDesk)."
+                ? "Selecione o monitor para transmitir com controle remoto seguro de mouse e teclado."
                 : `Configure a qualidade e selecione uma tela (${resolution} · alvo de ${fps} FPS).`}
             </p>
           </div>
@@ -626,7 +626,7 @@ const SourceModal = ({
           </div>
         </label>
 
-        {/* Segmented Mode Switcher: Stream vs AnyDesk Remote Access */}
+        {/* Segmented Mode Switcher: Stream vs Remote Access */}
         <div className="source-mode-switcher" role="tablist" aria-label="Modo de Compartilhamento">
           <button
             className={`source-mode-tab ${mode === "stream" ? "is-active" : ""}`}
@@ -646,7 +646,7 @@ const SourceModal = ({
             onClick={() => setMode("remote-control")}
           >
             <GamepadIcon />
-            <span>Acesso Remoto (AnyDesk)</span>
+            <span>Acesso Remoto</span>
           </button>
         </div>
 
@@ -697,7 +697,7 @@ const SourceModal = ({
           </div>
         )}
 
-        {/* Permissions Sub-Card when AnyDesk Mode is Active */}
+        {/* Permissions Sub-Card when Remote Access Mode is Active */}
         {mode === "remote-control" && (
           <div className="remote-permissions-box">
             <div className="remote-permissions-title">
@@ -764,7 +764,7 @@ const SourceModal = ({
                 </div>
                 <div className={`source-resolution-badge ${mode === "remote-control" ? "is-anydesk" : ""}`}>
                   <span>Monitor {index + 1}</span>
-                  {mode === "remote-control" && <span className="anydesk-chip">🎮 AnyDesk</span>}
+                  {mode === "remote-control" && <span className="anydesk-chip">🎮 Controle remoto</span>}
                   {mode === "stream" && <span className="stream-quality-chip">{resolution} · {fps} FPS</span>}
                 </div>
               </div>
@@ -1905,7 +1905,7 @@ const playCameraOffSound = (): void => {
   });
 };
 
-/* 8. 🔒 AnyDesk Lock Mode: High-tech lock chime */
+/* 8. 🔒 Remote Control Lock Mode: High-tech lock chime */
 const playLockModeSound = (): void => {
   const ctx = getAudioContext();
   if (!ctx) return;
@@ -1924,7 +1924,7 @@ const playLockModeSound = (): void => {
   osc.stop(now + 0.15);
 };
 
-/* 9. 🔓 AnyDesk Unlock Mode: Descending release chime */
+/* 9. 🔓 Remote Control Unlock Mode: Descending release chime */
 const playUnlockModeSound = (): void => {
   const ctx = getAudioContext();
   if (!ctx) return;
@@ -2499,7 +2499,7 @@ export const App = (): ReactElement => {
     };
   }, [stageContextMenu]);
 
-  /* Remote Control / AnyDesk State */
+  /* Remote Control State */
   const [isAnyDeskLocked, setIsAnyDeskLocked] = useState(false);
   const [scrollHoldProgress, setScrollHoldProgress] = useState(0);
   const [monitorToast, setMonitorToast] = useState<string | null>(null);
@@ -3581,7 +3581,7 @@ export const App = (): ReactElement => {
                   cursor: isPanning ? "grabbing" : zoomLevel > 1 ? "grab" : !focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && isAnyDeskLocked ? "crosshair" : dualSharing ? "pointer" : "default",
                 }}
               >
-                {/* AnyDesk Interactive Remote Control Floating Action Bar */}
+                {/* Interactive Remote Control Floating Action Bar */}
                 {!focusedIsLocal && session.remotePeerControlConfig.enabled && (
                   <div className={`remote-control-viewer-bar stage-fade-element ${controlsVisible || streamMenuOpen || isAnyDeskLocked ? "is-visible" : ""}`}>
                     <button

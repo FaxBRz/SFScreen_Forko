@@ -858,7 +858,7 @@ describe('SFScreen Discord layout', () => {
     expect(screen.queryByTitle(/Fechar miniatura flutuante/i)).toBeNull();
   });
 
-  it('supports selecting Acesso Remoto (AnyDesk) in source picker modal', async () => {
+  it('supports selecting Acesso Remoto in source picker modal', async () => {
     const current = model(readyState({ phase: 'connected', remoteUserName: 'Alex' }));
     current.sourcePickerOpen = true;
     current.sources = [{ id: 'screen:1', name: 'Monitor Principal', thumbnailDataUrl: 'data:image/png;base64,' }];
@@ -867,11 +867,11 @@ describe('SFScreen Discord layout', () => {
 
     // Check mode tabs exist
     expect(screen.getByRole('tab', { name: /transmissão padrão/i })).toBeTruthy();
-    const anydeskTab = screen.getByRole('tab', { name: /acesso remoto \(anydesk\)/i });
-    expect(anydeskTab).toBeTruthy();
+    const remoteAccessTab = screen.getByRole('tab', { name: /^acesso remoto$/i });
+    expect(remoteAccessTab).toBeTruthy();
 
-    // Switch to AnyDesk tab
-    fireEvent.click(anydeskTab);
+    // Switch to Remote Access tab
+    fireEvent.click(remoteAccessTab);
     expect(screen.getByText(/Permissões do Convidado no seu PC/i)).toBeTruthy();
     expect(screen.getByText(/Mouse e Cliques/i)).toBeTruthy();
     expect(screen.getByText(/Teclado e Digitação/i)).toBeTruthy();
@@ -942,7 +942,7 @@ describe('SFScreen Discord layout', () => {
     expect(current.sendRemoteInput).toHaveBeenCalledWith({ kind: 'special', action: 'win' });
   });
 
-  it('toggles AnyDesk Lock Mode with Ctrl+Alt+A shortcut, captures Ctrl+W and switches monitor with Ctrl+Alt+2', () => {
+  it('toggles Remote Control Lock Mode with Ctrl+Alt+A shortcut, captures Ctrl+W and switches monitor with Ctrl+Alt+2', () => {
     const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
     const current = model(readyState({
       phase: 'connected',

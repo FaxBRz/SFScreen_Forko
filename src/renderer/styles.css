@@ -4423,7 +4423,7 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-/* ─── AnyDesk Remote Control Mode & Segmented Switcher ─── */
+/* ─── Remote Control Mode & Segmented Switcher ─── */
 .source-mode-switcher {
   display: grid;
   grid-template-columns: 1fr 1fr;
