@@ -3173,13 +3173,12 @@ export const App = (): ReactElement => {
           </div>
 
           <div className="session-title-pill">
-            <span className="session-name">
-              {isConnected ? `Sessão com ${state.remoteUserName}` : "Sua Sala Privada"}
+            <span className="session-presence-dot" />
+            <span className="session-title-copy">
+              <strong>{isConnected ? `Sessão com ${state.remoteUserName}` : "Sua Sala Privada"}</strong>
+              <small>{isConnected ? "Chamada em andamento" : "Pronta para convidar"}</small>
             </span>
-            {!isConnected && <span className="session-waiting-status"><span />Aguardando convidado</span>}
-            <span className="participant-counter" title={`${participantsCount} participante(s)`}>
-              <UsersIcon /> {participantsCount}
-            </span>
+            <span className="participant-counter" title={`${participantsCount} participante(s)`}><UsersIcon /> {participantsCount}</span>
           </div>
         </div>
 
@@ -3233,7 +3232,7 @@ export const App = (): ReactElement => {
 
               <div className="status-pill status-security" title="Criptografia ativa">
                 <LockShieldIcon />
-                <span>DTLS-SRTP ativo</span>
+                <span>Protegido</span>
               </div>
             </>
           )}

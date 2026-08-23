@@ -3036,14 +3036,28 @@ button:disabled {
 }
 
 /* ─── Titlebar and chat interactions ─── */
-.discord-topbar { background: linear-gradient(90deg,#101217 0%,#171820 48%,#111217 100%); border-bottom-color:rgba(255,255,255,.075); box-shadow:0 1px 0 rgba(255,255,255,.025),0 8px 24px rgba(0,0,0,.13); }
-.topbar-left { gap: 10px; }
-.brand-badge { gap:7px; padding-right:10px; border-right:1px solid rgba(255,255,255,.08); }
-.brand-mark-clean { border-radius:8px; box-shadow:0 3px 12px rgba(35,165,90,.35),inset 0 1px 0 rgba(255,255,255,.25); }
-.session-title-pill { background:rgba(255,255,255,.035); border-color:rgba(255,255,255,.075); }
-.status-pill { background:rgba(0,0,0,.16); border-color:rgba(255,255,255,.065); }
-.topbar-right { gap:5px; padding-right:3px; }
-.user-avatar-button { box-shadow:0 0 0 3px rgba(35,165,90,.1); }
+.discord-app-layout { grid-template-rows:48px minmax(0,1fr) 68px; }
+.discord-topbar { height:48px; padding-left:10px; background:#101116; border-bottom-color:rgba(255,255,255,.08); box-shadow:0 1px 0 rgba(255,255,255,.025); }
+.topbar-left { gap:9px; min-width:0; }
+.topbar-left .sidebar-toggle-btn { width:30px; height:30px; border-radius:7px; }
+.brand-badge { gap:7px; padding:0 12px 0 0; border-right:1px solid rgba(255,255,255,.08); }
+.brand-mark-clean { width:27px; height:27px; border-radius:7px; box-shadow:0 3px 10px rgba(35,165,90,.28); }
+.brand-text { font-size:.84rem; letter-spacing:-.025em; }
+.session-title-pill { gap:8px; min-width:0; padding:0; border:0; background:transparent; }
+.session-presence-dot { width:7px; height:7px; flex:0 0 auto; border-radius:50%; background:#32c972; box-shadow:0 0 0 3px rgba(50,201,114,.12); }
+.session-title-copy { display:flex; flex-direction:column; min-width:0; gap:1px; }
+.session-title-copy strong { max-width:250px; overflow:hidden; color:#edf1f3; font-size:.72rem; font-weight:750; text-overflow:ellipsis; white-space:nowrap; }
+.session-title-copy small { color:#727b87; font-size:.59rem; font-weight:600; }
+.participant-counter { margin-left:2px; padding:2px 6px; color:#9aa5b1; background:rgba(255,255,255,.055); font-size:.65rem; }
+.topbar-center { position:absolute; left:50%; transform:translateX(-50%); gap:5px; }
+.status-pill { gap:5px; padding:4px 8px; border-color:transparent; background:transparent; color:#89929e; font-size:.65rem; }
+.status-pill + .status-pill { border-left:1px solid rgba(255,255,255,.08); border-radius:0; }
+.status-pill svg { width:12px; height:12px; }
+.topbar-right { gap:4px; padding-right:0; }
+.topbar-right > .icon-action-button { width:30px; height:30px; border-radius:7px; }
+.user-avatar-button { width:29px; height:29px; margin:0 7px 0 2px; border-color:rgba(87,242,135,.75); box-shadow:none; }
+.window-controls-group { margin-left:0; }
+.window-control-btn { width:42px; }
 
 .chat-image-viewer { position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; padding:74px 42px 42px; background:rgba(3,4,7,.94); backdrop-filter:blur(10px); animation:chatViewerIn .16s ease-out; }
 .chat-image-viewer img { display:block; max-width:100%; max-height:100%; border-radius:10px; object-fit:contain; box-shadow:0 28px 90px rgba(0,0,0,.75); }
