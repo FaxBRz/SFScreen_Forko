@@ -1864,7 +1864,11 @@ recordDiagnostic('audio-unavailable');
       const found = await window.sfscreen.findRoom(roomId, password);
       if (!found.ok) throw new Error(found.error.message);
       remoteIpRef.current = found.value.hostIp;
-      if (found.value.topology === 'mesh') {
+      // The host's room summary may come from an already-open listener created
+      // before its renderer refreshed. Current clients must still use the V6
+      // mesh route instead of falling back to the deliberately blocked legacy
+      // answer route.
+      if (found.value.topology === 'mesh' || typeof window.sfscreen?.joinRoomMesh === 'function') {
         const mesh = createRoomMeshClient(status, false, found.value.hostIp);
         roomMeshRef.current?.dispose();
         roomMeshRef.current = mesh;
@@ -1936,7 +1940,7 @@ recordDiagnostic('audio-unavailable');
       activeRoomRef.current = hosted;
       setActiveRoom(hosted);
       remoteIpRef.current = found.value.hostIp;
-      if (found.value.topology === 'mesh') {
+      if (found.value.topology === 'mesh' || typeof window.sfscreen?.joinRoomMesh === 'function') {
         const mesh = createRoomMeshClient(status, false, found.value.hostIp);
         roomMeshRef.current?.dispose();
         roomMeshRef.current = mesh;
