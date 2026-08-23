@@ -490,6 +490,7 @@ export const useSession = (): SessionModel => {
   const metricsRef = useRef<WebRtcMetrics>({});
   const localUserNameRef = useRef(state.localUserName);
   const localUserAvatarRef = useRef(state.localUserAvatar);
+  const switchMonitorByViewerRef = useRef<((monitorIndex: number) => Promise<void>) | undefined>(undefined);
 
   useEffect(() => {
     localUserNameRef.current = state.localUserName;
@@ -678,6 +679,10 @@ export const useSession = (): SessionModel => {
           } catch {
             // Ignored if clipboard write fails
           }
+          return;
+        }
+        if (message.type === 'select-monitor') {
+          void switchMonitorByViewerRef.current?.(message.monitorIndex);
           return;
         }
       },
@@ -1382,8 +1387,29 @@ recordDiagnostic('audio-unavailable');
     controllerRef.current?.sendRemoteInput(input);
   }, []);
 
-  const sendRemoteClipboard = useCallback((text: string): void => {
-    controllerRef.current?.sendRemoteClipboard(text);
+  const switchMonitorByViewer = useCallback(async (monitorIndex: number): Promise<void> => {
+    try {
+      const res = await window.sfscreen.listScreenSources();
+      if (!res.ok) return;
+      const screens = res.value.filter((s) => s.id.startsWith('screen:'));
+      if (screens.length === 0) return;
+      const target = screens[monitorIndex] || screens[screens.length - 1] || screens[0];
+      if (!target) return;
+
+      capturedSourceIdRef.current = target.id;
+      await selectSource(target, state.includeSystemAudio);
+      await startSharing();
+    } catch {
+      // Ignored
+    }
+  }, [selectSource, startSharing, state.includeSystemAudio]);
+
+  useEffect(() => {
+    switchMonitorByViewerRef.current = switchMonitorByViewer;
+  }, [switchMonitorByViewer]);
+
+  const sendSelectMonitor = useCallback((monitorIndex: number): void => {
+    controllerRef.current?.sendSelectMonitor(monitorIndex);
   }, []);
 
   const resumeRemoteControlOverride = useCallback(async (): Promise<void> => {
@@ -1442,6 +1468,7 @@ recordDiagnostic('audio-unavailable');
     updateRemoteControlConfig,
     sendRemoteInput,
     sendRemoteClipboard,
+    sendSelectMonitor,
     resumeRemoteControlOverride,
   };
 };

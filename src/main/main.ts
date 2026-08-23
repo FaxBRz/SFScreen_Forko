@@ -64,8 +64,18 @@ const createWindow = (): void => {
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+
   const createdWindow = mainWindow;
   const createdWebContentsId = createdWindow.webContents.id;
+
+  createdWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.code === 'MetaLeft' || input.code === 'MetaRight' || input.key === 'Meta' || input.key === 'OS') {
+      event.preventDefault();
+      if (!createdWindow.isDestroyed()) {
+        createdWindow.webContents.send(ipcChannels.winKeyPressed, input.type);
+      }
+    }
+  });
   createdWindow.on('closed', () => {
     audioCapture.stop();
     screenCapture.clearSource(createdWebContentsId);

@@ -225,6 +225,10 @@ export class WebRtcSession {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'remote-clipboard', text });
   }
 
+  sendSelectMonitor(monitorIndex: number): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'select-monitor', monitorIndex });
+  }
+
   async updateVideoParameters(maxBitrateBps?: number, maxFramerate?: number): Promise<void> {
     if (!this.videoSender) return;
     try {

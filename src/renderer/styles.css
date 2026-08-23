@@ -4751,12 +4751,12 @@ button:disabled {
 .remote-ctrl-lock-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   background: #1a1d27;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
-  padding: 5px 10px;
-  color: #949ba4;
+  padding: 5px 12px;
+  color: #dbdee1;
   font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
@@ -4776,88 +4776,35 @@ button:disabled {
   box-shadow: 0 0 12px rgba(235, 71, 38, 0.4);
 }
 
-/* ─── Prominent Locked AnyDesk Mode Top Banner ─── */
-.anydesk-locked-banner {
+.remote-ctrl-monitor-switcher {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  padding-left: 8px;
+}
+
+/* ─── Monitor Switch Toast Notification ─── */
+.monitor-switch-toast {
   position: absolute;
-  top: 58px;
+  top: 70px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  background: rgba(18, 20, 29, 0.94);
-  backdrop-filter: blur(16px);
-  border: 1.5px solid #eb4726;
+  gap: 8px;
+  background: rgba(18, 20, 29, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid #5865f2;
   border-radius: 12px;
-  padding: 8px 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(235, 71, 38, 0.25);
-  z-index: 50;
-  max-width: 90%;
-  animation: fadeIn 0.2s ease;
-}
-
-.locked-banner-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.locked-badge {
-  background: #eb4726;
+  padding: 6px 16px;
   color: #fff;
-  font-size: 0.72rem;
-  font-weight: 800;
-  padding: 3px 8px;
-  border-radius: 6px;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-
-.locked-desc {
-  font-size: 0.76rem;
-  color: #dbdee1;
-  font-weight: 600;
-}
-
-.locked-banner-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  white-space: nowrap;
-}
-
-.locked-hint {
-  font-size: 0.72rem;
-  color: #949ba4;
-}
-
-.locked-hint kbd {
-  background: #252836;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  padding: 2px 5px;
-  font-size: 0.68rem;
-  color: #fff;
+  font-size: 0.78rem;
   font-weight: 700;
-  font-family: inherit;
-}
-
-.locked-unlock-action-btn {
-  background: #2b2f3d;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
-  padding: 4px 10px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.locked-unlock-action-btn:hover {
-  background: #3b4052;
-  border-color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 16px rgba(88, 101, 242, 0.3);
+  z-index: 60;
+  animation: fadeIn 0.15s ease;
+  pointer-events: none;
 }
 
 /* ─── Emergency Scroll Hold Progress Overlay ─── */

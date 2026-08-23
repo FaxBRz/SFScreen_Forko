@@ -23,6 +23,14 @@ export const registerRuntimeIpc = ({ ipcMain, audioCapture, remoteInput, isAutho
     return window.isFullScreen();
   });
 
+  ipcMain.handle(ipcChannels.setFullscreen, (event, flag: unknown): boolean => {
+    if (!authorized(event.sender)) return false;
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed()) return false;
+    window.setFullScreen(Boolean(flag));
+    return window.isFullScreen();
+  });
+
   ipcMain.handle(ipcChannels.minimizeWindow, (event): void => {
     if (!authorized(event.sender)) return;
     const window = BrowserWindow.fromWebContents(event.sender);

@@ -19,6 +19,12 @@ const api: SFScreenApi = {
     return () => ipcRenderer.removeListener(ipcChannels.sessionAnswer, callback);
   },
   toggleFullscreen: () => ipcRenderer.invoke(ipcChannels.toggleFullscreen),
+  setFullscreen: (flag) => ipcRenderer.invoke(ipcChannels.setFullscreen, flag),
+  onWinKeyPressed: (listener) => {
+    const callback = (_event: Electron.IpcRendererEvent, action: 'keyDown' | 'keyUp'): void => listener(action);
+    ipcRenderer.on(ipcChannels.winKeyPressed, callback);
+    return () => ipcRenderer.removeListener(ipcChannels.winKeyPressed, callback);
+  },
   minimizeWindow: () => ipcRenderer.invoke(ipcChannels.minimizeWindow),
   maximizeWindow: () => ipcRenderer.invoke(ipcChannels.maximizeWindow),
   closeWindow: () => ipcRenderer.invoke(ipcChannels.closeWindow),

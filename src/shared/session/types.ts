@@ -102,6 +102,8 @@ export interface SFScreenApi {
   stopHostedSession: () => Promise<SessionResult<void>>;
   onSessionAnswer: (listener: (event: SessionAnswerEvent) => void) => () => void;
   toggleFullscreen: () => Promise<boolean>;
+  setFullscreen: (flag: boolean) => Promise<boolean>;
+  onWinKeyPressed: (listener: (action: 'keyDown' | 'keyUp') => void) => () => void;
   minimizeWindow: () => Promise<void>;
   maximizeWindow: () => Promise<boolean>;
   closeWindow: () => Promise<void>;

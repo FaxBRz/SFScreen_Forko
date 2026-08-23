@@ -62,6 +62,7 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   updateRemoteControlConfig: vi.fn(async () => undefined),
   sendRemoteInput: vi.fn(),
   sendRemoteClipboard: vi.fn(),
+  sendSelectMonitor: vi.fn(),
   resumeRemoteControlOverride: vi.fn(async () => undefined),
 });
 
@@ -895,7 +896,11 @@ describe('SFScreen Discord layout', () => {
     render(<App />);
 
     // Floating action bar
-    expect(screen.getByText(/Controle Ativo \(AnyDesk\)/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /ativar controle/i })).toBeTruthy();
+
+    // Click to lock
+    fireEvent.click(screen.getByRole('button', { name: /ativar controle/i }));
+    expect(screen.getByRole('button', { name: /lock ativo/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /clipboard/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /win/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /ctrl\+alt\+del/i })).toBeTruthy();
@@ -905,7 +910,7 @@ describe('SFScreen Discord layout', () => {
     expect(current.sendRemoteInput).toHaveBeenCalledWith({ kind: 'special', action: 'win' });
   });
 
-  it('toggles AnyDesk Lock Mode with Ctrl+Alt+A shortcut and captures shortcuts like Ctrl+W', () => {
+  it('toggles AnyDesk Lock Mode with Ctrl+Alt+A shortcut, captures Ctrl+W and switches monitor with Ctrl+Alt+2', () => {
     const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
     const current = model(readyState({
       phase: 'connected',
@@ -920,9 +925,8 @@ describe('SFScreen Discord layout', () => {
     // Press Ctrl+Alt+A to lock
     fireEvent.keyDown(window, { key: 'a', code: 'KeyA', ctrlKey: true, altKey: true });
 
-    // Should show locked mode banner
-    expect(screen.getByText(/MODO BLOQUEADO/i)).toBeTruthy();
-    expect(screen.getByText(/Todos os atalhos \(Ctrl\+W, Alt\+Tab, etc\.\) vão direto para o PC do seu amigo/i)).toBeTruthy();
+    // Should show lock active button
+    expect(screen.getByRole('button', { name: /lock ativo/i })).toBeTruthy();
 
     // Now press Ctrl+W — should be sent to remote instead of closing local window
     fireEvent.keyDown(window, { key: 'w', code: 'KeyW', ctrlKey: true });
@@ -930,9 +934,13 @@ describe('SFScreen Discord layout', () => {
       expect.objectContaining({ kind: 'key-down', code: 'KeyW', key: 'w', ctrlKey: true })
     );
 
+    // Switch monitor with Ctrl+Alt+2
+    fireEvent.keyDown(window, { key: '2', code: 'Digit2', ctrlKey: true, altKey: true });
+    expect(current.sendSelectMonitor).toHaveBeenCalledWith(1);
+
     // Press Ctrl+Alt+A again to unlock
     fireEvent.keyDown(window, { key: 'a', code: 'KeyA', ctrlKey: true, altKey: true });
-    expect(screen.queryByText(/MODO BLOQUEADO/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /ativar controle/i })).toBeTruthy();
   });
 });
 

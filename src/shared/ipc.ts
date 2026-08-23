@@ -11,6 +11,8 @@ export const ipcChannels = {
   stopHostedSession: 'session:stop-hosted',
   sessionAnswer: 'session:answer',
   toggleFullscreen: 'window:toggle-fullscreen',
+  setFullscreen: 'window:set-fullscreen',
+  winKeyPressed: 'window:win-key-pressed',
   minimizeWindow: 'window:minimize',
   maximizeWindow: 'window:maximize',
   closeWindow: 'window:close',

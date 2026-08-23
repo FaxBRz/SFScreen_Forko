@@ -2400,15 +2400,38 @@ export const App = (): ReactElement => {
   }, [stageContextMenu]);
 
   /* Remote Control / AnyDesk State */
-  const [remoteControlPausedByViewer, setRemoteControlPausedByViewer] = useState(false);
   const [isAnyDeskLocked, setIsAnyDeskLocked] = useState(false);
   const [scrollHoldProgress, setScrollHoldProgress] = useState(0);
+  const [monitorToast, setMonitorToast] = useState<string | null>(null);
   const scrollHoldStartRef = useRef<number>(0);
   const scrollHoldIntervalRef = useRef<number | null>(null);
 
-  const isControllingRemote = session.remotePeerControlConfig.enabled && !remoteControlPausedByViewer;
+  const isControllingRemote = session.remotePeerControlConfig.enabled;
   const [clipboardToast, setClipboardToast] = useState(false);
   const videoViewportRef = useRef<HTMLDivElement>(null);
+
+  const setLockMode = useCallback((locked: boolean): void => {
+    setIsAnyDeskLocked(locked);
+    if (locked) {
+      playLockModeSound();
+      void window.sfscreen?.setFullscreen?.(true);
+    } else {
+      playUnlockModeSound();
+      void window.sfscreen?.setFullscreen?.(false);
+    }
+  }, []);
+
+  // Intercept Windows Key sent from Main Process
+  useEffect(() => {
+    const unsub = window.sfscreen?.onWinKeyPressed?.((action) => {
+      if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isAnyDeskLocked) {
+        if (action === "keyDown") {
+          session.sendRemoteInput({ kind: "special", action: "win" });
+        }
+      }
+    });
+    return () => unsub?.();
+  }, [focusedIsLocal, session, isAnyDeskLocked]);
 
   useEffect(() => {
     if (focusedIsLocal || !session.remotePeerControlConfig.enabled) return;
@@ -2419,28 +2442,50 @@ export const App = (): ReactElement => {
       if (isToggleShortcut && e.type === "keydown") {
         e.preventDefault();
         e.stopPropagation();
-        setIsAnyDeskLocked((prev) => {
-          const next = !prev;
-          if (next) playLockModeSound();
-          else playUnlockModeSound();
-          return next;
-        });
+        setLockMode(!isAnyDeskLocked);
         return;
       }
 
-      if (!isControllingRemote) return;
+      // Switch Monitor shortcut: Ctrl+Alt+1, Ctrl+Alt+2, Ctrl+Alt+3, etc.
+      if (isAnyDeskLocked && (e.ctrlKey || e.metaKey) && e.altKey && e.type === "keydown") {
+        let digit: number | null = null;
+        if (e.code.startsWith("Digit")) {
+          digit = parseInt(e.code.replace("Digit", ""), 10);
+        } else if (e.code.startsWith("Numpad")) {
+          digit = parseInt(e.code.replace("Numpad", ""), 10);
+        } else if (/^[1-9]$/.test(e.key)) {
+          digit = parseInt(e.key, 10);
+        }
+
+        if (digit !== null && !isNaN(digit) && digit >= 1 && digit <= 9) {
+          e.preventDefault();
+          e.stopPropagation();
+          session.sendSelectMonitor(digit - 1);
+          setMonitorToast(`Monitor ${digit}`);
+          setTimeout(() => setMonitorToast(null), 2500);
+          return;
+        }
+      }
+
+      if (!isControllingRemote || !isAnyDeskLocked) return;
 
       const activeTag = (document.activeElement?.tagName || "").toLowerCase();
       if (activeTag === "input" || activeTag === "textarea") return;
 
-      // In locked mode, capture everything (including Ctrl+W, Tab, Escape, etc.)
-      if (isAnyDeskLocked) {
-        if (e.key === "F11") return; // Allow F11 for fullscreen
+      // Handle Meta/Win key if received in web event
+      if (e.key === "Meta" || e.code === "MetaLeft" || e.code === "MetaRight" || e.key === "OS") {
         e.preventDefault();
         e.stopPropagation();
-      } else {
-        if (e.key === "F11" || e.key === "Escape") return;
+        if (e.type === "keydown") {
+          session.sendRemoteInput({ kind: "special", action: "win" });
+        }
+        return;
       }
+
+      if (e.key === "F11") return; // Allow F11 for native toggle
+
+      e.preventDefault();
+      e.stopPropagation();
 
       const kind = e.type === "keydown" ? "key-down" : "key-up";
       session.sendRemoteInput({
@@ -2460,7 +2505,7 @@ export const App = (): ReactElement => {
       window.removeEventListener("keydown", handleGlobalRemoteKey, { capture: isAnyDeskLocked });
       window.removeEventListener("keyup", handleGlobalRemoteKey, { capture: isAnyDeskLocked });
     };
-  }, [focusedIsLocal, session, isControllingRemote, isAnyDeskLocked]);
+  }, [focusedIsLocal, session, isControllingRemote, isAnyDeskLocked, setLockMode]);
 
   const pendingRemoteMoveRef = useRef<{ x: number; y: number } | null>(null);
   const remoteMoveRafRef = useRef<number | null>(null);
@@ -2518,14 +2563,13 @@ export const App = (): ReactElement => {
             clearInterval(scrollHoldIntervalRef.current);
             scrollHoldIntervalRef.current = null;
           }
-          setIsAnyDeskLocked(false);
+          setLockMode(false);
           setScrollHoldProgress(0);
-          playUnlockModeSound();
         }
       }, 50);
     }
 
-    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && (isAnyDeskLocked || zoomLevel <= 1)) {
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && isAnyDeskLocked) {
       const pt = getNormalizedPoint(e);
       if (pt) {
         const button = e.button === 2 ? "right" : e.button === 1 ? "middle" : "left";
@@ -2553,7 +2597,7 @@ export const App = (): ReactElement => {
       }
     }
 
-    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && (isAnyDeskLocked || zoomLevel <= 1)) {
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && isAnyDeskLocked) {
       const pt = getNormalizedPoint(e);
       if (pt) {
         pendingRemoteMoveRef.current = { x: pt.normX, y: pt.normY };
@@ -2592,7 +2636,7 @@ export const App = (): ReactElement => {
       setScrollHoldProgress(0);
     }
 
-    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && (isAnyDeskLocked || zoomLevel <= 1)) {
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && isAnyDeskLocked) {
       const pt = getNormalizedPoint(e);
       if (pt) {
         const button = e.button === 2 ? "right" : e.button === 1 ? "middle" : "left";
@@ -2604,7 +2648,7 @@ export const App = (): ReactElement => {
   };
 
   const handleVideoWheel = (e: React.WheelEvent): void => {
-    if (e.ctrlKey || e.metaKey) {
+    if (!isAnyDeskLocked && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       const delta = e.deltaY < 0 ? 0.25 : -0.25;
       setZoomLevel((prev) => {
@@ -2615,7 +2659,7 @@ export const App = (): ReactElement => {
       return;
     }
 
-    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && isAnyDeskLocked) {
       const pt = getNormalizedPoint(e);
       if (pt) {
         session.sendRemoteInput({ kind: "mouse-wheel", deltaX: e.deltaX, deltaY: e.deltaY, x: pt.normX, y: pt.normY });
@@ -3374,37 +3418,47 @@ export const App = (): ReactElement => {
               >
                 {/* AnyDesk Interactive Remote Control Floating Action Bar */}
                 {!focusedIsLocal && session.remotePeerControlConfig.enabled && (
-                  <div className={`remote-control-viewer-bar stage-fade-element ${controlsVisible || streamMenuOpen || isControllingRemote || isAnyDeskLocked ? "is-visible" : ""}`}>
+                  <div className={`remote-control-viewer-bar stage-fade-element ${controlsVisible || streamMenuOpen || isAnyDeskLocked ? "is-visible" : ""}`}>
                     <button
-                      className={`remote-ctrl-toggle-btn ${isControllingRemote ? "is-active" : ""}`}
+                      className={`remote-ctrl-lock-btn ${isAnyDeskLocked ? "is-locked" : ""}`}
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setRemoteControlPausedByViewer((v) => !v);
+                        setLockMode(!isAnyDeskLocked);
                       }}
-                      title={isControllingRemote ? "Clique para pausar o controle e apenas assistir" : "Clique para assumir o controle do mouse e teclado"}
+                      title={isAnyDeskLocked ? "Destravar controle (Atalho: Ctrl+Alt+A ou segure Scroll por 3s)" : "Travar mouse, teclado e atalhos para o PC remoto (Atalho: Ctrl+Alt+A)"}
                     >
                       <GamepadIcon />
-                      <span>{isControllingRemote ? "Controle Ativo (AnyDesk)" : "Só Assistindo"}</span>
+                      <span>{isAnyDeskLocked ? "🔒 Lock Ativo (Ctrl+Alt+A)" : "🎮 Ativar Controle (Ctrl+Alt+A)"}</span>
                     </button>
 
-                    {isControllingRemote && (
-                      <button
-                        className={`remote-ctrl-lock-btn ${isAnyDeskLocked ? "is-locked" : ""}`}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsAnyDeskLocked((prev) => {
-                            const next = !prev;
-                            if (next) playLockModeSound();
-                            else playUnlockModeSound();
-                            return next;
-                          });
-                        }}
-                        title={isAnyDeskLocked ? "Destravar atalhos locais (Atalho: Ctrl+Alt+A)" : "Travar todos os atalhos (Ctrl+W, etc.) para o PC remoto (Atalho: Ctrl+Alt+A)"}
-                      >
-                        <span>{isAnyDeskLocked ? "🔒 Lock Ativo (Ctrl+Alt+A)" : "🔓 Travar Atalhos"}</span>
-                      </button>
+                    {isAnyDeskLocked && (
+                      <div className="remote-ctrl-monitor-switcher" title="Alternar monitor (Atalhos: Ctrl+Alt+1, Ctrl+Alt+2)" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className="remote-ctrl-mini-btn"
+                          type="button"
+                          onClick={() => {
+                            session.sendSelectMonitor(0);
+                            setMonitorToast("Monitor 1");
+                            setTimeout(() => setMonitorToast(null), 2500);
+                          }}
+                          title="Trocar para o Monitor 1 (Ctrl+Alt+1)"
+                        >
+                          🖥️ 1
+                        </button>
+                        <button
+                          className="remote-ctrl-mini-btn"
+                          type="button"
+                          onClick={() => {
+                            session.sendSelectMonitor(1);
+                            setMonitorToast("Monitor 2");
+                            setTimeout(() => setMonitorToast(null), 2500);
+                          }}
+                          title="Trocar para o Monitor 2 (Ctrl+Alt+2)"
+                        >
+                          🖥️ 2
+                        </button>
+                      </div>
                     )}
 
                     {session.remoteControlStatus === "paused-by-host" && (
@@ -3414,7 +3468,7 @@ export const App = (): ReactElement => {
                       </div>
                     )}
 
-                    {isControllingRemote && (
+                    {isAnyDeskLocked && (
                       <div className="remote-ctrl-actions" onClick={(e) => e.stopPropagation()}>
                         <button
                           className="remote-ctrl-mini-btn"
@@ -3459,27 +3513,10 @@ export const App = (): ReactElement => {
                   </div>
                 )}
 
-                {/* Prominent Floating Banner when in Locked AnyDesk Mode */}
-                {!focusedIsLocal && session.remotePeerControlConfig.enabled && isAnyDeskLocked && (
-                  <div className="anydesk-locked-banner">
-                    <div className="locked-banner-left">
-                      <span className="locked-badge">🔒 MODO BLOQUEADO</span>
-                      <span className="locked-desc">Todos os atalhos (Ctrl+W, Alt+Tab, etc.) vão direto para o PC do seu amigo.</span>
-                    </div>
-                    <div className="locked-banner-right">
-                      <span className="locked-hint">Atalho: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd> ou <strong>segure o Scroll (3s)</strong></span>
-                      <button
-                        className="locked-unlock-action-btn"
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsAnyDeskLocked(false);
-                          playUnlockModeSound();
-                        }}
-                      >
-                        🔓 Destravar
-                      </button>
-                    </div>
+                {/* Monitor Switch Toast Notification */}
+                {monitorToast && (
+                  <div className="monitor-switch-toast">
+                    <span>🖥️ Alternando para {monitorToast}...</span>
                   </div>
                 )}
 

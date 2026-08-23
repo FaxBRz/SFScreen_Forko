@@ -39,7 +39,8 @@ export type SessionControlMessage =
   | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-control-config'; config: RemoteControlConfig }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-control-status'; status: RemoteControlStatus; timeoutMs?: number }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-control-input'; input: RemoteInputPayload }
-  | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-clipboard'; text: string };
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-clipboard'; text: string }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'select-monitor'; monitorIndex: number };
 
 export const serializeControlMessage = (message: SessionControlMessage): string => JSON.stringify(message);
 
@@ -136,6 +137,10 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
 
     if (control.type === 'remote-clipboard' && typeof control.text === 'string' && control.text.length <= 100000) {
       return { protocolVersion: sessionProtocolVersion, type: 'remote-clipboard', text: control.text };
+    }
+
+    if (control.type === 'select-monitor' && typeof control.monitorIndex === 'number' && Number.isInteger(control.monitorIndex) && control.monitorIndex >= 0 && control.monitorIndex <= 10) {
+      return { protocolVersion: sessionProtocolVersion, type: 'select-monitor', monitorIndex: control.monitorIndex };
     }
   } catch {
     return undefined;
