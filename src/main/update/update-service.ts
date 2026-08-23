@@ -1,7 +1,6 @@
 import { app, autoUpdater, BrowserWindow, dialog } from 'electron';
 import { createPublicUpdateFeedUrl, normalizeUpdateFeedUrl } from './update-config';
 
-const firstCheckDelayMs = 15_000;
 const checkIntervalMs = 4 * 60 * 60 * 1_000;
 
 export const startWindowsAutoUpdates = (getParentWindow: () => BrowserWindow | null): (() => void) => {
@@ -72,14 +71,15 @@ export const startWindowsAutoUpdates = (getParentWindow: () => BrowserWindow | n
   autoUpdater.on('update-downloaded', handleDownloaded);
   autoUpdater.setFeedURL({ url: feedUrl });
 
-  const firstCheck = setTimeout(checkForUpdates, firstCheckDelayMs);
+  // A versão que já está aberta pode ter verificado antes de uma release ser
+  // publicada. Sempre confira assim que o processo iniciar; o intervalo é
+  // apenas uma segunda verificação para sessões longas.
+  checkForUpdates();
   const interval = setInterval(checkForUpdates, checkIntervalMs);
-  firstCheck.unref();
   interval.unref();
 
   return () => {
     stopped = true;
-    clearTimeout(firstCheck);
     clearInterval(interval);
     autoUpdater.off('update-not-available', markCheckFinished);
     autoUpdater.off('error', handleError);
