@@ -1,3 +1,6 @@
+const publicUpdateRepository = 'FaxBRz/SFScreen_Forko';
+const safeFeedSegment = /^[a-zA-Z0-9._-]+$/;
+
 export const normalizeUpdateFeedUrl = (rawUrl: string): string | undefined => {
   const value = rawUrl.trim();
   if (!value) return undefined;
@@ -11,3 +14,11 @@ export const normalizeUpdateFeedUrl = (rawUrl: string): string | undefined => {
   }
 };
 
+export const createPublicUpdateFeedUrl = (
+  platform: string,
+  arch: string,
+  version: string,
+): string | undefined => {
+  if (![platform, arch, version].every((segment) => safeFeedSegment.test(segment))) return undefined;
+  return `https://update.electronjs.org/${publicUpdateRepository}/${platform}-${arch}/${version}`;
+};

@@ -1,15 +1,16 @@
 import { app, autoUpdater, BrowserWindow, dialog } from 'electron';
-import { normalizeUpdateFeedUrl } from './update-config';
+import { createPublicUpdateFeedUrl, normalizeUpdateFeedUrl } from './update-config';
 
 const firstCheckDelayMs = 15_000;
 const checkIntervalMs = 4 * 60 * 60 * 1_000;
 
 export const startWindowsAutoUpdates = (getParentWindow: () => BrowserWindow | null): (() => void) => {
-  const configuredUrl = SFSCREEN_UPDATE_FEED_URL;
+  const overrideUrl = SFSCREEN_UPDATE_FEED_URL;
+  const configuredUrl = overrideUrl || createPublicUpdateFeedUrl(process.platform, process.arch, app.getVersion()) || '';
   const feedUrl = normalizeUpdateFeedUrl(configuredUrl);
 
   if (process.platform !== 'win32' || !app.isPackaged || !feedUrl) {
-    if (app.isPackaged && configuredUrl && !feedUrl) {
+    if (app.isPackaged && overrideUrl && !feedUrl) {
       console.warn('[updater] A URL de atualização embutida é inválida; o updater foi desativado.');
     }
     return () => undefined;
@@ -85,4 +86,3 @@ export const startWindowsAutoUpdates = (getParentWindow: () => BrowserWindow | n
     autoUpdater.off('update-downloaded', handleDownloaded);
   };
 };
-

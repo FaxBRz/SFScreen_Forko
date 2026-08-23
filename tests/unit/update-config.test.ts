@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeUpdateFeedUrl } from '../../src/main/update/update-config';
+import { createPublicUpdateFeedUrl, normalizeUpdateFeedUrl } from '../../src/main/update/update-config';
 
 describe('normalizeUpdateFeedUrl', () => {
   it('normalizes a secure static Squirrel feed', () => {
@@ -18,3 +18,13 @@ describe('normalizeUpdateFeedUrl', () => {
   });
 });
 
+describe('createPublicUpdateFeedUrl', () => {
+  it('creates the official public Electron update feed', () => {
+    expect(createPublicUpdateFeedUrl('win32', 'x64', '0.1.5'))
+      .toBe('https://update.electronjs.org/FaxBRz/SFScreen_Forko/win32-x64/0.1.5');
+  });
+
+  it('rejects unsafe path segments', () => {
+    expect(createPublicUpdateFeedUrl('win32', 'x64', '../secret')).toBeUndefined();
+  });
+});

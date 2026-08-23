@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5 — 2026-08-23
+
+- Ativa o updater pelo serviço público oficial do Electron e pelas GitHub Releases.
+- Adiciona `npm run release -- patch|minor|major|X.Y.Z` para validar, versionar, taguear e publicar automaticamente.
+- Mantém suporte a um feed HTTPS alternativo por variável de ambiente.
+
 ## 0.1.4 — 2026-08-23
 
 Primeira pre-release distribuída com um instalador Windows completo.
@@ -23,5 +29,4 @@ Primeira pre-release distribuída com um instalador Windows completo.
 ### Avisos desta pre-release
 
 - O instalador ainda não possui assinatura de código; o Windows pode exibir um aviso de editor desconhecido.
-- Como o repositório é privado, o updater não usa diretamente o GitHub. Um feed HTTPS Squirrel separado ainda precisa ser configurado para updates automáticos.
-
+- Esta versão foi gerada antes da ativação do feed público; instale a 0.1.5 ou superior para receber updates automáticos.

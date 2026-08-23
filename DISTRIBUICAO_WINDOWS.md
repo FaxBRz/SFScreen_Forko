@@ -20,26 +20,38 @@ O instalador cria atalhos na Área de Trabalho e no menu Iniciar. O `AppUserMode
 
 ## Habilitar atualização automática
 
-O updater precisa de um endpoint HTTPS estático que sirva o arquivo `RELEASES` e os pacotes `.nupkg`. Embuta a URL base no build:
+O build padrão usa o serviço público oficial `update.electronjs.org`, que consulta as releases do repositório público `FaxBRz/SFScreen_Forko`. Não há token dentro do aplicativo e não é necessário hospedar um site separado.
+
+O updater reconhece somente releases que:
+
+- tenham uma tag SemVer maior, como `v0.1.5`;
+- estejam publicadas, sem serem draft ou pre-release;
+- incluam o instalador, `RELEASES` e o pacote `*-full.nupkg`.
+
+Para usar outro servidor HTTPS no futuro, ainda é possível sobrescrever a URL durante o build:
 
 ```powershell
 $env:SFSCREEN_UPDATE_FEED_URL = 'https://updates.exemplo.com/sfscreen/windows/x64'
 npm run make
 ```
 
-A URL não pode conter usuário, senha, query string ou fragmento. Credenciais não devem ser compiladas no cliente.
+A URL alternativa não pode conter usuário, senha, query string ou fragmento. Credenciais não devem ser compiladas no cliente.
 
-Para publicar uma versão:
+## Publicar uma versão automaticamente
 
-1. Atualize `version` no `package.json` e no lockfile, sem reutilizar uma versão já publicada.
-2. Gere o instalador com a mesma URL de feed das versões anteriores.
-3. Envie primeiro o novo `.nupkg` ao diretório HTTPS do feed.
-4. Envie o novo `RELEASES` por último, evitando que clientes vejam um pacote ainda incompleto.
-5. Disponibilize o novo `Setup.exe` e `SHA256SUMS.txt` na página de download.
+Com o GitHub CLI autenticado e a árvore de trabalho limpa, execute no Windows:
+
+```powershell
+npm run release -- patch
+```
+
+Também são aceitos `minor`, `major` ou uma versão explícita, como `npm run release -- 0.2.0`.
+
+O script executa typecheck, lint, testes unitários, build do instalador e smoke test E2E. Depois atualiza a versão, cria commit e tag, envia ambos de forma atômica e publica uma GitHub Release estável com todos os artefatos. Se uma validação falhar antes do commit, restaura os arquivos de versão.
 
 O aplicativo verifica atualizações 15 segundos após abrir e novamente a cada quatro horas. Quando o download termina, oferece **Reiniciar agora**; se o usuário escolher **Depois**, o Squirrel aplica a versão ao fechar e abrir o app.
 
-O repositório remoto atual é privado. O serviço público `update.electronjs.org` atende repositórios GitHub públicos; para este projeto, use armazenamento HTTPS estático ou um servidor de updates compatível com Squirrel. Os artefatos `RELEASES` e `.nupkg` gerados pelo `npm run make` já são o formato necessário.
+Não volte o repositório para privado enquanto este canal de update estiver em uso. Releases privadas exigiriam autenticação no cliente e não devem receber um token pessoal embutido.
 
 ## Assinatura de código
 
@@ -48,7 +60,6 @@ Sem assinatura, o instalador funciona, mas o Windows SmartScreen pode exibir um 
 ```powershell
 $env:SFSCREEN_CERTIFICATE_FILE = 'C:\segredos\sfscreen.pfx'
 $env:SFSCREEN_CERTIFICATE_PASSWORD = '<senha>'
-$env:SFSCREEN_UPDATE_FEED_URL = 'https://updates.exemplo.com/sfscreen/windows/x64'
 npm run make
 ```
 
@@ -65,4 +76,3 @@ O build aplica ASAR, mantém somente os idiomas `pt-BR` e `en-US`, remove depend
 3. Publique uma versão maior no feed e abra a versão antiga.
 4. Aguarde o aviso, escolha **Reiniciar agora** e confirme a nova versão instalada.
 5. Desinstale em **Aplicativos instalados** e confirme que os atalhos foram removidos.
-

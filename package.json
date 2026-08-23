@@ -9,12 +9,19 @@
     "lint": "eslint --config eslint.config.mjs . --max-warnings=0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "npm run make && playwright test",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "npm run make && npm run test:e2e:packaged",
+    "test:e2e:packaged": "playwright test",
     "build:portable": "node scripts/build-portable-release.mjs",
-    "make": "electron-forge make --platform=win32 --arch=x64 && node scripts/write-installer-checksum.mjs"
+    "make": "electron-forge make --platform=win32 --arch=x64 && node scripts/write-installer-checksum.mjs",
+    "release": "node scripts/release.mjs"
   },
   "author": "SFScreen Contributors",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FaxBRz/SFScreen_Forko.git"
+  },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",
     "@electron-forge/maker-squirrel": "7.11.2",
