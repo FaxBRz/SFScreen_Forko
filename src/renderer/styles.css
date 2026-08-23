@@ -696,6 +696,20 @@ button:disabled {
   width: 100%;
 }
 
+.sidebar-join-call-btn {
+  width: 100%;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.sidebar-join-call-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .voice-popover-backdrop {
   position: fixed;
   inset: 0;
@@ -2035,6 +2049,76 @@ button:disabled {
   height: 14px;
   fill: #f1c40f;
   stroke: #f1c40f;
+}
+
+.stage-room-lobby-state {
+  width: min(520px, calc(100% - 40px));
+  padding: 38px 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  background: radial-gradient(circle at top, rgba(35, 165, 90, 0.11), transparent 48%), #12141a;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+}
+
+.room-lobby-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  color: #3ddc84;
+  background: rgba(35, 165, 90, 0.13);
+  border: 1px solid rgba(35, 165, 90, 0.28);
+}
+
+.room-lobby-icon svg {
+  width: 27px;
+  height: 27px;
+}
+
+.room-lobby-kicker {
+  color: #3ddc84;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.stage-room-lobby-state h2 {
+  margin: 0;
+  color: #f2f3f5;
+  font-size: 1.45rem;
+}
+
+.stage-room-lobby-state p {
+  max-width: 430px;
+  margin: 0 0 8px;
+  color: #949ba4;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.stage-room-lobby-state small {
+  color: #6d7380;
+  font-size: 0.72rem;
+}
+
+.room-lobby-call-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding-inline: 18px;
+}
+
+.room-lobby-call-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .self-name-badge {

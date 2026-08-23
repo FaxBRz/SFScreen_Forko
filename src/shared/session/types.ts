@@ -3,7 +3,7 @@ export const embeddedStunPort = 43920;
 export const webrtcUdpPortRange = { min: 43921, max: 44019 } as const;
 export const sessionLifetimeMs = 10 * 60 * 1000;
 export const maxSignalBytes = 256 * 1024;
-export const sessionProtocolVersion = 4 as const;
+export const sessionProtocolVersion = 5 as const;
 
 export type TailscaleState = 'not-installed' | 'not-authenticated' | 'offline' | 'no-peers' | 'ready' | 'policy-blocked';
 export type TailscaleRoute = 'direct' | 'relay' | 'peer-relay' | 'unknown';

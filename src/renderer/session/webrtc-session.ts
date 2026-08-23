@@ -7,6 +7,7 @@ import {
   type RemoteControlConfig,
   type RemoteControlStatus,
   type RemoteInputPayload,
+  type RoomCallState,
   type SessionControlMessage,
   type VideoState,
 } from '../../shared/session/media-control';
@@ -204,6 +205,10 @@ export class WebRtcSession {
 
   sendAudioState(state: AudioState): void {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'audio-state', state });
+  }
+
+  sendRoomCallState(state: RoomCallState): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'room-call-state', state });
   }
 
   sendSessionClosed(): void {

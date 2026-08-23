@@ -899,7 +899,7 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
     event.preventDefault();
     if (!selectedRoom) return;
     setRoomBusy(true);
-    await session.joinRoom(selectedRoom.id, roomPassword);
+    await session.joinRoom(selectedRoom, roomPassword);
     setRoomBusy(false);
   };
 
@@ -1046,7 +1046,7 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
             ) : tab === "create-room" ? (
               <div className="tab-content">
                 {session.activeRoom ? (
-                  <div className="room-active-card"><span className="session-modal-network-dot" /><div><strong>{session.activeRoom.room.name}</strong><span>Sala aberta na tailnet · chat efêmero</span></div></div>
+                  <div className="room-active-card"><span className="session-modal-network-dot" /><div><strong>{session.activeRoom.room.name}</strong><span>Sala aberta · chat efêmero · chamada opcional</span></div></div>
                 ) : localRoom ? (
                   <div className="room-saved-card">
                     <div><strong>{localRoom.name}</strong><span>{localRoom.hasPassword ? "Senha persistente configurada neste computador" : "Sala sem senha"}</span></div>
@@ -2204,9 +2204,13 @@ export const App = (): ReactElement => {
   const session = useSession();
   const { state } = session;
   const isConnected = state.phase === "connected";
-  const localSharing = state.mediaPhase === "sharing" && !!session.localStream;
+  const isRoomSession = !!session.activeRoom;
+  const localInCall = isConnected && (!isRoomSession || session.roomCallActive);
+  const remoteInCall = isConnected && (!isRoomSession || session.remoteRoomCallActive);
+  const roomMediaLocked = isRoomSession && !session.roomCallActive;
+  const localSharing = (!isRoomSession || session.roomCallActive) && state.mediaPhase === "sharing" && !!session.localStream;
   const remotePhase = session.remoteMediaPhase ?? "stopped";
-  const remoteSharing = remotePhase === "sharing" && !!session.remoteStream;
+  const remoteSharing = localInCall && remoteInCall && remotePhase === "sharing" && !!session.remoteStream;
 
   type FocusedTarget = "local" | "remote" | "local-screen" | "local-camera" | "remote-screen" | "remote-camera";
   const [isWindowFocused, setIsWindowFocused] = useState(true);
@@ -3344,7 +3348,7 @@ export const App = (): ReactElement => {
   return (
     <div className={`discord-app-layout ${isFullscreen ? "is-app-fullscreen" : ""}`}>
       {/* Background Remote System Audio Player */}
-      <RemoteAudio stream={session.remoteStream} muted={remoteMuted} volume={remoteVolume} />
+      <RemoteAudio stream={localInCall && remoteInCall ? session.remoteStream : undefined} muted={remoteMuted} volume={remoteVolume} />
 
       {activeChatImage && (
         <div className="chat-image-viewer" role="dialog" aria-modal="true" aria-label={`Imagem: ${activeChatImage.name}`} onClick={() => setActiveChatImage(null)}>
@@ -3379,8 +3383,8 @@ export const App = (): ReactElement => {
           <div className="session-title-pill">
             <span className="session-presence-dot" />
             <span className="session-title-copy">
-              <strong>{isConnected ? `Sessão com ${state.remoteUserName}` : "Sua Sala Privada"}</strong>
-              <small>{isConnected ? "Chamada em andamento" : "Pronta para convidar"}</small>
+              <strong>{isRoomSession ? session.activeRoom?.room.name : isConnected ? `Sessão com ${state.remoteUserName}` : "Sua Sala Privada"}</strong>
+              <small>{isRoomSession ? (localInCall ? "Você está na chamada" : isConnected ? "Conectado ao chat da sala" : "Sala aberta para convidados") : isConnected ? "Chamada em andamento" : "Pronta para convidar"}</small>
             </span>
             <span className="participant-counter" title={`${participantsCount} participante(s)`}><UsersIcon /> {participantsCount}</span>
           </div>
@@ -3493,7 +3497,7 @@ export const App = (): ReactElement => {
                   <span className="sidebar-room-status"><span />Sala privada</span>
                   <LockShieldIcon />
                 </div>
-                <p>Sua sala está pronta. Envie um convite para começar uma chamada segura.</p>
+                <p>{isRoomSession ? "Sua sala está aberta. Convide alguém para conversar no chat; a chamada é opcional." : "Sua sessão está pronta. Envie um convite para começar uma chamada segura."}</p>
                 <div className="sidebar-room-meta">
                   <span><UsersIcon /> 1 pessoa</span>
                   <span><LockShieldIcon /> Protegida</span>
@@ -3503,7 +3507,7 @@ export const App = (): ReactElement => {
                 </button>
               </section>
             )}
-            <div className="sidebar-participant-label">Na chamada</div>
+            <div className="sidebar-participant-label">Na sala</div>
             <div className="participant-list">
               {isConnected && (
                 <div className="participant-item">
@@ -3529,9 +3533,7 @@ export const App = (): ReactElement => {
                             </button>
                           </span>
                         )
-                      ) : (
-                        "Conectado"
-                      )}
+                      ) : remoteInCall ? "Na chamada" : "No chat da sala"}
                     </small>
 
                   </div>
@@ -3545,14 +3547,19 @@ export const App = (): ReactElement => {
                     <strong>{state.localUserName}</strong>
                     {state.role === "host" && <span className="crown-icon" title="Host da sessão"><CrownIcon /></span>}
                   </span>
-                  <small>{localSharing ? "Transmitindo tela" : session.voiceActive ? (session.voiceMuted ? "Na voz · microfone mutado" : "Falando na voz") : isConnected ? "Conectado" : "Na sala"}</small>
+                  <small>{localSharing ? "Transmitindo tela" : session.voiceActive ? (session.voiceMuted ? "Na chamada · microfone mutado" : "Na chamada · microfone ativo") : localInCall ? "Na chamada" : isConnected && isRoomSession ? "No chat da sala" : isConnected ? "Conectado" : "Na sala"}</small>
                 </div>
               </div>
             </div>
 
 
             <div className="sidebar-footer">
-              {isConnected && (
+              {isConnected && isRoomSession && !session.roomCallActive && (
+                <button className="button primary sidebar-join-call-btn" type="button" onClick={() => void session.joinRoomCall()}>
+                  <MicrophoneIcon /> Entrar na chamada
+                </button>
+              )}
+              {localInCall && (
                 <div className="sidebar-voice-connected-wrap">
                   {voicePopoverOpen && (
                     <VoiceConnectionPopover session={session} onClose={() => setVoicePopoverOpen(false)} />
@@ -3569,18 +3576,19 @@ export const App = (): ReactElement => {
                         <SignalWifiIcon />
                       </div>
                       <div className="voice-connected-text">
-                        <span className="voice-connected-title">Voz conectada</span>
-                        <span className="voice-connected-sub">WebRTC · RTC-Direct</span>
+                        <span className="voice-connected-title">{isRoomSession ? "Na chamada" : "Voz conectada"}</span>
+                        <span className="voice-connected-sub">{remoteInCall ? "WebRTC · participante conectado" : "Aguardando outra pessoa"}</span>
                       </div>
                     </div>
                     <div className="voice-connected-right">
                       <button
                         className="voice-hangup-mini-btn"
                         type="button"
-                        title="Desconectar"
+                        title={isRoomSession ? "Sair da chamada" : "Desconectar"}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void session.close();
+                          if (isRoomSession) void session.leaveRoomCall();
+                          else void session.close();
                         }}
                       >
                         <PhoneOffIcon />
@@ -4156,8 +4164,19 @@ export const App = (): ReactElement => {
                   <span>Ver tela</span>
                 </button>
               </div>
+            ) : isConnected && isRoomSession && !session.roomCallActive ? (
+              <div className="stage-room-lobby-state">
+                <div className="room-lobby-icon"><MessageSquareIcon /></div>
+                <span className="room-lobby-kicker">Você está na sala</span>
+                <h2>{session.activeRoom?.room.name}</h2>
+                <p>O chat já está disponível. Entre na chamada somente quando quiser usar microfone, câmera ou compartilhar a tela.</p>
+                <button className="button primary room-lobby-call-btn" type="button" onClick={() => void session.joinRoomCall()}>
+                  <MicrophoneIcon /> Entrar na chamada
+                </button>
+                <small>{session.remoteRoomCallActive ? `${state.remoteUserName} já está na chamada` : "Ninguém está na chamada agora"}</small>
+              </div>
             ) : isConnected ? (
-              <div className="stage-call-participants-view has-two-peers">
+              <div className={`stage-call-participants-view ${remoteInCall ? "has-two-peers" : "is-single-peer"}`}>
                 {/* Local Participant Card */}
                 <div className="call-participant-card is-self-card">
                   <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="call-card-avatar is-self" />
@@ -4169,7 +4188,7 @@ export const App = (): ReactElement => {
                 </div>
 
                 {/* Remote Participant Card (when connected) */}
-                {isConnected && (
+                {remoteInCall && (
                   <div className="call-participant-card">
                     <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="call-card-avatar" />
                     <div className="call-card-name-tag">
@@ -4559,7 +4578,8 @@ export const App = (): ReactElement => {
                   className="dock-action-btn is-share-idle"
                   type="button"
                   onClick={() => void session.openSourcePicker()}
-                  title="Compartilhar tela"
+                  disabled={roomMediaLocked}
+                  title={roomMediaLocked ? "Entre na chamada para compartilhar a tela" : "Compartilhar tela"}
                 >
                   <ScreenCastIcon />
                   <span>Compartilhar</span>
@@ -4571,13 +4591,14 @@ export const App = (): ReactElement => {
                 className={`dock-icon-btn is-camera-btn ${session.cameraActive ? "is-camera-on" : ""}`}
                 type="button"
                 onClick={() => void session.toggleCamera()}
-                title={session.cameraActive ? "Desativar câmera" : "Ativar câmera"}
-                aria-label={session.cameraActive ? "Desativar câmera" : "Ativar câmera"}
+                disabled={roomMediaLocked}
+                title={roomMediaLocked ? "Entre na chamada para ativar a câmera" : session.cameraActive ? "Desativar câmera" : "Ativar câmera"}
+                aria-label={roomMediaLocked ? "Câmera indisponível fora da chamada" : session.cameraActive ? "Desativar câmera" : "Ativar câmera"}
               >
                 <CameraIcon />
               </button>
 
-              {isConnected && (
+              {localInCall && (
                 <button
                   className={`dock-icon-btn is-voice-btn ${session.voiceActive ? "is-active" : ""} ${session.voiceMuted ? "is-muted" : ""}`}
                   type="button"
@@ -4600,9 +4621,9 @@ export const App = (): ReactElement => {
               </button>
 
               {isConnected && (
-                <button className="dock-action-btn is-hangup" type="button" title="Desconectar da chamada" onClick={() => void session.close()}>
+                <button className="dock-action-btn is-hangup" type="button" title={isRoomSession ? "Sair da sala" : "Desconectar da chamada"} onClick={() => void session.close()}>
                   <PhoneOffIcon />
-                  <span>Desconectar</span>
+                  <span>{isRoomSession ? "Sair da sala" : "Desconectar"}</span>
                 </button>
               )}
             </div>
@@ -4630,7 +4651,7 @@ export const App = (): ReactElement => {
             <div className="chat-header">
               <div className="chat-title-group">
                 <span className="chat-title-icon"><MessageSquareIcon /></span>
-                <div><h3>Chat da Chamada</h3><span>{participantsCount} {participantsCount === 1 ? "pessoa" : "pessoas"} na sala</span></div>
+                <div><h3>{isRoomSession ? "Chat da Sala" : "Chat da Chamada"}</h3><span>{participantsCount} {participantsCount === 1 ? "pessoa" : "pessoas"} na sala</span></div>
               </div>
               <button className="icon-action-button" type="button" onClick={handleCloseChat} aria-label="Fechar chat">
                 <XCloseIcon />

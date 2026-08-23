@@ -29,6 +29,8 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   cameraActive: false,
   voiceActive: false,
   voiceMuted: false,
+  roomCallActive: false,
+  remoteRoomCallActive: false,
   setJoinCode: vi.fn(),
   setResolution: vi.fn(),
   setFps: vi.fn(),
@@ -36,6 +38,8 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   toggleCamera: vi.fn(async () => undefined),
   toggleVoice: vi.fn(async () => undefined),
   toggleVoiceMute: vi.fn(),
+  joinRoomCall: vi.fn(async () => undefined),
+  leaveRoomCall: vi.fn(async () => undefined),
   refresh: vi.fn(async () => state.tailscale),
   openSourcePicker: vi.fn(async () => undefined),
   closeSourcePicker: vi.fn(),
@@ -387,6 +391,21 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /simular rede tailscale/i }));
 
     expect(current.setTestNetworkEnabled).toHaveBeenCalledWith(true);
+  });
+
+  it('keeps a room in chat lobby until the user explicitly joins the call', () => {
+    const current = model(readyState({ phase: 'connected', remoteUserName: 'Alex' }));
+    current.activeRoom = {
+      room: { id: 'room-1', name: 'Sala privada', hasPassword: true },
+      expiresAt: '2026-08-23T01:00:00.000Z',
+    };
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    expect(screen.getByText('O chat já está disponível. Entre na chamada somente quando quiser usar microfone, câmera ou compartilhar a tela.')).toBeTruthy();
+    expect(screen.queryByText('Voz conectada')).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: /entrar na chamada/i })[0]);
+    expect(current.joinRoomCall).toHaveBeenCalledOnce();
   });
 
   it('allows customizing simulated peer options (screen, camera, chat message)', () => {

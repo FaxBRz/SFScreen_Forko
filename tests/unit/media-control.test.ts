@@ -51,6 +51,12 @@ describe('media control protocol', () => {
     expect(parseControlMessage(serializeControlMessage(del))).toEqual(del);
   });
 
+  it('round-trips room call membership and rejects invalid states', () => {
+    const message = { protocolVersion: sessionProtocolVersion, type: 'room-call-state' as const, state: 'joined' as const };
+    expect(parseControlMessage(serializeControlMessage(message))).toEqual(message);
+    expect(parseControlMessage(JSON.stringify({ protocolVersion: sessionProtocolVersion, type: 'room-call-state', state: 'ringing' }))).toBeUndefined();
+  });
+
   it('accepts a chat image without text and rejects an oversized image payload', () => {
     const image = {
       protocolVersion: sessionProtocolVersion,

@@ -3,6 +3,7 @@ import { sessionProtocolVersion } from './types';
 export type VideoState = 'starting' | 'active' | 'stopped' | 'failed';
 export type AudioState = 'unavailable' | 'starting' | 'active' | 'stopped' | 'failed';
 export type CameraState = 'starting' | 'active' | 'stopped' | 'failed';
+export type RoomCallState = 'joined' | 'left';
 
 export type RemoteControlStatus = 'idle' | 'active' | 'paused-by-host' | 'disabled';
 
@@ -39,6 +40,7 @@ export type SessionControlMessage =
   | { protocolVersion: typeof sessionProtocolVersion; type: 'video-state'; state: VideoState }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'camera-state'; state: CameraState }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'audio-state'; state: AudioState }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'room-call-state'; state: RoomCallState }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-control-config'; config: RemoteControlConfig }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-control-status'; status: RemoteControlStatus; timeoutMs?: number }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'remote-control-input'; input: RemoteInputPayload }
@@ -90,6 +92,7 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
     if (control.type === 'video-state' && (control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'video-state', state: control.state };
     if (control.type === 'camera-state' && (control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'camera-state', state: control.state };
     if (control.type === 'audio-state' && (control.state === 'unavailable' || control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'audio-state', state: control.state };
+    if (control.type === 'room-call-state' && (control.state === 'joined' || control.state === 'left')) return { protocolVersion: sessionProtocolVersion, type: 'room-call-state', state: control.state };
 
     if (control.type === 'remote-control-config' && typeof control.config === 'object' && control.config !== null) {
       const cfg = control.config as Record<string, unknown>;
