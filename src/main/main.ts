@@ -12,6 +12,7 @@ import { SessionServer } from './tailscale/session-server';
 import { TailscaleStunServer } from './tailscale/stun-server';
 import { TailscaleService } from './tailscale/tailscale-service';
 import { RemoteInputService } from './input/remote-input-service';
+import { RoomConfigService } from './rooms/room-config-service';
 
 let mainWindow: BrowserWindow | null = null;
 const tailscale = new TailscaleService();
@@ -136,6 +137,7 @@ app.whenReady().then(() => {
     stunServer,
     screenCapture,
     diagnostics,
+    roomConfig: new RoomConfigService(path.join(app.getPath('userData'), 'rooms')),
     isAuthorizedSender,
   });
   registerRuntimeIpc({ ipcMain, audioCapture, remoteInput, isAuthorizedSender });

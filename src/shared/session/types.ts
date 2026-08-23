@@ -47,6 +47,12 @@ export interface HostedSession {
   expiresAt: string;
 }
 
+export interface LocalRoomConfig {
+  id: string;
+  name: string;
+  hasPassword: boolean;
+}
+
 export interface DiscoveredSession {
   hostIp: string;
   offer: SessionDescription;
@@ -101,6 +107,10 @@ export interface SFScreenApi {
   submitAnswer: (hostIp: string, code: string, answer: SessionDescription) => Promise<SessionResult<void>>;
   stopHostedSession: () => Promise<SessionResult<void>>;
   onSessionAnswer: (listener: (event: SessionAnswerEvent) => void) => () => void;
+  getLocalRoom: () => Promise<SessionResult<LocalRoomConfig | undefined>>;
+  createLocalRoom: (name: string, password: string) => Promise<SessionResult<LocalRoomConfig>>;
+  updateLocalRoomPassword: (password: string) => Promise<SessionResult<LocalRoomConfig>>;
+  removeLocalRoomPassword: () => Promise<SessionResult<LocalRoomConfig>>;
   toggleFullscreen: () => Promise<boolean>;
   setFullscreen: (flag: boolean) => Promise<boolean>;
   onWinKeyPressed: (listener: (action: 'keyDown' | 'keyUp') => void) => () => void;

@@ -46,6 +46,10 @@ const api: SFScreenApi = {
     ipcRenderer.on(ipcChannels.capturedRemoteInput, callback);
     return () => ipcRenderer.removeListener(ipcChannels.capturedRemoteInput, callback);
   },
+  getLocalRoom: () => ipcRenderer.invoke(ipcChannels.getLocalRoom),
+  createLocalRoom: (name, password) => ipcRenderer.invoke(ipcChannels.createLocalRoom, name, password),
+  updateLocalRoomPassword: (password) => ipcRenderer.invoke(ipcChannels.updateLocalRoomPassword, password),
+  removeLocalRoomPassword: () => ipcRenderer.invoke(ipcChannels.removeLocalRoomPassword),
   onRemoteInputLockReleased: (listener) => {
     const callback = (): void => listener();
     ipcRenderer.on(ipcChannels.remoteInputLockReleased, callback);

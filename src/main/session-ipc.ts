@@ -8,6 +8,7 @@ import { DiagnosticsService } from './diagnostics-service';
 import { SessionServer } from './tailscale/session-server';
 import { TailscaleStunServer } from './tailscale/stun-server';
 import { TailscaleService } from './tailscale/tailscale-service';
+import { RoomConfigService } from './rooms/room-config-service';
 
 interface SessionIpcDependencies {
   ipcMain: IpcMain;
@@ -16,12 +17,13 @@ interface SessionIpcDependencies {
   stunServer: TailscaleStunServer;
   screenCapture: ScreenCaptureService;
   diagnostics: DiagnosticsService;
+  roomConfig: RoomConfigService;
   isAuthorizedSender: (sender: WebContents) => boolean;
 }
 
 const invalid = <T>(message: string) => failure<T>('invalid-request', message);
 
-export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, stunServer, screenCapture, diagnostics, isAuthorizedSender }: SessionIpcDependencies): void => {
+export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, stunServer, screenCapture, diagnostics, roomConfig, isAuthorizedSender }: SessionIpcDependencies): void => {
   const authorized = (sender: WebContents): boolean => !sender.isDestroyed() && isAuthorizedSender(sender);
   const unauthorized = <T>() => failure<T>('invalid-request', 'A origem desta solicitação não é autorizada.');
   ipcMain.handle(ipcChannels.listScreenSources, (event) => authorized(event.sender) ? toSessionResult(() => screenCapture.listSources()) : unauthorized());
@@ -77,4 +79,10 @@ export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, stunServ
     await sessionServer.stop();
     return undefined;
   }));
+  ipcMain.handle(ipcChannels.getLocalRoom, (event) => !authorized(event.sender) ? unauthorized() : toSessionResult(() => roomConfig.get()));
+  ipcMain.handle(ipcChannels.createLocalRoom, (event, name: unknown, password: unknown) => !authorized(event.sender) || typeof name !== 'string' || typeof password !== 'string'
+    ? invalid('Os dados da sala são inválidos.') : toSessionResult(() => roomConfig.create(name, password)));
+  ipcMain.handle(ipcChannels.updateLocalRoomPassword, (event, password: unknown) => !authorized(event.sender) || typeof password !== 'string'
+    ? invalid('A senha da sala é inválida.') : toSessionResult(() => roomConfig.updatePassword(password)));
+  ipcMain.handle(ipcChannels.removeLocalRoomPassword, (event) => !authorized(event.sender) ? unauthorized() : toSessionResult(() => roomConfig.removePassword()));
 };
