@@ -131,7 +131,7 @@ export class SessionServer {
 
   async hostRoom(offer: SessionDescription, status: TailscaleStatus, onAnswer: (event: SessionAnswerEvent) => void): Promise<HostedRoom> {
     const room = await this.getRoomConfig();
-    if (!room || !room.hasPassword) throw fault('invalid-request', 'Crie uma sala com senha antes de hospedá-la.');
+    if (!room) throw fault('invalid-request', 'Crie uma sala antes de hospedá-la.');
     const hosted = await this.host(offer, status, onAnswer, room);
     return { room, expiresAt: hosted.expiresAt };
   }

@@ -152,6 +152,7 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
         mediaError: undefined,
         audioPhase: state.includeSystemAudio ? (state.mediaPhase === 'sharing' ? state.audioPhase : 'stopped') : 'unavailable',
         audioError: undefined,
+        chatMessages: [],
       };
     case 'hosted':
       return {
@@ -223,6 +224,7 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
         remoteConfirmed: false,
         route: 'unknown',
         remoteUserName: 'Outra pessoa',
+        chatMessages: [],
         sessionModalOpen: false,
         message: 'Chamada ativa. Você está sozinho na sala.',
       };

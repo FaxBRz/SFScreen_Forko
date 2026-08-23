@@ -812,6 +812,7 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
   const [selectedRoom, setSelectedRoom] = useState<RoomSummary | undefined>(undefined);
   const [roomBusy, setRoomBusy] = useState(false);
   const [roomError, setRoomError] = useState("");
+  const [editingRoomPassword, setEditingRoomPassword] = useState(false);
   const seconds = state.hosted ? Math.max(0, Math.ceil((Date.parse(state.hosted.expiresAt) - state.now) / 1_000)) : undefined;
 
   useEffect(() => {
@@ -850,6 +851,23 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
     setRoomBusy(true);
     setRoomError("");
     try { await session.hostRoom(); } finally { setRoomBusy(false); }
+  };
+
+  const handleUpdateRoomPassword = async (): Promise<void> => {
+    if (roomPassword !== roomPasswordConfirm) return setRoomError("As senhas não coincidem.");
+    setRoomBusy(true);
+    const result = await window.sfscreen.updateLocalRoomPassword(roomPassword);
+    if (result.ok) { setLocalRoom(result.value); setEditingRoomPassword(false); setRoomPassword(""); setRoomPasswordConfirm(""); setRoomError(""); }
+    else setRoomError(result.error.message);
+    setRoomBusy(false);
+  };
+
+  const handleRemoveRoomPassword = async (): Promise<void> => {
+    setRoomBusy(true);
+    const result = await window.sfscreen.removeLocalRoomPassword();
+    if (result.ok) { setLocalRoom(result.value); setRoomError(""); }
+    else setRoomError(result.error.message);
+    setRoomBusy(false);
   };
 
   const handleJoinRoom = async (event: FormEvent): Promise<void> => {
@@ -1006,9 +1024,11 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
                   <div className="room-active-card"><span className="session-modal-network-dot" /><div><strong>{session.activeRoom.room.name}</strong><span>Sala aberta na tailnet · chat efêmero</span></div></div>
                 ) : localRoom ? (
                   <div className="room-saved-card">
-                    <div><strong>{localRoom.name}</strong><span>Senha persistente configurada neste computador</span></div>
-                    <button className="button primary full-width" type="button" disabled={roomBusy || state.tailscale.state !== "ready"} onClick={() => void handleOpenSavedRoom()}>{roomBusy ? "Abrindo…" : "Abrir sala"}</button>
-                    <button className="button ghost small" type="button" onClick={() => setLocalRoom(undefined)}>Editar configuração</button>
+                    <div><strong>{localRoom.name}</strong><span>{localRoom.hasPassword ? "Senha persistente configurada neste computador" : "Sala sem senha"}</span></div>
+                    {editingRoomPassword ? <div className="room-password-editor"><input className="text-input" type="password" placeholder="Nova senha" value={roomPassword} onChange={(event) => setRoomPassword(event.target.value)} /><input className="text-input" type="password" placeholder="Confirmar nova senha" value={roomPasswordConfirm} onChange={(event) => setRoomPasswordConfirm(event.target.value)} /><button className="button primary" type="button" disabled={roomPassword.length < 4 || roomBusy} onClick={() => void handleUpdateRoomPassword()}>Salvar nova senha</button><button className="button ghost" type="button" onClick={() => setEditingRoomPassword(false)}>Cancelar</button></div> : <>
+                      <button className="button primary full-width" type="button" disabled={roomBusy || state.tailscale.state !== "ready"} onClick={() => void handleOpenSavedRoom()}>{roomBusy ? "Abrindo…" : "Abrir sala"}</button>
+                      <div className="room-config-actions"><button className="button ghost small" type="button" onClick={() => setEditingRoomPassword(true)}>{localRoom.hasPassword ? "Alterar senha" : "Criar senha"}</button>{localRoom.hasPassword && <button className="button ghost small is-danger" type="button" disabled={roomBusy} onClick={() => void handleRemoveRoomPassword()}>Remover senha</button>}<button className="button ghost small" type="button" onClick={() => setLocalRoom(undefined)}>Recriar sala</button></div>
+                    </>}
                   </div>
                 ) : (
                   <form className="room-create-form" onSubmit={(event) => void handleCreateRoom(event)}>
@@ -1028,10 +1048,10 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
               <form className="tab-content" onSubmit={(event) => void handleJoinRoom(event)}>
                 <div className="room-browser-header"><p className="tab-description">Salas abertas pelos seus peers Tailscale.</p><button className="button ghost small" type="button" onClick={() => void refreshRooms()}>{roomBusy ? "Buscando…" : "Atualizar"}</button></div>
                 <div className="room-list">
-                  {availableRooms.map((room) => <button key={room.id} className={`room-list-item ${selectedRoom?.id === room.id ? "is-selected" : ""}`} type="button" onClick={() => setSelectedRoom(room)}><span className="session-modal-network-dot" /><span><strong>{room.name}</strong><small>{room.hostName} · protegida por senha</small></span></button>)}
+                  {availableRooms.map((room) => <button key={room.id} className={`room-list-item ${selectedRoom?.id === room.id ? "is-selected" : ""}`} type="button" onClick={() => setSelectedRoom(room)}><span className="session-modal-network-dot" /><span><strong>{room.name}</strong><small>{room.hostName} · {room.hasPassword ? "protegida por senha" : "entrada livre"}</small></span></button>)}
                   {!roomBusy && availableRooms.length === 0 && <div className="chat-notice">Nenhuma sala disponível na sua tailnet.</div>}
                 </div>
-                {selectedRoom && <><label className="code-label" htmlFor="join-room-password">Senha da sala</label><input id="join-room-password" className="text-input" type="password" value={roomPassword} onChange={(event) => setRoomPassword(event.target.value)} autoFocus /><button className="button primary full-width" type="submit" disabled={roomBusy || roomPassword.length === 0}>{roomBusy ? "Conectando…" : "Entrar na sala"}</button></>}
+                {selectedRoom && <>{selectedRoom.hasPassword && <><label className="code-label" htmlFor="join-room-password">Senha da sala</label><input id="join-room-password" className="text-input" type="password" value={roomPassword} onChange={(event) => setRoomPassword(event.target.value)} autoFocus /></>}<button className="button primary full-width" type="submit" disabled={roomBusy || (selectedRoom.hasPassword && roomPassword.length === 0)}>{roomBusy ? "Conectando…" : "Entrar na sala"}</button></>}
                 {roomError && <p className="empty-warning" role="alert">{roomError}</p>}
               </form>
             )}
