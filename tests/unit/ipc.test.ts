@@ -32,6 +32,7 @@ describe('IPC channels', () => {
       startFilteredSystemAudio: 'audio:start-filtered-system',
       stopFilteredSystemAudio: 'audio:stop-filtered-system',
       filteredAudioChunk: 'audio:filtered-chunk',
+      listAudioApplications: 'audio:list-applications',
       executeRemoteInput: 'remote-input:execute',
       setRemoteControlHostConfig: 'remote-input:set-config',
       setRemoteInputLock: 'remote-input:set-viewer-lock',

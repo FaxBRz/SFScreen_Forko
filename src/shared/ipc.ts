@@ -27,6 +27,7 @@ export const ipcChannels = {
   startFilteredSystemAudio: 'audio:start-filtered-system',
   stopFilteredSystemAudio: 'audio:stop-filtered-system',
   filteredAudioChunk: 'audio:filtered-chunk',
+  listAudioApplications: 'audio:list-applications',
   setRemoteControlHostConfig: 'remote-input:set-config',
   setRemoteInputLock: 'remote-input:set-viewer-lock',
   capturedRemoteInput: 'remote-input:captured-key',

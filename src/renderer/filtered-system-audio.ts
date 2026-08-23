@@ -1,3 +1,5 @@
+import { AUDIO_EXCLUSIONS_CHANGE_EVENT, readAudioExclusions } from './audio-exclusions';
+
 class StereoPcmRingBuffer {
   private readonly left: Float32Array;
   private readonly right: Float32Array;
@@ -57,7 +59,7 @@ const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle> => {
   processor.connect(destination);
   await context.resume();
 
-  const started = await window.sfscreen.startFilteredSystemAudio();
+  const started = await window.sfscreen.startFilteredSystemAudio(readAudioExclusions());
   if (!started.ok) {
     unsubscribe();
     processor.disconnect();
@@ -65,7 +67,7 @@ const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle> => {
     throw new Error(started.error.message);
   }
 
-  const captureId = started.value.captureId;
+  let captureId = started.value.captureId;
   const track = destination.stream.getAudioTracks()[0];
   if (!track || !captureId) {
     unsubscribe();
@@ -76,12 +78,30 @@ const createFilteredAudioTrack = async (): Promise<FilteredTrackHandle> => {
   }
 
   let disposed = false;
+  let restartQueue = Promise.resolve();
   const watchdogTimer = { id: undefined as number | undefined };
+  const handleExclusionsChanged = (): void => {
+    restartQueue = restartQueue.then(async () => {
+      const previousCaptureId = captureId;
+      captureId = undefined;
+      if (previousCaptureId) await window.sfscreen.stopFilteredSystemAudio(previousCaptureId);
+      if (disposed) return;
+      const replacement = await window.sfscreen.startFilteredSystemAudio(readAudioExclusions());
+      if (!replacement.ok || !replacement.value.captureId) return;
+      if (disposed) {
+        void window.sfscreen.stopFilteredSystemAudio(replacement.value.captureId);
+        return;
+      }
+      captureId = replacement.value.captureId;
+    }).catch(() => undefined);
+  };
+  window.addEventListener(AUDIO_EXCLUSIONS_CHANGE_EVENT, handleExclusionsChanged);
   const nativeStop = track.stop.bind(track);
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
     if (watchdogTimer.id !== undefined) window.clearInterval(watchdogTimer.id);
+    window.removeEventListener(AUDIO_EXCLUSIONS_CHANGE_EVENT, handleExclusionsChanged);
     unsubscribe();
     processor.onaudioprocess = null;
     processor.disconnect();

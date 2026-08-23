@@ -11,7 +11,7 @@ import {
 import { formatSessionCode } from "../shared/session/code";
 import type { ScreenSource } from "../shared/screen-source";
 import type { RemoteControlConfig } from "../shared/session/media-control";
-import type { LocalRoomConfig, RoomSummary } from "../shared/session/types";
+import type { AudioApplication, LocalRoomConfig, RoomSummary } from "../shared/session/types";
 import { type SessionModel, type StreamFps, type StreamResolution, useSession } from "./session/use-session";
 import {
   AUDIO_OUTPUT_CHANGE_EVENT,
@@ -34,6 +34,7 @@ import {
   saveNoiseSuppression,
   saveOutputVolume,
 } from "./audio-preferences";
+import { readAudioExclusions, saveAudioExclusions } from "./audio-exclusions";
 import sfLogoPng from "./assets/icon.png";
 
 /* ─── Vector Icons (Sleek, Minimalist, No Emojis) ─── */
@@ -1197,6 +1198,10 @@ const SettingsModal = ({
   const microphoneVolume = useAudioVolumePreference(readMicrophoneVolume, MICROPHONE_VOLUME_CHANGE_EVENT);
   const outputVolume = useAudioVolumePreference(readOutputVolume, OUTPUT_VOLUME_CHANGE_EVENT);
   const microphoneProcessing = useMicrophoneProcessingPreferences();
+  const [audioExclusions, setAudioExclusions] = useState(readAudioExclusions);
+  const [audioApplications, setAudioApplications] = useState<AudioApplication[]>([]);
+  const [audioApplicationInput, setAudioApplicationInput] = useState("");
+  const [audioApplicationsLoading, setAudioApplicationsLoading] = useState(false);
   const microphoneVolumeRef = useRef(microphoneVolume);
   const [microphoneTestStatus, setMicrophoneTestStatus] = useState<"idle" | "starting" | "active" | "error">("idle");
   const [microphoneLevel, setMicrophoneLevel] = useState(0);
@@ -1275,6 +1280,29 @@ const SettingsModal = ({
       }).catch(() => undefined);
     }
   }, [microphoneProcessing]);
+
+  const refreshAudioApplications = useCallback(async (): Promise<void> => {
+    setAudioApplicationsLoading(true);
+    try {
+      const result = await window.sfscreen.listAudioApplications();
+      setAudioApplications(result.ok ? result.value : []);
+    } catch {
+      setAudioApplications([]);
+    } finally {
+      setAudioApplicationsLoading(false);
+    }
+  }, []);
+
+  const addAudioExclusion = (executable: string): void => {
+    const next = saveAudioExclusions([...audioExclusions, executable]);
+    setAudioExclusions(next);
+    setAudioApplicationInput("");
+  };
+
+  const removeAudioExclusion = (executable: string): void => {
+    const next = saveAudioExclusions(audioExclusions.filter((item) => item !== executable));
+    setAudioExclusions(next);
+  };
 
   const releaseAudioOutputPreview = useCallback((): void => {
     audioOutputPreviewRunRef.current += 1;
@@ -1392,8 +1420,9 @@ const SettingsModal = ({
 
   const selectSettingsTab = useCallback((tab: SettingsTab): void => {
     if (tab !== "media") stopMicrophoneTest();
+    else void refreshAudioApplications();
     setActiveTab(tab);
-  }, [stopMicrophoneTest]);
+  }, [refreshAudioApplications, stopMicrophoneTest]);
 
   const startMicrophoneTest = useCallback(async (): Promise<void> => {
     releaseMicrophoneTest();
@@ -2135,6 +2164,54 @@ const SettingsModal = ({
                       </label>
                     </div>
                   )}
+                </div>
+
+                <div className="sfs-audio-exclusions">
+                  <div className="sfs-exclusions-heading">
+                    <span className="sfs-processing-kicker">Áudio da tela compartilhada</span>
+                    <h4>Aplicativos que não serão transmitidos</h4>
+                    <p>Evita eco e mantém conversas privadas fora do áudio compartilhado. Alterações também são aplicadas a uma transmissão em andamento.</p>
+                  </div>
+
+                  <div className="sfs-exclusion-list" aria-label="Aplicativos excluídos">
+                    {audioExclusions.map((executable) => (
+                      <span className="sfs-exclusion-chip" key={executable}>
+                        <span className="sfs-exclusion-app-mark">{executable === "discord.exe" ? "D" : executable.charAt(0).toUpperCase()}</span>
+                        <span><strong>{executable === "discord.exe" ? "Discord" : executable.replace(/\.exe$/i, "")}</strong><small>{executable}</small></span>
+                        <button type="button" aria-label={`Permitir áudio de ${executable}`} onClick={() => removeAudioExclusion(executable)}><XCloseIcon /></button>
+                      </span>
+                    ))}
+                    {audioExclusions.length === 0 && <p className="sfs-exclusion-warning">Nenhum aplicativo está protegido. Todo o áudio do sistema poderá ser compartilhado.</p>}
+                  </div>
+
+                  <form className="sfs-exclusion-add" onSubmit={(event) => { event.preventDefault(); addAudioExclusion(audioApplicationInput); }}>
+                    <input
+                      aria-label="Executável para excluir"
+                      className="text-input"
+                      value={audioApplicationInput}
+                      onChange={(event) => setAudioApplicationInput(event.target.value)}
+                      placeholder="Ex.: spotify.exe"
+                    />
+                    <button className="button primary small" type="submit" disabled={!audioApplicationInput.trim()}>Adicionar</button>
+                    <button className="button ghost small" type="button" onClick={() => void refreshAudioApplications()} disabled={audioApplicationsLoading}>
+                      {audioApplicationsLoading ? "Buscando…" : "Atualizar apps"}
+                    </button>
+                  </form>
+
+                  <div className="sfs-detected-apps">
+                    <span>Com áudio ativo agora</span>
+                    <div>
+                      {audioApplications
+                        .filter((application, index, items) => items.findIndex((item) => item.executable === application.executable) === index)
+                        .filter((application) => !audioExclusions.includes(application.executable))
+                        .map((application) => (
+                          <button key={application.executable} type="button" onClick={() => addAudioExclusion(application.executable)} title={application.label}>
+                            <span>+</span>{application.executable.replace(/\.exe$/i, "")}
+                          </button>
+                        ))}
+                      {!audioApplicationsLoading && audioApplications.filter((application) => !audioExclusions.includes(application.executable)).length === 0 && <small>Nenhum outro aplicativo com áudio foi detectado.</small>}
+                    </div>
+                  </div>
                 </div>
               </section>
 

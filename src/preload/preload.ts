@@ -32,7 +32,7 @@ const api: SFScreenApi = {
   minimizeWindow: () => ipcRenderer.invoke(ipcChannels.minimizeWindow),
   maximizeWindow: () => ipcRenderer.invoke(ipcChannels.maximizeWindow),
   closeWindow: () => ipcRenderer.invoke(ipcChannels.closeWindow),
-  startFilteredSystemAudio: () => ipcRenderer.invoke(ipcChannels.startFilteredSystemAudio),
+  startFilteredSystemAudio: (excludedExecutables) => ipcRenderer.invoke(ipcChannels.startFilteredSystemAudio, excludedExecutables),
 
   stopFilteredSystemAudio: (captureId) => ipcRenderer.invoke(ipcChannels.stopFilteredSystemAudio, captureId),
   onFilteredAudioChunk: (listener) => {
@@ -50,6 +50,7 @@ const api: SFScreenApi = {
     ipcRenderer.on(ipcChannels.capturedRemoteInput, callback);
     return () => ipcRenderer.removeListener(ipcChannels.capturedRemoteInput, callback);
   },
+  listAudioApplications: () => ipcRenderer.invoke(ipcChannels.listAudioApplications),
   getLocalRoom: () => ipcRenderer.invoke(ipcChannels.getLocalRoom),
   createLocalRoom: (name, password) => ipcRenderer.invoke(ipcChannels.createLocalRoom, name, password),
   updateLocalRoomPassword: (password) => ipcRenderer.invoke(ipcChannels.updateLocalRoomPassword, password),

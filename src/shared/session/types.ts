@@ -80,6 +80,12 @@ export interface FilteredAudioStart {
   captureId?: string;
 }
 
+export interface AudioApplication {
+  processId: number;
+  executable: string;
+  label: string;
+}
+
 export type SessionErrorCode =
   | 'tailscale-unavailable'
   | 'policy-blocked'
@@ -131,9 +137,10 @@ export interface SFScreenApi {
   minimizeWindow: () => Promise<void>;
   maximizeWindow: () => Promise<boolean>;
   closeWindow: () => Promise<void>;
-  startFilteredSystemAudio: () => Promise<SessionResult<FilteredAudioStart>>;
+  startFilteredSystemAudio: (excludedExecutables?: string[]) => Promise<SessionResult<FilteredAudioStart>>;
   stopFilteredSystemAudio: (captureId?: string) => Promise<SessionResult<void>>;
   onFilteredAudioChunk: (listener: (chunk: ArrayBuffer) => void) => () => void;
+  listAudioApplications: () => Promise<SessionResult<AudioApplication[]>>;
   setRemoteControlHostConfig: (config: import('./media-control').RemoteControlConfig) => Promise<SessionResult<void>>;
   setRemoteInputLock: (enabled: boolean) => Promise<boolean>;
   onCapturedRemoteInput: (listener: (input: import('./media-control').RemoteInputPayload) => void) => () => void;

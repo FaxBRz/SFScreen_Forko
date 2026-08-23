@@ -20,6 +20,10 @@ fs.copyFileSync(
   path.join(rootDir, 'src', 'main', 'input', 'native-input-helper.cs'),
   path.join(rootDir, '.vite', 'build', 'native-input-helper.cs'),
 );
+fs.copyFileSync(
+  path.join(rootDir, 'src', 'main', 'audio', 'audio-session-helper.cs'),
+  path.join(rootDir, '.vite', 'build', 'audio-session-helper.cs'),
+);
 
 // 2. Preparar diretório out
 try {

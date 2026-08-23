@@ -330,6 +330,12 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(screen.getByRole('button', { name: /vídeo & áudio/i }));
     expect(screen.getByText('Voz e Vídeo')).toBeTruthy();
     expect(screen.getByRole('radio', { name: /isolamento de voz/i })).toBeTruthy();
+    expect(screen.getByText('Aplicativos que não serão transmitidos')).toBeTruthy();
+    expect(screen.getByText('Discord')).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: /executável para excluir/i }), { target: { value: 'Spotify.exe' } });
+    fireEvent.click(screen.getByRole('button', { name: /^adicionar$/i }));
+    expect(localStorage.getItem('sfscreen_audio_exclusions')).toBe('["discord.exe","spotify.exe"]');
+    expect(screen.getByText('spotify')).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: /personalizado/i }));
     expect(screen.getByRole('combobox', { name: /supressão de ruído/i })).toBeTruthy();
     expect(screen.getByRole('checkbox', { name: /cancelamento de eco/i })).toBeTruthy();

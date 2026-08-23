@@ -72,11 +72,19 @@ export const registerRuntimeIpc = ({ ipcMain, audioCapture, remoteInput, isAutho
     window.close();
   });
 
-  ipcMain.handle(ipcChannels.startFilteredSystemAudio, (event) => {
+  ipcMain.handle(ipcChannels.startFilteredSystemAudio, (event, excludedExecutables: unknown) => {
     if (!authorized(event.sender)) return failure('invalid-request', 'A origem desta solicitação não é autorizada.');
+    if (excludedExecutables !== undefined && (!Array.isArray(excludedExecutables) || excludedExecutables.some((item) => typeof item !== 'string') || excludedExecutables.length > 32)) {
+      return failure('invalid-request', 'A lista de aplicativos excluídos é inválida.');
+    }
     return toSessionResult(() => audioCapture.start((chunk) => {
       if (!event.sender.isDestroyed()) event.sender.send(ipcChannels.filteredAudioChunk, chunk);
-    }));
+    }, excludedExecutables as string[] | undefined));
+  });
+
+  ipcMain.handle(ipcChannels.listAudioApplications, (event) => {
+    if (!authorized(event.sender)) return failure('invalid-request', 'A origem desta solicitação não é autorizada.');
+    return toSessionResult(() => audioCapture.listApplications());
   });
 
   ipcMain.handle(ipcChannels.stopFilteredSystemAudio, (event, captureId: unknown) => {
