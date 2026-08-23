@@ -1,4 +1,43 @@
-# SFScreen V1.2 com Tailscale
+# SFScreen v0.2.0 com Tailscale
+
+## Fluxo atual de salas
+
+1. Instale o Tailscale em cada PC e use uma tailnet dedicada ao grupo, ou
+   compartilhe somente os dispositivos necessários. Não habilite subnet router,
+   exit node ou Tailscale SSH.
+2. Em **Access controls**, limite a comunicação à porta do SFScreen nas
+   máquinas participantes. Ajuste a regra abaixo para os membros reais da
+   tailnet:
+
+```json
+{
+  "grants": [
+    {
+      "src": ["autogroup:member"],
+      "dst": ["autogroup:member"],
+      "ip": ["tcp:43917", "udp:43920-44019"]
+    }
+  ]
+}
+```
+
+3. O dono cria uma sala, define a senha e pode deixá-la aberta mesmo sem pares
+   Tailscale no momento. O aplicativo a anuncia automaticamente quando a
+   interface voltar a ficar disponível.
+4. Um convidado entra pela mesma interface usando o código de sete caracteres
+   (válido por dez minutos) **ou** a senha recebida por um canal externo. Não
+   há confirmação bilateral de código criptográfico.
+5. A sala aceita até quatro pessoas. Entrar na sala não liga microfone nem
+   câmera; cada pessoa escolhe “Entrar na chamada” quando quiser enviar mídia.
+   O dono deve manter o SFScreen aberto, inclusive se a janela estiver no tray.
+
+O listener do SFScreen usa apenas o IP Tailscale. A configuração não anuncia
+rotas da LAN física e não cria um serviço hospedado: Tailscale é somente o
+transporte para a sinalização e as conexões entre pares.
+
+---
+
+# Histórico: SFScreen V1.2 com Tailscale
 
 1. Instale o Tailscale em cada PC Windows e entre na mesma tailnet Personal exclusiva do grupo.
 2. Não ative subnet router, exit node ou Tailscale SSH.

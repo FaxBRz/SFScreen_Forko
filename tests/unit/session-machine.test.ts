@@ -85,6 +85,39 @@ describe('session machine', () => {
     const deletedChat = sessionReducer(withChat, { type: 'delete-chat-message', id: 'msg-1' });
     expect(deletedChat.chatMessages).toHaveLength(0);
   });
+
+  it('keeps canonical room chat separate from legacy direct chat and clears it on close', () => {
+    const joined = {
+      id: 'room-item-joined1',
+      sequence: 2,
+      type: 'system-event' as const,
+      timestamp: '2026-08-23T12:00:02.000Z',
+      event: {
+        id: 'room-event-joined1',
+        sequence: 2,
+        kind: 'participant-joined' as const,
+        timestamp: '2026-08-23T12:00:02.000Z',
+        participantName: 'Alex',
+      },
+    };
+    const message = {
+      id: 'room-item-message',
+      sequence: 1,
+      type: 'user-message' as const,
+      timestamp: '2026-08-23T12:00:01.000Z',
+      senderId: 'room-participant1',
+      senderName: 'Rafa',
+      text: 'Olá!',
+    };
+
+    const withLateItem = sessionReducer(initialSessionState, { type: 'add-room-chat-item', item: joined });
+    const ordered = sessionReducer(withLateItem, { type: 'add-room-chat-item', item: message });
+    const deduplicated = sessionReducer(ordered, { type: 'add-room-chat-item', item: { ...joined, id: 'room-item-retry01' } });
+
+    expect(deduplicated.chatMessages).toHaveLength(0);
+    expect(deduplicated.roomChatItems.map((item) => item.sequence)).toEqual([1, 2]);
+    expect(sessionReducer(deduplicated, { type: 'closed' }).roomChatItems).toEqual([]);
+  });
 });
 
 

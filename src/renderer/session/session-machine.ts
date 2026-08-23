@@ -1,6 +1,7 @@
 import type { ScreenSource } from '../../shared/screen-source';
 import type { ChatMessagePayload } from '../../shared/session/media-control';
-import type { HostedSession, TailscaleStatus } from '../../shared/session/types';
+import type { ChatItem, HostedSession, TailscaleStatus } from '../../shared/session/types';
+import { insertRoomChatItem } from './room-chat';
 
 export type SessionPhase = 'checking' | 'idle' | 'hosting' | 'searching' | 'negotiating' | 'verifying' | 'connected' | 'failed' | 'closed';
 export type SessionRole = 'host' | 'viewer';
@@ -29,6 +30,8 @@ export interface SessionUiState {
   remoteUserName: string;
   remoteUserAvatar?: string;
   chatMessages: ChatMessagePayload[];
+  /** Canonical, short-lived room timeline. Direct sessions keep chatMessages. */
+  roomChatItems: ChatItem[];
   sessionModalOpen: boolean;
   chatPanelOpen: boolean;
   now: number;
@@ -57,6 +60,8 @@ export type SessionAction =
   | { type: 'set-remote-user-avatar'; avatar?: string }
   | { type: 'add-chat-message'; message: ChatMessagePayload }
   | { type: 'delete-chat-message'; id: string }
+  | { type: 'add-room-chat-item'; item: ChatItem }
+  | { type: 'clear-room-chat' }
   | { type: 'toggle-session-modal'; open?: boolean }
   | { type: 'toggle-chat-panel'; open?: boolean }
   | { type: 'tick'; now: number };
@@ -113,6 +118,7 @@ export const initialSessionState: SessionUiState = {
   remoteUserName: 'Outra pessoa',
   remoteUserAvatar: undefined,
   chatMessages: [],
+  roomChatItems: [],
   sessionModalOpen: false,
   chatPanelOpen: false,
   now: Date.now(),
@@ -160,6 +166,7 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
         audioPhase: state.includeSystemAudio ? (state.mediaPhase === 'sharing' ? state.audioPhase : 'stopped') : 'unavailable',
         audioError: undefined,
         chatMessages: [],
+        roomChatItems: [],
       };
     case 'hosted':
       return {
@@ -232,6 +239,7 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
         route: 'unknown',
         remoteUserName: 'Outra pessoa',
         chatMessages: [],
+        roomChatItems: [],
         sessionModalOpen: false,
         message: 'Chamada ativa. Você está sozinho na sala.',
       };
@@ -265,6 +273,10 @@ export const sessionReducer = (state: SessionUiState, action: SessionAction): Se
       return { ...state, chatMessages: [...state.chatMessages, action.message] };
     case 'delete-chat-message':
       return { ...state, chatMessages: state.chatMessages.filter((m) => m.id !== action.id) };
+    case 'add-room-chat-item':
+      return { ...state, roomChatItems: insertRoomChatItem(state.roomChatItems, action.item) };
+    case 'clear-room-chat':
+      return state.roomChatItems.length === 0 ? state : { ...state, roomChatItems: [] };
     case 'toggle-session-modal':
 
       return { ...state, sessionModalOpen: action.open ?? !state.sessionModalOpen };

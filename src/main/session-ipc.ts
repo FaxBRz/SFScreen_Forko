@@ -1,7 +1,7 @@
 import type { IpcMain, WebContents } from 'electron';
 import { failure, toSessionResult } from '../shared/session/errors';
-import { isSessionCode, isSessionDescription } from '../shared/session/protocol';
-import type { SessionDescription, TailscaleStatus } from '../shared/session/types';
+import { isParticipantState, isRoomMeshClientAuth, isRoomMeshJoinRequest, isRoomMeshSignal, isSessionCode, isSessionDescription } from '../shared/session/protocol';
+import type { RoomMeshClientAuth, RoomMeshJoinRequest, RoomMeshSignal, SessionDescription, TailscaleStatus } from '../shared/session/types';
 import { ipcChannels } from '../shared/ipc';
 import { ScreenCaptureService } from './capture/screen-capture-service';
 import { DiagnosticsService } from './diagnostics-service';
@@ -72,14 +72,42 @@ export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, stunServ
       if (!event.sender.isDestroyed()) event.sender.send(ipcChannels.sessionAnswer, answer);
     }));
   });
+  ipcMain.handle(ipcChannels.hostMeshRoomSession, (event, offer: unknown, host: unknown) => {
+    if (!authorized(event.sender)) return unauthorized();
+    if (!isSessionDescription(offer, 'offer') || !isParticipantState(host)) return invalid('A oferta ou o anfitrião da malha da sala é inválido.');
+    return toSessionResult(async () => sessionServer.hostMeshRoom(offer, await readyStatus(), host, (meshEvent) => {
+      if (!event.sender.isDestroyed()) event.sender.send(ipcChannels.roomMeshEvent, meshEvent);
+    }));
+  });
   ipcMain.handle(ipcChannels.discoverRooms, (event) => !authorized(event.sender) ? unauthorized() : toSessionResult(async () => sessionServer.discoverRooms(await tailscale.getStatus(true))));
   ipcMain.handle(ipcChannels.findRoom, (event, roomId: unknown, password: unknown) => !authorized(event.sender) || typeof roomId !== 'string' || typeof password !== 'string'
     ? invalid('Os dados para entrar na sala são inválidos.') : toSessionResult(async () => sessionServer.findRoom(roomId, password, await tailscale.getStatus(true))));
-  ipcMain.handle(ipcChannels.submitRoomAnswer, (event, hostIp: unknown, roomId: unknown, password: unknown, answer: unknown) => {
+  ipcMain.handle(ipcChannels.findRoomByCode, (event, code: unknown, password: unknown) => !authorized(event.sender) || typeof code !== 'string' || !isSessionCode(code) || (password !== undefined && typeof password !== 'string')
+    ? invalid('Os dados para entrar na sala são inválidos.') : toSessionResult(async () => sessionServer.findRoomByCode(code, password, await tailscale.getStatus(true))));
+  ipcMain.handle(ipcChannels.submitRoomAnswer, (event, hostIp: unknown, roomId: unknown, password: unknown, answer: unknown, inviteCode: unknown) => {
     if (!authorized(event.sender)) return unauthorized();
-    if (typeof hostIp !== 'string' || typeof roomId !== 'string' || typeof password !== 'string' || !isSessionDescription(answer, 'answer')) return invalid('A resposta da sala é inválida.');
-    return toSessionResult(() => sessionServer.submitRoomAnswer(hostIp, roomId, password, answer));
+    if (typeof hostIp !== 'string' || typeof roomId !== 'string' || (password !== undefined && typeof password !== 'string') || (inviteCode !== undefined && (!isSessionCode(inviteCode) || typeof inviteCode !== 'string')) || (password === undefined && inviteCode === undefined) || !isSessionDescription(answer, 'answer')) return invalid('A resposta da sala é inválida.');
+    return toSessionResult(() => sessionServer.submitRoomAnswer(hostIp, roomId, password, answer, inviteCode));
   });
+  ipcMain.handle(ipcChannels.joinRoomMesh, (event, hostIp: unknown, request: unknown) => !authorized(event.sender) || typeof hostIp !== 'string' || !isRoomMeshJoinRequest(request)
+    ? invalid('Os dados para entrar na malha da sala são inválidos.') : toSessionResult(() => sessionServer.joinRoomMesh(hostIp, request as RoomMeshJoinRequest)));
+  ipcMain.handle(ipcChannels.pollRoomMesh, (event, hostIp: unknown, auth: unknown, afterSequence: unknown) => !authorized(event.sender)
+    || typeof hostIp !== 'string'
+    || !isRoomMeshClientAuth(auth)
+    || (afterSequence !== undefined && (typeof afterSequence !== 'number' || !Number.isSafeInteger(afterSequence) || afterSequence < 0))
+    ? invalid('A retomada da malha da sala é inválida.') : toSessionResult(() => sessionServer.pollRoomMesh(hostIp, auth as RoomMeshClientAuth, afterSequence as number | undefined)));
+  ipcMain.handle(ipcChannels.sendRoomMeshSignal, (event, hostIp: unknown, auth: unknown, signal: unknown) => !authorized(event.sender)
+    || typeof hostIp !== 'string'
+    || !isRoomMeshClientAuth(auth)
+    || !isRoomMeshSignal(signal)
+    ? invalid('O sinal da malha da sala é inválido.') : toSessionResult(() => sessionServer.sendRoomMeshSignal(hostIp, auth as RoomMeshClientAuth, signal as RoomMeshSignal)));
+  ipcMain.handle(ipcChannels.leaveRoomMesh, (event, hostIp: unknown, auth: unknown) => !authorized(event.sender) || typeof hostIp !== 'string' || !isRoomMeshClientAuth(auth)
+    ? invalid('A saída da malha da sala é inválida.') : toSessionResult(() => sessionServer.leaveRoomMesh(hostIp, auth as RoomMeshClientAuth)));
+  ipcMain.handle(ipcChannels.sendHostedRoomMeshSignal, (event, signal: unknown) => !authorized(event.sender) || !isRoomMeshSignal(signal)
+    ? invalid('O sinal local da malha da sala é inválido.') : toSessionResult(async () => {
+      sessionServer.sendHostedRoomMeshSignal(signal as RoomMeshSignal);
+      return undefined;
+    }));
   ipcMain.handle(ipcChannels.findSession, (_event, code: unknown) => {
     if (!authorized(_event.sender)) return unauthorized();
     if (!isSessionCode(code)) return invalid('Digite um código válido no formato XXX-XXX-X.');
@@ -100,4 +128,8 @@ export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, stunServ
   ipcMain.handle(ipcChannels.updateLocalRoomPassword, (event, password: unknown) => !authorized(event.sender) || typeof password !== 'string'
     ? invalid('A senha da sala é inválida.') : toSessionResult(() => roomConfig.updatePassword(password)));
   ipcMain.handle(ipcChannels.removeLocalRoomPassword, (event) => !authorized(event.sender) ? unauthorized() : toSessionResult(() => roomConfig.removePassword()));
+  ipcMain.handle(ipcChannels.deleteLocalRoom, (event) => !authorized(event.sender) ? unauthorized() : toSessionResult(async () => {
+    await roomConfig.delete();
+    return undefined;
+  }));
 };

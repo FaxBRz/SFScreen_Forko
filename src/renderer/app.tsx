@@ -7,12 +7,15 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 import { formatSessionCode } from "../shared/session/code";
+import type { StartupSettings } from "../shared/ipc";
 import type { ScreenSource } from "../shared/screen-source";
 import type { RemoteControlConfig } from "../shared/session/media-control";
 import type { AudioApplication, LocalRoomConfig, RoomSummary } from "../shared/session/types";
 import { type SessionModel, type StreamFps, type StreamResolution, useSession } from "./session/use-session";
+import { systemEventText } from "./session/room-chat";
 import {
   AUDIO_OUTPUT_CHANGE_EVENT,
   MICROPHONE_PROCESSING_CHANGE_EVENT,
@@ -328,6 +331,17 @@ const getStreamTrackInfo = (
   const res = height ? `${height}p` : fallbackRes;
   const fps = frameRate ? Math.round(frameRate) : fallbackFps;
   return { resolution: res, fps };
+};
+
+const formatRoomAge = (createdAt: string | undefined, now: number): string => {
+  const startedAt = createdAt ? Date.parse(createdAt) : Number.NaN;
+  if (!Number.isFinite(startedAt)) return "aberta agora";
+  const elapsedMinutes = Math.max(0, Math.floor((now - startedAt) / 60_000));
+  if (elapsedMinutes < 1) return "aberta agora";
+  if (elapsedMinutes < 60) return `aberta há ${elapsedMinutes} min`;
+  const hours = Math.floor(elapsedMinutes / 60);
+  const minutes = elapsedMinutes % 60;
+  return minutes === 0 ? `aberta há ${hours} h` : `aberta há ${hours} h ${minutes} min`;
 };
 
 const usePreferredAudioOutput = (): string => {
@@ -884,7 +898,7 @@ const SourceModal = ({
 
 
 /* ─── Modal: Session & Invite ─── */
-const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: () => void }): ReactElement => {
+export const LegacySessionModal = ({ session, onClose }: { session: SessionModel; onClose: () => void }): ReactElement => {
   const { state } = session;
   const [tab, setTab] = useState<"invite" | "join" | "create-room" | "join-room">("invite");
   const [copied, setCopied] = useState(false);
@@ -1172,8 +1186,411 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
   );
 };
 
+/**
+ * The first few frames of a remote screen frequently arrive at a tiny
+ * resolution while WebRTC ramps up. Keep that frame out of the stage instead
+ * of scaling it to the whole window. The media hook switches this state after
+ * two healthy stats samples, or after its bounded three second timeout.
+ */
+const RemoteScreenQualityGate = ({ limited = false, compact = false }: { limited?: boolean; compact?: boolean }): ReactElement => (
+  <div
+    className={`remote-screen-quality-gate ${compact ? "is-compact" : ""} ${limited ? "is-limited" : ""}`}
+    role="status"
+    aria-live="polite"
+  >
+    <span className="remote-screen-quality-spinner" aria-hidden="true" />
+    <strong>{limited ? "Rede limitada" : "Ajustando qualidade…"}</strong>
+    <span>{limited ? "Exibindo na resolução recebida, sem ampliar a imagem." : "Aguardando uma imagem nítida antes de exibir."}</span>
+  </div>
+);
+
+/**
+ * V6 has one room workflow: own a password-protected room, or enter an
+ * announced room by its temporary code or its password.  The older one-shot
+ * invite UI is kept exported above only for migration/test compatibility and
+ * is not mounted by the app anymore.
+ */
+const RoomSessionModal = ({ session, onClose }: { session: SessionModel; onClose: () => void }): ReactElement => {
+  const { state } = session;
+  const [tab, setTab] = useState<"manage" | "enter">("manage");
+  const [entryMethod, setEntryMethod] = useState<"code" | "password">("code");
+  const [localRoom, setLocalRoom] = useState<LocalRoomConfig | undefined>(undefined);
+  const [roomName, setRoomName] = useState("Minha sala privada");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [entryCode, setEntryCode] = useState("");
+  const [availableRooms, setAvailableRooms] = useState<RoomSummary[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<RoomSummary | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [editingPassword, setEditingPassword] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const hostNetworkReady = session.testNetworkEnabled || state.tailscale.state === "ready" || state.tailscale.state === "no-peers";
+  const joinNetworkReady = session.testNetworkEnabled || state.tailscale.state === "ready";
+
+  useEffect(() => {
+    const request = window.sfscreen?.getLocalRoom?.();
+    if (!request) return;
+    void request.then((result) => {
+      if (result.ok && result.value) {
+        setLocalRoom(result.value);
+        setRoomName(result.value.name);
+      }
+    });
+  }, []);
+
+  const refreshRooms = async (): Promise<void> => {
+    setBusy(true);
+    setError("");
+    try {
+      setAvailableRooms(await session.discoverRooms());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível procurar salas.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createRoom = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (password !== passwordConfirm) return setError("As senhas não coincidem.");
+    setBusy(true);
+    setError("");
+    try {
+      const result = await window.sfscreen.createLocalRoom(roomName, password);
+      if (!result.ok) throw new Error(result.error.message);
+      setLocalRoom(result.value);
+      await session.hostRoom();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível criar a sala.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const savePassword = async (): Promise<void> => {
+    if (password !== passwordConfirm) return setError("As senhas não coincidem.");
+    setBusy(true);
+    setError("");
+    try {
+      const result = await window.sfscreen.updateLocalRoomPassword(password);
+      if (!result.ok) throw new Error(result.error.message);
+      setLocalRoom(result.value);
+      setPassword("");
+      setPasswordConfirm("");
+      setEditingPassword(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível salvar a senha.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openSavedRoom = async (): Promise<void> => {
+    setBusy(true);
+    setError("");
+    try {
+      await session.hostRoom();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível reabrir a sala.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteRoom = async (): Promise<void> => {
+    let confirmed = true;
+    try {
+      confirmed = typeof window.confirm !== "function" || window.confirm("Excluir esta sala? A configuração e o verificador de senha serão apagados deste computador.");
+    } catch {
+      confirmed = false;
+    }
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    try {
+      await session.close();
+      const result = await window.sfscreen.deleteLocalRoom();
+      if (!result.ok) throw new Error(result.error.message);
+      setLocalRoom(undefined);
+      setPassword("");
+      setPasswordConfirm("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível excluir a sala.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyRoomCode = async (): Promise<void> => {
+    if (!session.activeRoom?.code) return;
+    const success = await session.copyCode().catch(() => false);
+    if (success) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2_500);
+    }
+  };
+
+  const enterByCode = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await session.joinRoomByCode(entryCode, password || undefined);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível entrar na sala com este código.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const enterByPassword = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (!selectedRoom) return;
+    setBusy(true);
+    setError("");
+    try {
+      await session.joinRoom(selectedRoom, password);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível entrar na sala com esta senha.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="session-modal-panel" role="dialog" aria-modal="true" aria-labelledby="room-modal-title">
+        <div className="modal-heading">
+          <div className="session-modal-title-group">
+            <div className="session-modal-title-icon"><UsersIcon /></div>
+            <div>
+              <p className="section-kicker">Sala privada v0.2</p>
+              <h2 id="room-modal-title">Criar ou entrar em uma sala</h2>
+            </div>
+          </div>
+          <button className="button ghost icon-only" type="button" onClick={onClose} aria-label="Fechar"><XCloseIcon /></button>
+        </div>
+
+        <div className={`session-modal-network-status ${hostNetworkReady ? "is-ready" : "is-unavailable"}`}>
+          <span className="session-modal-network-dot" />
+          <span>{session.testNetworkEnabled ? "Rede Tailscale simulada · ambiente de teste" : state.tailscale.state === "no-peers" ? "Sala pode ficar aberta; será anunciada quando um peer Tailscale conectar" : state.tailscale.state === "ready" ? "Tailscale pronto para a sala privada" : "Conecte o Tailscale para anunciar ou entrar em salas"}</span>
+        </div>
+
+        <div className="tab-pill-group session-entry-tabs" role="tablist" aria-label="Fluxo da sala">
+          <button className={`tab-pill ${tab === "manage" ? "is-active" : ""}`} type="button" role="tab" aria-selected={tab === "manage"} onClick={() => setTab("manage")}>Minha sala</button>
+          <button className={`tab-pill ${tab === "enter" ? "is-active" : ""}`} type="button" role="tab" aria-selected={tab === "enter"} onClick={() => { setTab("enter"); if (entryMethod === "password") void refreshRooms(); }}>Entrar</button>
+        </div>
+
+        {tab === "manage" ? (
+          <div className="tab-content">
+            {session.activeRoom ? (
+              <div className="room-saved-card">
+                <div><strong>{session.activeRoom.room.name}</strong><span>Sala aberta · {session.activeRoom.memberCount ?? 1}/4 membros · chamada opcional</span></div>
+                {session.activeRoom.code && <div className="invite-code-card room-code-card"><span className="code-value">{session.activeRoom.code}</span><button className="button primary copy-btn" type="button" onClick={() => void copyRoomCode()}><ClipboardCopyIcon /><span>{copied ? "Copiado!" : "Copiar código"}</span></button><small className="code-timer">Código válido por 10 minutos</small></div>}
+                <p className="tab-description">A senha não é exibida nem enviada aos convidados. Código ou senha dão entrada direta.</p>
+              </div>
+            ) : localRoom ? (
+              <div className="room-saved-card">
+                <div><strong>{localRoom.name}</strong><span>{localRoom.needsPassword ? "Defina uma senha antes de reabrir esta sala" : "Senha persistente configurada neste computador"}</span></div>
+                {(editingPassword || localRoom.needsPassword) ? (
+                  <div className="room-password-editor">
+                    <input className="text-input" type="password" placeholder="Nova senha" value={password} onChange={(event) => setPassword(event.target.value)} />
+                    <input className="text-input" type="password" placeholder="Confirmar nova senha" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} />
+                    <button className="button primary" type="button" disabled={busy || password.length < 4} onClick={() => void savePassword()}>Salvar senha</button>
+                    {!localRoom.needsPassword && <button className="button ghost" type="button" onClick={() => setEditingPassword(false)}>Cancelar</button>}
+                  </div>
+                ) : (
+                  <>
+                    <button className="button primary full-width" type="button" disabled={busy || !hostNetworkReady} onClick={() => void openSavedRoom()}>{busy ? "Abrindo…" : "Reabrir sala"}</button>
+                    <div className="room-config-actions"><button className="button ghost small" type="button" onClick={() => setEditingPassword(true)}>Alterar senha</button><button className="button ghost small is-danger" type="button" disabled={busy} onClick={() => void deleteRoom()}><TrashIcon /> Excluir sala</button></div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <form className="room-create-form" onSubmit={(event) => void createRoom(event)}>
+                <p className="tab-description">Crie uma sala protegida por senha. Ela pode permanecer aberta mesmo sem peers Tailscale, e será anunciada assim que a rede aparecer.</p>
+                <label className="code-label" htmlFor="room-name-v2">Nome da sala</label>
+                <input id="room-name-v2" className="text-input" value={roomName} maxLength={48} onChange={(event) => setRoomName(event.target.value)} />
+                <label className="code-label" htmlFor="room-password-v2">Senha</label>
+                <input id="room-password-v2" className="text-input" type="password" value={password} minLength={4} onChange={(event) => setPassword(event.target.value)} />
+                <label className="code-label" htmlFor="room-password-confirm-v2">Confirmar senha</label>
+                <input id="room-password-confirm-v2" className="text-input" type="password" value={passwordConfirm} minLength={4} onChange={(event) => setPasswordConfirm(event.target.value)} />
+                <button className="button primary full-width" type="submit" disabled={busy || !hostNetworkReady || roomName.trim().length === 0 || password.length < 4}>{busy ? "Criando…" : "Criar sala"}</button>
+              </form>
+            )}
+          </div>
+        ) : (
+          <div className="tab-content">
+            <div className="tab-pill-group session-entry-tabs compact" role="tablist" aria-label="Método de entrada">
+              <button className={`tab-pill ${entryMethod === "code" ? "is-active" : ""}`} type="button" onClick={() => setEntryMethod("code")}>Com código</button>
+              <button className={`tab-pill ${entryMethod === "password" ? "is-active" : ""}`} type="button" onClick={() => { setEntryMethod("password"); void refreshRooms(); }}>Com senha</button>
+            </div>
+            {entryMethod === "code" ? (
+              <form onSubmit={(event) => void enterByCode(event)}>
+                <p className="tab-description">Digite o código temporário da sala. A entrada é direta; não há confirmação manual dos dois lados.</p>
+                <label className="code-label" htmlFor="room-code-entry">Código da sala</label>
+                <input id="room-code-entry" className="code-input" value={formatSessionCode(entryCode)} onChange={(event) => setEntryCode(event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 7))} placeholder="XXX-XXX-X" maxLength={9} autoComplete="off" />
+                <label className="code-label" htmlFor="room-code-password">Senha (opcional)</label>
+                <input id="room-code-password" className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Use apenas se o dono também compartilhou a senha" />
+                <button className="button primary full-width" type="submit" disabled={busy || !joinNetworkReady || entryCode.length !== 7}>{busy ? "Entrando…" : "Entrar na sala"}</button>
+              </form>
+            ) : (
+              <form onSubmit={(event) => void enterByPassword(event)}>
+                <div className="room-browser-header"><p className="tab-description">Escolha uma sala anunciada na sua tailnet e informe a senha recebida externamente.</p><button className="button ghost small" type="button" disabled={busy} onClick={() => void refreshRooms()}>{busy ? "Buscando…" : "Atualizar"}</button></div>
+                <div className="room-list">
+                  {availableRooms.map((room) => <button key={room.id} className={`room-list-item ${selectedRoom?.id === room.id ? "is-selected" : ""}`} type="button" onClick={() => setSelectedRoom(room)}><span className="session-modal-network-dot" /><span><strong>{room.name}</strong><small>{room.hostName} · {room.memberCount ?? 1}/4 membros</small></span></button>)}
+                  {!busy && availableRooms.length === 0 && <div className="chat-notice">Nenhuma sala disponível na sua tailnet.</div>}
+                </div>
+                {selectedRoom && <><label className="code-label" htmlFor="room-password-entry">Senha da sala</label><input id="room-password-entry" className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /><button className="button primary full-width" type="submit" disabled={busy || !joinNetworkReady || password.length === 0}>{busy ? "Entrando…" : "Entrar na sala"}</button></>}
+              </form>
+            )}
+          </div>
+        )}
+        {(error || state.error) && <p className="empty-warning" role="alert">{error || state.error}</p>}
+      </section>
+    </div>
+  );
+};
+
+interface StreamOptionsPopoverProps {
+  session: SessionModel;
+  position: { left: number; top: number };
+  qualitySubmenuOpen: boolean;
+  onToggleQuality: () => void;
+  onClose: () => void;
+  menuRef: React.RefObject<HTMLDivElement | null>;
+}
+
+/**
+ * Rendered in document.body so the stage dock's horizontal scroller cannot
+ * clip it. The trigger retains keyboard focus and the menu remains anchored
+ * above that trigger.
+ */
+const StreamOptionsPopover = ({
+  session,
+  position,
+  qualitySubmenuOpen,
+  onToggleQuality,
+  onClose,
+  menuRef,
+}: StreamOptionsPopoverProps): ReactElement => (
+  <div
+    ref={menuRef}
+    className="stream-popover-menu stream-popover-menu-portal"
+    role="menu"
+    aria-label="Opções de transmissão"
+    style={{ left: `${position.left}px`, top: `${position.top}px` }}
+  >
+    <button
+      className="stream-menu-item is-danger"
+      type="button"
+      onClick={() => {
+        void session.stopSharing();
+        onClose();
+      }}
+    >
+      <ScreenOffIcon />
+      <span>Parar de transmitir</span>
+    </button>
+    <button
+      className="stream-menu-item"
+      type="button"
+      onClick={() => {
+        void session.openSourcePicker();
+        onClose();
+      }}
+    >
+      <ScreenSwitchIcon />
+      <span>Alterar a transmissão</span>
+    </button>
+    <div className="stream-menu-quality-section">
+      <button
+        className="stream-menu-item with-chevron"
+        type="button"
+        onClick={onToggleQuality}
+        aria-expanded={qualitySubmenuOpen}
+      >
+        <SlidersIcon />
+        <span>Qualidade da transmissão</span>
+        <span className={`menu-chevron ${qualitySubmenuOpen ? "is-open" : ""}`}><ChevronRightIcon /></span>
+      </button>
+      {qualitySubmenuOpen && (
+        <div className="quality-options-box">
+          <div className="quality-subgroup">
+            <span className="quality-subgroup-title">Resolução</span>
+            <div className="quality-pill-row">
+              {(["720p", "1080p", "1440p"] as const).map((resolution) => (
+                <button
+                  key={resolution}
+                  type="button"
+                  className={`quality-opt-pill ${session.resolution === resolution ? "is-selected" : ""}`}
+                  onClick={() => session.setResolution(resolution)}
+                >
+                  {resolution}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="quality-subgroup">
+            <span className="quality-subgroup-title">Taxa de quadros</span>
+            <div className="quality-pill-row">
+              {([30, 60] as const).map((fps) => (
+                <button
+                  key={fps}
+                  type="button"
+                  className={`quality-opt-pill ${session.fps === fps ? "is-selected" : ""}`}
+                  onClick={() => session.setFps(fps)}
+                >
+                  {fps} FPS
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+    <label className="stream-menu-item is-switch-item" onClick={(event) => event.stopPropagation()}>
+      <div className="stream-switch-label-row">
+        <SpeakerOnIcon />
+        <span>Compartilhar áudio da transmissão</span>
+      </div>
+      <div className="switch-toggle-wrapper is-mini">
+        <input
+          type="checkbox"
+          className="switch-toggle-input"
+          checked={session.state.includeSystemAudio}
+          onChange={() => void session.toggleSystemAudio()}
+          aria-label="Compartilhar áudio da transmissão"
+        />
+        <div className={`switch-toggle-track ${session.state.includeSystemAudio ? "is-checked" : ""}`}>
+          <div className="switch-toggle-thumb" />
+        </div>
+      </div>
+    </label>
+    <div className="stream-menu-divider" />
+    <button
+      className="stream-menu-item is-muted"
+      type="button"
+      onClick={() => {
+        void session.exportDiagnostics();
+        onClose();
+      }}
+    >
+      <AlertCircleIcon />
+      <span>Relatar um problema</span>
+    </button>
+  </div>
+);
+
 /* ─── Modal: Clean Tabbed Settings ─── */
-type SettingsTab = "profile" | "network" | "media" | "diagnostics" | "testing" | "about";
+type SettingsTab = "profile" | "network" | "media" | "system" | "diagnostics" | "testing" | "about";
+
+const unsupportedStartupSettings: StartupSettings = {
+  supported: false,
+  enabled: false,
+  opensVisible: true,
+};
 
 
 const SettingsModal = ({
@@ -1188,6 +1605,10 @@ const SettingsModal = ({
   const [name, setName] = useState(state.localUserName);
   const [avatar, setAvatar] = useState<string | undefined>(state.localUserAvatar);
   const [copiedDiag, setCopiedDiag] = useState(false);
+  const [appVersion, setAppVersion] = useState("indisponível");
+  const [startupSettings, setStartupSettings] = useState<StartupSettings>(unsupportedStartupSettings);
+  const [startupUpdating, setStartupUpdating] = useState(false);
+  const [startupError, setStartupError] = useState<string>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
   const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
@@ -1228,6 +1649,41 @@ const SettingsModal = ({
     timer?: number;
   } | null>(null);
   const audioOutputPreviewRunRef = useRef(0);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const loadRuntimeSettings = async (): Promise<void> => {
+      const api = window.sfscreen;
+      const [version, startup] = await Promise.all([
+        api?.getAppVersion?.().catch(() => ""),
+        api?.getStartupSettings?.().catch(() => unsupportedStartupSettings),
+      ]);
+      if (disposed) return;
+      setAppVersion(version?.trim() || "indisponível");
+      setStartupSettings(startup ?? unsupportedStartupSettings);
+    };
+
+    void loadRuntimeSettings();
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  const updateWindowsStartup = useCallback(async (enabled: boolean): Promise<void> => {
+    if (!startupSettings.supported || startupUpdating) return;
+    setStartupUpdating(true);
+    setStartupError(undefined);
+    try {
+      const next = await window.sfscreen?.setWindowsStartup?.(enabled);
+      if (!next) throw new Error("startup-unavailable");
+      setStartupSettings(next);
+    } catch {
+      setStartupError("Não foi possível atualizar a inicialização com o Windows.");
+    } finally {
+      setStartupUpdating(false);
+    }
+  }, [startupSettings.supported, startupUpdating]);
 
   useEffect(() => {
     microphoneVolumeRef.current = microphoneVolume;
@@ -1826,6 +2282,9 @@ const SettingsModal = ({
             <button className={`settings-nav-item ${activeTab === "media" ? "is-active" : ""}`} type="button" onClick={() => selectSettingsTab("media")}>
               <SlidersIcon /> <span>Vídeo & Áudio</span>
             </button>
+            <button className={`settings-nav-item ${activeTab === "system" ? "is-active" : ""}`} type="button" onClick={() => selectSettingsTab("system")}>
+              <GearIcon /> <span>Aplicativo</span>
+            </button>
             <button className={`settings-nav-item ${activeTab === "diagnostics" ? "is-active" : ""}`} type="button" onClick={() => selectSettingsTab("diagnostics")}>
               <ActivityIcon /> <span>Diagnóstico</span>
             </button>
@@ -1846,6 +2305,7 @@ const SettingsModal = ({
                 {activeTab === "profile" && "Perfil de Usuário"}
                 {activeTab === "network" && "Rede & Tailscale"}
                 {activeTab === "media" && "Voz e Vídeo"}
+                {activeTab === "system" && "Aplicativo"}
                 {activeTab === "diagnostics" && "Telemetria & Diagnóstico"}
                 {activeTab === "testing" && "Simulador de Chamada e Testes"}
                 {activeTab === "about" && "Sobre o SFScreen"}
@@ -1854,6 +2314,7 @@ const SettingsModal = ({
                 {activeTab === "profile" && "Defina como você aparece para as outras pessoas."}
                 {activeTab === "network" && "Acompanhe o estado da sua conexão privada."}
                 {activeTab === "media" && "Escolha seus dispositivos e ajuste como você ouve e é ouvido."}
+                {activeTab === "system" && "Defina como o SFScreen se comporta no Windows."}
                 {activeTab === "diagnostics" && "Exporte informações para investigar uma sessão."}
                 {activeTab === "testing" && "Simule uma chamada sem precisar de outro computador."}
                 {activeTab === "about" && "Informações sobre o aplicativo e a conexão."}
@@ -2227,6 +2688,46 @@ const SettingsModal = ({
             </div>
           )}
 
+          {activeTab === "system" && (
+            <div className="settings-info-grid">
+              <div className="setting-card full-span">
+                <span className="card-key">Inicialização</span>
+                <label className={`startup-setting-row ${startupSettings.supported ? "" : "is-unavailable"}`}>
+                  <span>
+                    <strong>Iniciar com Windows</strong>
+                    <small>
+                      {startupSettings.supported
+                        ? "Abre o SFScreen normalmente quando você entrar no Windows."
+                        : "Disponível apenas no instalador do SFScreen para Windows."}
+                    </small>
+                  </span>
+                  <span className="switch-toggle-wrapper">
+                    <input
+                      aria-label="Iniciar com Windows"
+                      className="switch-toggle-input"
+                      type="checkbox"
+                      checked={startupSettings.enabled}
+                      disabled={!startupSettings.supported || startupUpdating}
+                      onChange={(event) => void updateWindowsStartup(event.target.checked)}
+                    />
+                    <span className={`switch-toggle-track ${startupSettings.enabled ? "is-checked" : ""}`}>
+                      <span className="switch-toggle-thumb" />
+                    </span>
+                  </span>
+                </label>
+                {startupError && <small className="startup-setting-error" role="alert">{startupError}</small>}
+              </div>
+              <div className="setting-card">
+                <span className="card-key">Janela</span>
+                <span className="card-value">Fechar esconde no tray</span>
+              </div>
+              <div className="setting-card">
+                <span className="card-key">Tray</span>
+                <span className="card-value">Indicador do microfone ativo</span>
+              </div>
+            </div>
+          )}
+
           {activeTab === "diagnostics" && (
             <div className="settings-info-grid">
               <div className="setting-card full-span">
@@ -2563,7 +3064,7 @@ const SettingsModal = ({
                   <div className="brand-mark-clean"><BrandIcon /></div>
                   <div>
                     <strong>SFScreen</strong>
-                    <small>Versão 0.1.3 · Ponto-a-Ponto Seguro</small>
+                    <small>Versão {appVersion} · Ponto-a-Ponto Seguro</small>
                   </div>
                 </div>
                 <p className="modal-subtext" style={{ marginTop: "12px" }}>
@@ -2889,11 +3390,18 @@ export const App = (): ReactElement => {
   const localSharing = (!isRoomSession || session.roomCallActive) && state.mediaPhase === "sharing" && !!session.localStream;
   const remotePhase = session.remoteMediaPhase ?? "stopped";
   const remoteSharing = localInCall && remoteInCall && remotePhase === "sharing" && !!session.remoteStream;
+  // This state is only consumed for an incoming screen. A local share may be
+  // ramping up at the same time, but it must never hide the presenter's own
+  // preview.
+  const remoteQualityAdjusting = remoteSharing && session.qualityState?.phase === "adjusting";
+  const remoteQualityLimited = remoteSharing && session.qualityState?.phase === "limited-network";
 
   type FocusedTarget = "local" | "remote" | "local-screen" | "local-camera" | "remote-screen" | "remote-camera";
   const [isWindowFocused, setIsWindowFocused] = useState(true);
   const [focused, setFocused] = useState<FocusedTarget>(remoteSharing ? "remote-screen" : "local-screen");
   const [voicePopoverOpen, setVoicePopoverOpen] = useState(false);
+  type StageLayoutMode = "focus" | "grid";
+  const [layoutMode, setLayoutMode] = useState<StageLayoutMode>("focus");
 
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -2904,8 +3412,10 @@ export const App = (): ReactElement => {
   const [remoteMuted, setRemoteMuted] = useState(false);
   const remoteVolume = useAudioVolumePreference(readOutputVolume, OUTPUT_VOLUME_CHANGE_EVENT);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [savedRoomToReopen, setSavedRoomToReopen] = useState<LocalRoomConfig | undefined>(undefined);
   const [streamMenuOpen, setStreamMenuOpen] = useState(false);
   const [qualitySubmenuOpen, setQualitySubmenuOpen] = useState(false);
+  const [streamMenuPosition, setStreamMenuPosition] = useState({ left: 0, top: 0 });
   const [chatText, setChatText] = useState("");
   const [chatImage, setChatImage] = useState<{ data: string; name: string } | null>(null);
   const [chatError, setChatError] = useState("");
@@ -2915,6 +3425,8 @@ export const App = (): ReactElement => {
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
   const streamMenuRef = useRef<HTMLDivElement>(null);
+  const streamMenuPortalRef = useRef<HTMLDivElement>(null);
+  const streamMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const hideControlsTimerRef = useRef<number | null>(null);
 
   /* Zoom & Pan State (Discord-style screen zoom) */
@@ -2980,9 +3492,18 @@ export const App = (): ReactElement => {
   const isInitialMountRef = useRef(true);
   const [lastReadTimestamp, setLastReadTimestamp] = useState(0);
 
+  // Room chat is coordinator ordered and also carries non-message events.
+  // Keep the legacy direct-call timeline intact until there is a canonical
+  // room item to show, which also preserves the pre-v6 simulated flow.
+  const usesRoomChatTimeline = isRoomSession && state.roomChatItems.length > 0;
+  const visibleChatItemCount = usesRoomChatTimeline ? state.roomChatItems.length : state.chatMessages.length;
+  const visibleChatTimestamps = usesRoomChatTimeline
+    ? state.roomChatItems.map((item) => Date.parse(item.timestamp))
+    : state.chatMessages.map((message) => message.timestamp);
+
   const unreadChatCount = state.chatPanelOpen
     ? 0
-    : state.chatMessages.filter((m) => m.timestamp > lastReadTimestamp).length;
+    : visibleChatTimestamps.filter((timestamp) => Number.isFinite(timestamp) && timestamp > lastReadTimestamp).length;
 
   useEffect(() => {
     if (isInitialMountRef.current) {
@@ -3012,7 +3533,7 @@ export const App = (): ReactElement => {
         chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
       }
     }
-  }, [state.chatMessages.length, isConnected, isRoomChatMode, state.chatPanelOpen]);
+  }, [isConnected, isRoomChatMode, state.chatMessages.length, state.chatPanelOpen, state.roomChatItems.length]);
 
 
   const userManuallyToggledChatRef = useRef(false);
@@ -3072,6 +3593,10 @@ export const App = (): ReactElement => {
   useEffect(() => {
     if (!prevRemoteSharingRef.current && remoteSharing) {
       setWatchingRemote(true);
+      // A remote share is the primary content of a call. Do not leave the
+      // user on a camera/empty stage when it starts.
+      setFocused("remote-screen");
+      setLayoutMode("focus");
       playStreamStartSound();
     } else if (prevRemoteSharingRef.current && !remoteSharing) {
       playStreamStopSound();
@@ -3095,9 +3620,6 @@ export const App = (): ReactElement => {
     }
     prevCameraActiveRef.current = session.cameraActive;
   }, [session.cameraActive]);
-
-  type StageLayoutMode = "focus" | "grid";
-  const [layoutMode, setLayoutMode] = useState<StageLayoutMode>("focus");
 
   const localScreenActive = localSharing && !!session.localStream;
   const localCameraActive = session.cameraActive && !!session.localCameraStream;
@@ -3349,19 +3871,58 @@ export const App = (): ReactElement => {
     if (state.chatPanelOpen) {
       chatMessagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
     }
-  }, [state.chatMessages, state.chatPanelOpen]);
+  }, [state.chatMessages, state.chatPanelOpen, state.roomChatItems]);
+
+  const updateStreamMenuPosition = useCallback((): void => {
+    const trigger = streamMenuTriggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const menuWidth = Math.min(270, Math.max(220, window.innerWidth - 16));
+    const half = menuWidth / 2;
+    setStreamMenuPosition({
+      left: Math.max(half + 8, Math.min(window.innerWidth - half - 8, rect.left + (rect.width / 2))),
+      top: Math.max(8, rect.top - 8),
+    });
+  }, []);
+
+  // A persisted room is never silently reopened: the owner must explicitly
+  // decide at every launch, including when Tailscale currently has no peers.
+  useEffect(() => {
+    const request = window.sfscreen?.getLocalRoom?.();
+    if (!request) return;
+    void request.then((result) => {
+      if (result.ok && result.value) setSavedRoomToReopen(result.value);
+    }).catch(() => undefined);
+  }, []);
+
+  const toggleStreamMenu = useCallback((): void => {
+    setStreamMenuOpen((open) => {
+      const next = !open;
+      if (next) updateStreamMenuPosition();
+      if (!next) setQualitySubmenuOpen(false);
+      return next;
+    });
+  }, [updateStreamMenuPosition]);
 
   useEffect(() => {
     if (!streamMenuOpen) return;
     const handleClickOutside = (e: MouseEvent): void => {
-      if (streamMenuRef.current && !streamMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (!streamMenuRef.current?.contains(target) && !streamMenuPortalRef.current?.contains(target)) {
         setStreamMenuOpen(false);
         setQualitySubmenuOpen(false);
       }
     };
+    const handleReposition = (): void => updateStreamMenuPosition();
     window.addEventListener("mousedown", handleClickOutside);
-    return () => window.removeEventListener("mousedown", handleClickOutside);
-  }, [streamMenuOpen]);
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+    return () => {
+      window.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
+  }, [streamMenuOpen, updateStreamMenuPosition]);
 
   const startSidebarResize = (e: React.MouseEvent): void => {
     e.preventDefault();
@@ -4007,6 +4568,54 @@ export const App = (): ReactElement => {
     });
   };
 
+  type RenderableChatMessage = {
+    id: string;
+    senderName: string;
+    text: string;
+    timestamp: string | number;
+    imageData?: string;
+    imageName?: string;
+    isSelf?: boolean;
+  };
+
+  const renderChatMessage = (message: RenderableChatMessage, allowDelete: boolean, isRoomMessage = false): ReactElement => {
+    const isSelf = message.isSelf === true || (message.isSelf === undefined && message.senderName === state.localUserName);
+    const timestamp = new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return (
+      <div key={message.id} className={`chat-message-item ${isSelf ? "is-self" : ""} ${isRoomMessage ? "is-room-message" : ""}`}>
+        <UserAvatar
+          name={message.senderName}
+          avatar={isSelf ? state.localUserAvatar : state.remoteUserAvatar}
+          isSelf={isSelf}
+          className="chat-avatar"
+        />
+        <div className="chat-bubble">
+          <div className="chat-meta">
+            <strong>{message.senderName}</strong>
+            <small>{timestamp}</small>
+            {allowDelete && (
+              <button
+                className="chat-msg-delete-btn"
+                type="button"
+                title="Excluir mensagem"
+                aria-label="Excluir mensagem"
+                onClick={() => session.deleteChatMessage(message.id)}
+              >
+                <TrashIcon />
+              </button>
+            )}
+          </div>
+          {message.text && <p className="chat-text">{renderChatText(message.text)}</p>}
+          {message.imageData && (
+            <button className="chat-image-link" type="button" onClick={() => setActiveChatImage({ data: message.imageData!, name: message.imageName ?? "Imagem enviada no chat" })} title="Abrir imagem em tela cheia">
+              <img className="chat-image" src={message.imageData} alt={message.imageName ?? "Imagem enviada no chat"} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const mentionMatch = chatText.match(/(^|\s)@([^@]*)$/u);
   const mentionQuery = mentionMatch?.[2]?.toLocaleLowerCase();
   const sessionMentionMembers = (isConnected ? [state.remoteUserName, state.localUserName] : [state.localUserName])
@@ -4021,7 +4630,92 @@ export const App = (): ReactElement => {
     setChatText((current) => current.replace(/(^|\s)@([^@]*)$/u, `$1@${name} `));
   };
 
-  const participantsCount = isConnected ? 2 : 1;
+  const participantsCount = isRoomSession
+    ? Math.max(1, Math.min(4, session.activeRoom?.memberCount ?? 1))
+    : isConnected ? 2 : 1;
+  const hasRemoteParticipant = isRoomSession ? participantsCount > 1 : isConnected;
+  type SidebarParticipant = "local" | "remote";
+  const knownSidebarParticipants: SidebarParticipant[] = hasRemoteParticipant ? ["local", "remote"] : ["local"];
+  const roomCallParticipants = knownSidebarParticipants.filter((participant) => participant === "local" ? localInCall : remoteInCall);
+  const roomOutsideCallParticipants = knownSidebarParticipants.filter((participant) => participant === "local" ? !localInCall : !remoteInCall);
+
+  const renderSidebarParticipant = (participant: SidebarParticipant): ReactElement => {
+    const isLocal = participant === "local";
+    const name = isLocal ? state.localUserName : state.remoteUserName;
+    const avatar = isLocal ? state.localUserAvatar : state.remoteUserAvatar;
+    const isSpeaking = isLocal ? session.localSpeaking : session.remoteSpeaking;
+    const isInCall = isLocal ? localInCall : remoteInCall;
+    const isSharing = isLocal ? localSharing : remoteSharing;
+    const status = isLocal
+      ? (localSharing ? "Transmitindo tela" : session.voiceActive ? (session.voiceMuted ? "Na chamada · microfone mutado" : "Na chamada · microfone ativo") : isInCall ? "Na chamada" : isRoomSession ? "No chat da sala" : isConnected ? "Conectado" : "Na sala")
+      : (isSharing ? undefined : isInCall ? "Na chamada" : isRoomSession ? "No chat da sala" : "Conectado");
+
+    return (
+      <div key={participant} className={`participant-item ${isLocal ? "is-self" : ""} ${isInCall ? "is-in-call" : "is-outside-call"}`}>
+        <UserAvatar name={name} avatar={avatar} isSelf={isLocal} className={`user-avatar-small ${isLocal ? "is-self" : ""} ${isSpeaking ? "is-speaking" : ""}`} />
+        <div className="participant-info">
+          <span className="name-row">
+            <strong className={isSpeaking ? "is-speaking" : undefined}>{name}</strong>
+            {!isLocal && state.role === "viewer" && <span className="crown-icon" title="Host da sessão"><CrownIcon /></span>}
+            {isLocal && state.role === "host" && <span className="crown-icon" title="Host da sessão"><CrownIcon /></span>}
+          </span>
+          <small className="participant-status-row">
+            {isSharing && !isLocal ? (
+              watchingRemote ? (
+                <span className="live-status-pill"><ScreenCastIcon /> Transmitindo</span>
+              ) : (
+                <span className="sidebar-stream-cta-row">
+                  <span className="live-status-pill"><ScreenCastIcon /> Transmitindo</span>
+                  <button className="sidebar-watch-btn" type="button" onClick={handleStartWatching}>Ver tela</button>
+                </span>
+              )
+            ) : status}
+          </small>
+        </div>
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    void window.sfscreen?.setTrayState?.({
+      microphone: !session.voiceActive ? "inactive" : session.voiceMuted ? "muted" : "active",
+      inCall: localInCall,
+      // Direct calls do not have room metadata, but they still need a safe
+      // tray action surface while the call is active.
+      inRoom: isRoomSession || isConnected,
+      roomName: isRoomSession ? session.activeRoom?.room.name : undefined,
+      roomMemberCount: isRoomSession || isConnected ? participantsCount : 0,
+      callMemberCount: localInCall ? (remoteInCall ? 2 : 1) : 0,
+    }).catch(() => undefined);
+  }, [isConnected, isRoomSession, localInCall, participantsCount, remoteInCall, session.activeRoom?.room.name, session.voiceActive, session.voiceMuted]);
+
+  useEffect(() => {
+    let closing = false;
+    const leaveCall = (): void => {
+      if (isRoomSession) void session.leaveRoomCall();
+      else void session.close();
+    };
+    const leaveRoom = (): void => { void session.close(); };
+    const completeShutdown = async (): Promise<void> => {
+      if (closing) return;
+      closing = true;
+      try {
+        await session.close();
+      } finally {
+        await window.sfscreen?.completeGracefulShutdown?.().catch(() => undefined);
+      }
+    };
+    const stopTrayAction = window.sfscreen?.onTrayAction?.((action) => {
+      if (action === "leave-call") leaveCall();
+      else if (action === "leave-room") leaveRoom();
+      else void completeShutdown();
+    });
+    const stopShutdown = window.sfscreen?.onGracefulShutdownRequested?.(() => { void completeShutdown(); });
+    return () => {
+      stopTrayAction?.();
+      stopShutdown?.();
+    };
+  }, [isRoomSession, session]);
 
   return (
     <div className={`discord-app-layout ${isFullscreen ? "is-app-fullscreen" : ""}`}>
@@ -4169,66 +4863,43 @@ export const App = (): ReactElement => {
                 <XCloseIcon />
               </button>
             </div>
-            {!isConnected && (
+            {(isRoomSession || !isConnected) && (
               <section className="sidebar-room-card" aria-label="Resumo da sala privada">
                 <div className="sidebar-room-heading">
-                  <span className="sidebar-room-status"><span />Sala privada</span>
+                  <span className="sidebar-room-status"><span />{isRoomSession ? session.activeRoom?.room.name ?? "Sala privada" : "Sala privada"}</span>
                   <LockShieldIcon />
                 </div>
-                <p>{isRoomSession ? "Sua sala está aberta. Convide alguém para conversar no chat; a chamada é opcional." : "Sua sessão está pronta. Envie um convite para começar uma chamada segura."}</p>
+                <p>{isRoomSession ? (localInCall ? "Você está na chamada; o chat continua aberto para toda a sala." : "A sala está aberta no chat; entrar na chamada é opcional.") : "Crie uma sala ou entre com código/senha para começar."}</p>
                 <div className="sidebar-room-meta">
-                  <span><UsersIcon /> 1 pessoa</span>
+                  <span className="sidebar-room-member-count"><UsersIcon /> {participantsCount}/4 membros</span>
+                  {isRoomSession && <span><ActivityIcon /> {formatRoomAge(session.activeRoom?.room.createdAt, state.now)}</span>}
                   <span><LockShieldIcon /> Protegida</span>
                 </div>
                 <button className="button primary sidebar-invite-action" type="button" onClick={() => session.toggleSessionModal(true)}>
-                  <UsersIcon /> Convidar pessoa
+                  <UsersIcon /> {isRoomSession ? "Gerenciar sala" : "Criar ou entrar"}
                 </button>
               </section>
             )}
-            <div className="sidebar-participant-label">Na sala</div>
-            <div className="participant-list">
-              {isConnected && (
-                <div className="participant-item">
-                  <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="user-avatar-small" />
-                  <div className="participant-info">
-                    <span className="name-row">
-                      <strong>{state.remoteUserName}</strong>
-                      {state.role === "viewer" && <span className="crown-icon" title="Host da sessão"><CrownIcon /></span>}
-                    </span>
-                    <small className="participant-status-row">
-                      {remoteSharing ? (
-                        watchingRemote ? (
-                          <span className="live-status-pill"><ScreenCastIcon /> Transmitindo</span>
-                        ) : (
-                          <span className="sidebar-stream-cta-row">
-                            <span className="live-status-pill"><ScreenCastIcon /> Transmitindo</span>
-                            <button
-                              className="sidebar-watch-btn"
-                              type="button"
-                              onClick={handleStartWatching}
-                            >
-                              Ver tela
-                            </button>
-                          </span>
-                        )
-                      ) : remoteInCall ? "Na chamada" : "No chat da sala"}
-                    </small>
-
-                  </div>
+            {isRoomSession ? (
+              <>
+                <div className="sidebar-participant-label">Na chamada ({roomCallParticipants.length})</div>
+                <div className="participant-list participant-list-call" aria-label="Participantes na chamada">
+                  {roomCallParticipants.map(renderSidebarParticipant)}
+                  {roomCallParticipants.length === 0 && <span className="sidebar-participant-empty">Ninguém na chamada</span>}
                 </div>
-              )}
-
-              <div className="participant-item is-self">
-                <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="user-avatar-small is-self" />
-                <div className="participant-info">
-                  <span className="name-row">
-                    <strong>{state.localUserName}</strong>
-                    {state.role === "host" && <span className="crown-icon" title="Host da sessão"><CrownIcon /></span>}
-                  </span>
-                  <small>{localSharing ? "Transmitindo tela" : session.voiceActive ? (session.voiceMuted ? "Na chamada · microfone mutado" : "Na chamada · microfone ativo") : localInCall ? "Na chamada" : isConnected && isRoomSession ? "No chat da sala" : isConnected ? "Conectado" : "Na sala"}</small>
+                <div className="sidebar-participant-label">Fora da chamada ({roomOutsideCallParticipants.length})</div>
+                <div className="participant-list participant-list-outside-call" aria-label="Participantes fora da chamada">
+                  {roomOutsideCallParticipants.map(renderSidebarParticipant)}
                 </div>
-              </div>
-            </div>
+              </>
+            ) : (
+              <>
+                <div className="sidebar-participant-label">{isConnected ? "Na chamada" : "Na sala"}</div>
+                <div className="participant-list">
+                  {knownSidebarParticipants.map(renderSidebarParticipant)}
+                </div>
+              </>
+            )}
 
 
             <div className="sidebar-footer">
@@ -4269,6 +4940,16 @@ export const App = (): ReactElement => {
                     </div>
                   </div>
                 </div>
+              )}
+              {isRoomSession && !localInCall && (
+                <button
+                  className="sidebar-leave-room-btn"
+                  type="button"
+                  onClick={() => void session.close()}
+                  title="Sair da sala"
+                >
+                  <PhoneOffIcon /> Sair da sala
+                </button>
               )}
             </div>
 
@@ -4535,13 +5216,20 @@ export const App = (): ReactElement => {
                           </div>
                         </div>
 
-                        <div className="screenshare-ambient-backdrop" />
-                        <Video
-                          stream={session.remoteStream}
-                          muted
-                          volume={0}
-                          className="stage-video is-contain"
-                        />
+                        {remoteQualityAdjusting ? (
+                          <RemoteScreenQualityGate compact />
+                        ) : (
+                          <>
+                            <div className="screenshare-ambient-backdrop" />
+                            <Video
+                              stream={session.remoteStream}
+                              muted
+                              volume={0}
+                              className={`stage-video is-contain ${remoteQualityLimited ? "is-native-quality" : ""}`}
+                            />
+                            {remoteQualityLimited && <RemoteScreenQualityGate limited compact />}
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : session.remoteCameraStream ? (
@@ -4804,23 +5492,28 @@ export const App = (): ReactElement => {
                     <h2>Pausamos a renderização para reduzir consumos</h2>
                     <p>Enquanto o SFScreen estiver fora de foco, a exibição do vídeo local fica em repouso para economizar bateria e memória RAM. Sua transmissão continua ativa para os outros participantes.</p>
                   </div>
+                ) : !focusedIsLocal && !focusedIsCamera && remoteQualityAdjusting ? (
+                  <RemoteScreenQualityGate />
                 ) : (
-                  <div
-                    className="stage-video-transform-layer"
-                    style={{
-                      transform: isRemoteControlView
-                        ? "scale(1) translate(0px, 0px)"
-                        : `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
-                      transition: isPanning ? "none" : "transform 0.15s ease-out",
-                    }}
-                  >
-                    <Video
-                      stream={focusedStream}
-                      muted
-                      volume={0}
-                      className={`stage-video ${videoFit === "cover" ? "is-cover" : "is-contain"}`}
-                    />
-                  </div>
+                  <>
+                    <div
+                      className="stage-video-transform-layer"
+                      style={{
+                        transform: isRemoteControlView
+                          ? "scale(1) translate(0px, 0px)"
+                          : `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+                        transition: isPanning ? "none" : "transform 0.15s ease-out",
+                      }}
+                    >
+                      <Video
+                        stream={focusedStream}
+                        muted
+                        volume={0}
+                        className={`stage-video ${videoFit === "cover" ? "is-cover" : "is-contain"} ${!focusedIsLocal && !focusedIsCamera && remoteQualityLimited ? "is-native-quality" : ""}`}
+                      />
+                    </div>
+                    {!focusedIsLocal && !focusedIsCamera && remoteQualityLimited && <RemoteScreenQualityGate limited />}
+                  </>
                 )}
               </div>
 
@@ -5114,120 +5807,6 @@ export const App = (): ReactElement => {
               {localSharing ? (
 
                 <div className="dock-stream-wrapper" ref={streamMenuRef}>
-                  {streamMenuOpen && (
-                    <div className="stream-popover-menu" role="menu">
-                      {/* Parar de transmitir */}
-                      <button
-                        className="stream-menu-item is-danger"
-                        type="button"
-                        onClick={() => {
-                          void session.stopSharing();
-                          setStreamMenuOpen(false);
-                        }}
-                      >
-                        <ScreenOffIcon />
-                        <span>Parar de transmitir</span>
-                      </button>
-
-                      {/* Alterar a Transmissão */}
-                      <button
-                        className="stream-menu-item"
-                        type="button"
-                        onClick={() => {
-                          void session.openSourcePicker();
-                          setStreamMenuOpen(false);
-                        }}
-                      >
-                        <ScreenSwitchIcon />
-                        <span>Alterar a Transmissão</span>
-                      </button>
-
-                      {/* Qualidade da transmissão */}
-                      <div className="stream-menu-quality-section">
-                        <button
-                          className="stream-menu-item with-chevron"
-                          type="button"
-                          onClick={() => setQualitySubmenuOpen((v) => !v)}
-                        >
-                          <SlidersIcon />
-                          <span>Qualidade da transmissão</span>
-                          <span className={`menu-chevron ${qualitySubmenuOpen ? "is-open" : ""}`}><ChevronRightIcon /></span>
-                        </button>
-
-                        {qualitySubmenuOpen && (
-                          <div className="quality-options-box">
-                            <div className="quality-subgroup">
-                              <span className="quality-subgroup-title">Resolução</span>
-                              <div className="quality-pill-row">
-                                {(['720p', '1080p', '1440p'] as const).map((r) => (
-                                  <button
-                                    key={r}
-                                    type="button"
-                                    className={`quality-opt-pill ${session.resolution === r ? "is-selected" : ""}`}
-                                    onClick={() => session.setResolution(r)}
-                                  >
-                                    {r}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="quality-subgroup">
-                              <span className="quality-subgroup-title">Taxa de quadros</span>
-                              <div className="quality-pill-row">
-                                {([30, 60] as const).map((f) => (
-                                  <button
-                                    key={f}
-                                    type="button"
-                                    className={`quality-opt-pill ${session.fps === f ? "is-selected" : ""}`}
-                                    onClick={() => session.setFps(f)}
-                                  >
-                                    {f} FPS
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Compartilhar áudio da transmissão com Switch Toggle */}
-                      <label className="stream-menu-item is-switch-item" onClick={(e) => e.stopPropagation()}>
-                        <div className="stream-switch-label-row">
-                          <SpeakerOnIcon />
-                          <span>Compartilhar áudio da transmissão</span>
-                        </div>
-                        <div className="switch-toggle-wrapper is-mini">
-                          <input
-                            type="checkbox"
-                            className="switch-toggle-input"
-                            checked={state.includeSystemAudio}
-                            onChange={() => void session.toggleSystemAudio()}
-                            aria-label="Compartilhar áudio da transmissão"
-                          />
-                          <div className={`switch-toggle-track ${state.includeSystemAudio ? "is-checked" : ""}`}>
-                            <div className="switch-toggle-thumb" />
-                          </div>
-                        </div>
-                      </label>
-
-
-                      <div className="stream-menu-divider" />
-
-                      {/* Relatar um problema */}
-                      <button
-                        className="stream-menu-item is-muted"
-                        type="button"
-                        onClick={() => {
-                          void session.exportDiagnostics();
-                          setStreamMenuOpen(false);
-                        }}
-                      >
-                        <AlertCircleIcon />
-                        <span>Relatar um problema</span>
-                      </button>
-                    </div>
-                  )}
-
                   <div className="dock-stream-split-btn">
                     <button
                       className="dock-stream-main-btn is-sharing"
@@ -5238,10 +5817,13 @@ export const App = (): ReactElement => {
                       <ScreenOffIcon />
                     </button>
                     <button
+                      ref={streamMenuTriggerRef}
                       className={`dock-stream-chevron-btn is-sharing ${streamMenuOpen ? "is-active" : ""}`}
                       type="button"
                       title="Opções de transmissão"
-                      onClick={() => setStreamMenuOpen((v) => !v)}
+                      aria-label="Opções de transmissão"
+                      aria-expanded={streamMenuOpen}
+                      onClick={toggleStreamMenu}
                     >
                       <ChevronUpIcon />
                     </button>
@@ -5294,10 +5876,21 @@ export const App = (): ReactElement => {
                 <GearIcon />
               </button>
 
-              {isConnected && (
-                <button className="dock-action-btn is-hangup" type="button" title={isRoomSession ? "Sair da sala" : "Desconectar da chamada"} onClick={() => void session.close()}>
+              {(isConnected || isRoomSession) && (
+                <button
+                  className="dock-action-btn is-hangup"
+                  type="button"
+                  title={isRoomSession ? (localInCall ? "Sair da chamada" : "Sair da sala") : "Desconectar da chamada"}
+                  onClick={() => {
+                    if (isRoomSession && localInCall) {
+                      void session.leaveRoomCall();
+                      return;
+                    }
+                    void session.close();
+                  }}
+                >
                   <PhoneOffIcon />
-                  <span>{isRoomSession ? "Sair da sala" : "Desconectar"}</span>
+                  <span>{isRoomSession ? (localInCall ? "Sair da chamada" : "Sair da sala") : "Desconectar"}</span>
                 </button>
               )}
             </div>
@@ -5352,53 +5945,34 @@ export const App = (): ReactElement => {
             )}
 
             <div className="chat-messages-container">
-              {state.chatMessages.length === 0 && isRoomChatMode && (
+              {visibleChatItemCount === 0 && isRoomChatMode && (
                 <div className="room-chat-welcome">
                   <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="room-chat-welcome-avatar" />
                   <h2>{session.activeRoom?.room.name}</h2>
                   <p>Este é o início da conversa com {state.remoteUserName}. As mensagens são efêmeras e desaparecem quando a sala for encerrada.</p>
                 </div>
               )}
-              {state.chatMessages.length === 0 && !isConnected && (
+              {visibleChatItemCount === 0 && !isConnected && (
                 <div className="chat-notice chat-empty-state">
                   <MessageSquareIcon />
                   <strong>Nenhuma mensagem ainda</strong>
                   <span>As mensagens serão entregues assim que um participante se conectar.</span>
                 </div>
               )}
-              {state.chatMessages.map((msg) => (
-                <div key={msg.id} className={`chat-message-item ${msg.isSelf === true || (msg.isSelf === undefined && msg.senderName === state.localUserName) ? "is-self" : ""}`}>
-                  <UserAvatar
-                    name={msg.senderName}
-                    avatar={msg.isSelf === true || (msg.isSelf === undefined && msg.senderName === state.localUserName) ? state.localUserAvatar : state.remoteUserAvatar}
-                    isSelf={msg.isSelf === true || (msg.isSelf === undefined && msg.senderName === state.localUserName)}
-                    className="chat-avatar"
-                  />
-                  <div className="chat-bubble">
-
-                    <div className="chat-meta">
-                      <strong>{msg.senderName}</strong>
-                      <small>{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
-                      <button
-                        className="chat-msg-delete-btn"
-                        type="button"
-                        title="Excluir mensagem"
-                        aria-label="Excluir mensagem"
-                        onClick={() => session.deleteChatMessage(msg.id)}
-                      >
-                        <TrashIcon />
-                      </button>
+              {usesRoomChatTimeline ? state.roomChatItems.map((item) => {
+                if (item.type === "user-message") return renderChatMessage(item, false, true);
+                const eventTime = new Date(item.event.timestamp || item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                return (
+                  <div key={item.id} className={`room-system-event is-${item.event.kind}`} data-event-kind={item.event.kind}>
+                    <span className="room-system-event-icon"><ActivityIcon /></span>
+                    <div>
+                      <p>{systemEventText(item.event)}</p>
+                      <time dateTime={item.event.timestamp}>{eventTime}</time>
                     </div>
-                    {msg.text && <p className="chat-text">{renderChatText(msg.text)}</p>}
-                    {msg.imageData && (
-                      <button className="chat-image-link" type="button" onClick={() => setActiveChatImage({ data: msg.imageData!, name: msg.imageName ?? "Imagem enviada no chat" })} title="Abrir imagem em tela cheia">
-                        <img className="chat-image" src={msg.imageData} alt={msg.imageName ?? "Imagem enviada no chat"} />
-                      </button>
-                    )}
                   </div>
-                </div>
-              ))}
-              {state.chatMessages.length > 0 && !isConnected && (
+                );
+              }) : state.chatMessages.map((message) => renderChatMessage(message, true))}
+              {visibleChatItemCount > 0 && !isConnected && (
                 <div className="chat-notice is-bottom-notice">
                   Você está sozinho na chamada. As mensagens serão entregues assim que um participante se conectar.
                 </div>
@@ -5812,12 +6386,47 @@ export const App = (): ReactElement => {
         />
       )}
 
+      {savedRoomToReopen && !session.activeRoom && !state.sessionModalOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="session-modal-panel reopen-room-prompt" role="dialog" aria-modal="true" aria-labelledby="reopen-room-title">
+            <div className="modal-heading">
+              <div className="session-modal-title-group">
+                <div className="session-modal-title-icon"><UsersIcon /></div>
+                <div><p className="section-kicker">Sala salva</p><h2 id="reopen-room-title">Reabrir “{savedRoomToReopen.name}”?</h2></div>
+              </div>
+            </div>
+            <p className="tab-description">A sala não será aberta sem sua confirmação. Ela pode aguardar offline e será anunciada quando um peer Tailscale conectar.</p>
+            {savedRoomToReopen.needsPassword ? (
+              <button className="button primary full-width" type="button" onClick={() => { setSavedRoomToReopen(undefined); session.toggleSessionModal(true); }}>Definir senha para reabrir</button>
+            ) : (
+              <button className="button primary full-width" type="button" onClick={() => { setSavedRoomToReopen(undefined); void session.hostRoom(); }}>Reabrir sala</button>
+            )}
+            <button className="button ghost full-width" type="button" onClick={() => setSavedRoomToReopen(undefined)}>Agora não</button>
+          </section>
+        </div>
+      )}
+
       {state.sessionModalOpen && (
-        <SessionModal session={session} onClose={() => session.toggleSessionModal(false)} />
+        <RoomSessionModal session={session} onClose={() => session.toggleSessionModal(false)} />
       )}
 
       {settingsOpen && (
         <SettingsModal session={session} onClose={() => setSettingsOpen(false)} />
+      )}
+
+      {streamMenuOpen && typeof document !== "undefined" && createPortal(
+        <StreamOptionsPopover
+          session={session}
+          position={streamMenuPosition}
+          qualitySubmenuOpen={qualitySubmenuOpen}
+          onToggleQuality={() => setQualitySubmenuOpen((open) => !open)}
+          onClose={() => {
+            setStreamMenuOpen(false);
+            setQualitySubmenuOpen(false);
+          }}
+          menuRef={streamMenuPortalRef}
+        />,
+        document.body,
       )}
     </div>
   );

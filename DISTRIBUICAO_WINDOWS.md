@@ -47,7 +47,19 @@ npm run release -- patch
 
 Também são aceitos `minor`, `major` ou uma versão explícita, como `npm run release -- 0.2.0`.
 
-O script executa typecheck, lint, testes unitários, build do instalador e smoke test E2E. Depois atualiza a versão, cria commit e tag, envia ambos de forma atômica e publica uma GitHub Release estável com todos os artefatos. Se uma validação falhar antes do commit, restaura os arquivos de versão.
+Não crie a tag nem altere `package.json` manualmente antes desse comando. Por exemplo, partindo da versão `0.1.5`, `npm run release -- minor` prepara a `v0.2.0`: o script atualiza `package.json` e o lockfile, gera o instalador, cria o commit e a tag e só então envia tudo ao GitHub.
+
+O script executa typecheck, lint, testes unitários, build do instalador e smoke test E2E. Depois atualiza a versão, cria commit e tag, envia ambos de forma atômica e publica uma GitHub Release estável com todos os artefatos. A chamada do GitHub CLI usa `--latest` e não usa `--prerelease`, portanto a versão aparece como **Latest** na página do repositório. Se uma validação falhar antes do commit, restaura os arquivos de versão.
+
+Para apenas validar a entrega localmente, sem criar tag, release ou alterar o remoto, execute os gates separadamente:
+
+```powershell
+npm run typecheck
+npm run lint
+npm test
+npm run make
+npm run test:e2e:packaged
+```
 
 O aplicativo verifica atualizações 15 segundos após abrir e novamente a cada quatro horas. Quando o download termina, oferece **Reiniciar agora**; se o usuário escolher **Depois**, o Squirrel aplica a versão ao fechar e abrir o app.
 

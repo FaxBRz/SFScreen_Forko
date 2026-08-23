@@ -520,6 +520,14 @@ button:disabled {
   border: 1px solid rgba(35, 165, 90, 0.4);
 }
 
+/* Speech activity is intentionally confined to the sidebar. The detector is
+   fed only by voice tracks, never by the screen/system-audio slot. */
+.user-avatar-small.is-speaking {
+  outline: 2px solid #23d26a;
+  outline-offset: 2px;
+  box-shadow: 0 0 12px rgba(35, 210, 106, 0.55);
+}
+
 .participant-info {
   display: flex;
   flex-direction: column;
@@ -539,6 +547,11 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.name-row strong.is-speaking {
+  color: #78f0a4;
+  text-shadow: 0 0 9px rgba(35, 210, 106, 0.42);
 }
 
 .crown-icon {
@@ -694,6 +707,32 @@ button:disabled {
 .sidebar-voice-connected-wrap {
   position: relative;
   width: 100%;
+}
+
+.sidebar-leave-room-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 36px;
+  margin-top: 8px;
+  border-radius: 8px;
+  color: #ffb3b6;
+  background: rgba(218, 55, 60, 0.12);
+  border: 1px solid rgba(255, 123, 127, 0.2);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.sidebar-leave-room-btn:hover {
+  color: #fff;
+  background: rgba(218, 55, 60, 0.28);
+}
+
+.sidebar-leave-room-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
 .sidebar-join-call-btn {
@@ -1820,6 +1859,94 @@ button:disabled {
 
 .stage-video.is-cover {
   object-fit: cover;
+}
+
+/* Initial WebRTC keyframes can be much smaller than the requested share.
+ * Keep that soft frame off the stage; after the bounded quality gate times
+ * out, preserve the received/native size instead of stretching it. */
+.stage-video.is-native-quality {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.remote-screen-quality-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 24px;
+  color: #f2f3f5;
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(35, 210, 106, 0.14), transparent 44%),
+    rgba(8, 9, 13, 0.96);
+  pointer-events: none;
+}
+
+.remote-screen-quality-gate strong {
+  font-size: 0.95rem;
+}
+
+.remote-screen-quality-gate > span:last-child {
+  max-width: 330px;
+  color: #aeb5c0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.remote-screen-quality-gate.is-limited {
+  inset: auto 16px 16px auto;
+  width: min(340px, calc(100% - 32px));
+  padding: 10px 12px;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid rgba(240, 178, 50, 0.55);
+  border-radius: 10px;
+  background: rgba(20, 18, 12, 0.9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+}
+
+.remote-screen-quality-gate.is-limited .remote-screen-quality-spinner {
+  display: none;
+}
+
+.remote-screen-quality-gate.is-limited strong {
+  color: #f0b232;
+  font-size: 0.78rem;
+}
+
+.remote-screen-quality-gate.is-compact {
+  padding: 12px;
+}
+
+.remote-screen-quality-gate.is-compact strong {
+  font-size: 0.76rem;
+}
+
+.remote-screen-quality-gate.is-compact > span:last-child {
+  max-width: 220px;
+  font-size: 0.65rem;
+}
+
+.remote-screen-quality-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(87, 242, 135, 0.22);
+  border-top-color: #57f287;
+  border-radius: 50%;
+  animation: remote-quality-spin 0.72s linear infinite;
+}
+
+@keyframes remote-quality-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ─── Floating Zoom Pill ─── */
@@ -3301,6 +3428,12 @@ button:disabled {
 .participant-list { gap: 6px; }
 .participant-item { border-radius: 10px; background: rgba(255,255,255,.025); border-color: rgba(255,255,255,.025); transition: background .15s ease,border-color .15s ease,transform .15s ease; }
 .participant-item:hover { background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.075); transform: translateX(1px); }
+.sidebar-room-member-count { color: #d8f9e3 !important; font-variant-numeric: tabular-nums; }
+.participant-list-call + .sidebar-participant-label { margin-top: 10px; }
+.participant-list-outside-call { padding-bottom: 2px; }
+.participant-item.is-outside-call { opacity: .82; }
+.participant-item.is-in-call { border-color: rgba(87,242,135,.1); }
+.sidebar-participant-empty { display: block; padding: 7px 8px; color: #69736f; font-size: .67rem; font-style: italic; }
 .discord-chat-drawer { background: linear-gradient(180deg,#13151c 0%,#101116 100%); }
 .chat-header { padding: 12px 14px; }
 .chat-title-group { display: flex; align-items: center; gap: 9px; }
@@ -3311,6 +3444,19 @@ button:disabled {
 .chat-messages-container { gap: 12px; }
 .chat-bubble { background: #191b23; border: 1px solid rgba(255,255,255,.035); border-radius: 10px; padding: 7px 9px; }
 .chat-message-item.is-self .chat-bubble { background: linear-gradient(135deg,rgba(35,165,90,.16),rgba(35,165,90,.065)); border-color: rgba(87,242,135,.18); }
+.chat-message-item.is-room-message .chat-bubble { border-color: rgba(88,101,242,.13); }
+.room-system-event { display: flex; align-items: center; gap: 8px; align-self: center; width: min(100%, 430px); padding: 7px 9px; color: #9fa8b4; border: 1px solid rgba(255,255,255,.065); border-radius: 9px; background: rgba(255,255,255,.025); }
+.room-system-event > div { display: flex; flex: 1; min-width: 0; align-items: baseline; justify-content: space-between; gap: 8px; }
+.room-system-event p { margin: 0; overflow: hidden; color: #b9c0ca; font-size: .68rem; font-weight: 650; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.room-system-event time { flex: 0 0 auto; color: #6d7580; font-size: .6rem; font-variant-numeric: tabular-nums; }
+.room-system-event-icon { display: grid; width: 20px; height: 20px; flex: 0 0 auto; place-items: center; color: #6ee69b; border-radius: 50%; background: rgba(35,165,90,.13); }
+.room-system-event-icon svg { width: 12px; height: 12px; }
+.room-system-event.is-participant-left,
+.room-system-event.is-participant-left-call { border-color: rgba(240,178,50,.17); background: rgba(240,178,50,.045); }
+.room-system-event.is-participant-left .room-system-event-icon,
+.room-system-event.is-participant-left-call .room-system-event-icon { color: #f0b232; background: rgba(240,178,50,.13); }
+.room-system-event.is-room-deleted { border-color: rgba(237,66,69,.23); background: rgba(237,66,69,.065); }
+.room-system-event.is-room-deleted .room-system-event-icon { color: #ff989b; background: rgba(237,66,69,.16); }
 .chat-mention { padding: 1px 4px; border: 0; border-radius: 4px; color: #a3f6c3; background: rgba(35,165,90,.18); font: inherit; font-weight: 750; cursor: pointer; }
 .chat-mention:hover { background: rgba(35,165,90,.32); color: #e6fff0; }
 .chat-image-link { display: block; margin-top: 7px; line-height: 0; border-radius: 8px; overflow: hidden; }
@@ -3733,6 +3879,22 @@ button:disabled {
   flex-direction: column;
   gap: 2px;
   animation: popoverFadeIn 0.15s ease forwards;
+}
+
+/* The menu is portalled to document.body; it therefore cannot be clipped by
+   the dock's horizontal scroller on narrow windows. */
+.stream-popover-menu-portal {
+  position: fixed;
+  bottom: auto;
+  z-index: 500;
+  max-width: calc(100vw - 16px);
+  transform: translate(-50%, -100%);
+  animation: streamPortalFadeIn 0.15s ease forwards;
+}
+
+@keyframes streamPortalFadeIn {
+  from { opacity: 0; transform: translate(-50%, calc(-100% + 8px)); }
+  to { opacity: 1; transform: translate(-50%, -100%); }
 }
 
 @keyframes popoverFadeIn {
@@ -4401,6 +4563,47 @@ button:disabled {
 
 .card-value.mono {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.startup-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 6px;
+  color: #f2f3f5;
+  cursor: pointer;
+}
+
+.startup-setting-row > span:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.startup-setting-row strong {
+  font-size: 0.84rem;
+}
+
+.startup-setting-row small,
+.startup-setting-error {
+  color: #949ba4;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.startup-setting-row.is-unavailable {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.startup-setting-row .switch-toggle-input:disabled {
+  cursor: not-allowed;
+}
+
+.startup-setting-error {
+  color: #f5a3a6;
 }
 
 .status-highlight {

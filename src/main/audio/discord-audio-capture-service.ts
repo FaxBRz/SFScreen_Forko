@@ -15,7 +15,6 @@ const discordAliases = ['discord.exe', 'discordcanary.exe', 'discordptb.exe'];
 
 interface NativeLoopbackCapture {
   start: (processId: number, includeProcessTree: boolean, listener: (chunk: Buffer) => void) => unknown;
-  startSystemAudio: (listener: (chunk: Buffer) => void) => unknown;
   stop: () => void;
 }
 type NativeLoopbackConstructor = new () => NativeLoopbackCapture;
@@ -71,7 +70,6 @@ interface ActiveCapture {
 }
 interface CapturePlan {
   signature: string;
-  target?: AudioApplication;
   allowed: AudioApplication[];
 }
 interface RunningProcess {
@@ -151,18 +149,7 @@ export class DiscordAudioCaptureService {
   private async createCapture(captureId: string, listener: (chunk: Buffer) => void, excluded: string[], preparedPlan?: CapturePlan): Promise<ActiveCapture> {
     const Capture = loadNativeCapture();
     const plan = preparedPlan ?? await this.resolvePlan(excluded);
-    const { target, allowed, signature } = plan;
-
-    if (!signature.startsWith('mix:')) {
-      const capture = new Capture();
-      const forward = (chunk: Buffer): void => {
-        if ((this.current && !this.current.sources.some((source) => source.capture === capture)) || chunk.length === 0) return;
-        listener(chunk);
-      };
-      if (target) capture.start(target.processId, false, forward);
-      else capture.startSystemAudio(forward);
-      return { captureId, listener, excluded, signature, sources: [{ capture }], switching: false };
-    }
+    const { allowed, signature } = plan;
 
     const sources: CaptureSource[] = [];
     for (const application of allowed) {
@@ -192,22 +179,40 @@ export class DiscordAudioCaptureService {
   }
 
   private async resolvePlan(excluded: string[]): Promise<CapturePlan> {
-    const applications = await this.listApplications();
+    // Application Loopback only gives us a safe exclusion boundary when we
+    // capture known process trees. Never use the unrestricted system loopback:
+    // it can capture SFScreen's own playback and turn voice into screen audio.
+    const helper = this.getOrCompileSessionHelper();
+    if (!helper) {
+      throw new Error('Não foi possível garantir a exclusão do áudio do SFScreen neste Windows. O áudio da transmissão foi desativado para evitar vazamento do microfone.');
+    }
+    const applications = await this.listApplicationsFromHelper(helper);
     const excludedRoots = await this.listExcludedProcessRoots(excluded);
     const knownIds = new Set(applications.map((item) => item.processId));
     for (const root of excludedRoots) {
       if (!knownIds.has(root.processId)) applications.push({ processId: root.processId, executable: root.executable, label: root.executable.replace(/\.exe$/i, '') });
     }
-    const excludedSet = new Set(excluded);
-    const excludedApplications = applications.filter((item) => excludedSet.has(item.executable));
-    if (excludedApplications.length <= 1) {
-      const target = excludedApplications[0];
-      return { target, allowed: [], signature: target ? `exclude:${target.processId}` : 'system' };
-    }
     const ignoredOwnExecutable = app.isPackaged ? 'sfscreen.exe' : 'electron.exe';
-    const allowed = applications.filter((item) => !excludedSet.has(item.executable) && item.executable !== ignoredOwnExecutable);
-    const signature = `mix:${allowed.map((item) => item.processId).sort((a, b) => a - b).join(',')}|blocked:${excludedApplications.map((item) => item.processId).sort((a, b) => a - b).join(',')}`;
+    const excludedSet = new Set([...excluded, ignoredOwnExecutable]);
+    const allowed = applications.filter((item) => !excludedSet.has(item.executable));
+    const blocked = applications.filter((item) => excludedSet.has(item.executable));
+    const signature = `mix:${allowed.map((item) => item.processId).sort((a, b) => a - b).join(',')}|blocked:${blocked.map((item) => item.processId).sort((a, b) => a - b).join(',')}`;
     return { allowed, signature };
+  }
+
+  private async listApplicationsFromHelper(helper: string): Promise<AudioApplication[]> {
+    try {
+      const { stdout } = await execFileAsync(helper, [], { windowsHide: true, timeout: 8_000, maxBuffer: 512 * 1024 });
+      const parsed = JSON.parse(stdout.trim() || '[]') as unknown;
+      if (!Array.isArray(parsed)) throw new Error('O enumerador de sessões de áudio retornou dados inválidos.');
+      return parsed.filter(isAudioApplication).map((item) => ({
+        processId: item.processId,
+        executable: normalizeExecutable(item.executable),
+        label: item.label.trim() || item.executable,
+      })).filter((item) => Boolean(item.executable)).sort((left, right) => left.label.localeCompare(right.label));
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : 'Não foi possível enumerar as sessões de áudio para uma captura segura.');
+    }
   }
 
   private async listExcludedProcessRoots(excluded: string[]): Promise<RunningProcess[]> {

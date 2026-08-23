@@ -79,7 +79,9 @@ const config: ForgeConfig = {
     exe: 'SFScreen.exe',
     setupExe: `SFScreen-${packageJson.version}-Setup-x64.exe`,
     setupIcon: './assets/icon.ico',
-    loadingGif: './assets/installer-loading.gif',
+    // The custom green loading GIF looked like a terminal/failed setup and
+    // vanished as Squirrel launched the app. Let the native installer show
+    // its standard progress UI instead.
     noMsi: true,
     ...windowsCertificate,
   })],

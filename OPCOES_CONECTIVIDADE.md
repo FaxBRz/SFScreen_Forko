@@ -1,5 +1,34 @@
 # SFScreen — opções de conectividade P2P
 
+## Decisão ativa para v0.2.0
+
+Esta é a decisão que vale para o aplicativo atual; as alternativas comparadas
+no restante do documento são contexto histórico para uma possível revisão
+futura.
+
+- O Tailscale é o transporte entre máquinas. Não há Cloudflare, TURN, SFU,
+  backend hospedado, relay próprio ou conta de usuário do SFScreen.
+- Uma sala pode ser criada e persistir localmente sem pares Tailscale. Ela é
+  anunciada assim que a interface Tailscale estiver disponível, mas convidados
+  só a alcançam pela rede Tailscale autorizada.
+- A sala aceita no máximo quatro pessoas em uma malha WebRTC completa: cada
+  cliente mantém no máximo três conexões e o dono coordena membros e
+  sinalização, sem retransmitir mídia. O dono precisa continuar aberto; não
+  existe migração automática de host.
+- O protocolo v6 usa senha obrigatória (guardada apenas como
+  salt/verificador) e código reutilizável de sete caracteres por dez minutos.
+  Senha ou código válidos dão entrada direta, sem comparação manual de
+  fingerprint. Clientes anteriores precisam atualizar.
+- A tailnet deve ser dedicada ou usar compartilhamento de dispositivo, sem
+  subnet router, exit node ou Tailscale SSH. Firewall e listener aceitam
+  somente a porta do SFScreen na interface Tailscale.
+
+O Tailscale não transforma a sala em um serviço hospedado: ele apenas entrega
+o tráfego entre pares. Chat e eventos permanecem temporários, e a mídia segue
+protegida por DTLS-SRTP dentro do WebRTC.
+
+---
+
 Este documento compara cinco arquiteturas possíveis para o SFScreen, considerando o cenário principal:
 
 - Uso privado entre amigos e conhecidos.

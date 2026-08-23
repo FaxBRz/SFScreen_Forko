@@ -29,6 +29,8 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   cameraActive: false,
   voiceActive: false,
   voiceMuted: false,
+  localSpeaking: false,
+  remoteSpeaking: false,
   roomCallActive: false,
   remoteRoomCallActive: false,
   setJoinCode: vi.fn(),
@@ -49,6 +51,7 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   hostRoom: vi.fn(async () => undefined),
   discoverRooms: vi.fn(async () => []),
   joinRoom: vi.fn(async () => undefined),
+  joinRoomByCode: vi.fn(async () => undefined),
   confirmSecurity: vi.fn(),
   startSharing: vi.fn(async () => undefined),
   stopSharing: vi.fn(async () => undefined),
@@ -93,7 +96,7 @@ describe('SFScreen Discord layout', () => {
     expect(screen.getByText('SFScreen')).toBeTruthy();
     expect(screen.getByText('Sua Sala Privada')).toBeTruthy();
     expect(screen.getByText(/Pessoas na sala \(1\)/)).toBeTruthy();
-    expect(screen.getByText('Convidar pessoa')).toBeTruthy();
+    expect(screen.getByText('Criar ou entrar')).toBeTruthy();
   });
 
   it('collapses and expands the sidebar with toggle button', () => {
@@ -118,27 +121,33 @@ describe('SFScreen Discord layout', () => {
 
 
 
-  it('opens and interacts with session modal for invite code and verification', () => {
+  it('uses direct room entry without a bilateral security confirmation', () => {
     const current = model(readyState({
       phase: 'verifying',
       sessionModalOpen: true,
-      hosted: { code: 'K7P-4MX-Q', expiresAt: new Date(Date.now() + 60_000).toISOString() },
       securityCode: '123456',
     }));
     vi.mocked(useSession).mockReturnValue(current);
     render(<App />);
 
-    expect(screen.getByText('123456')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'O código confere' }));
-    expect(current.confirmSecurity).toHaveBeenCalledOnce();
+    expect(screen.getByRole('heading', { name: /criar ou entrar em uma sala/i })).toBeTruthy();
+    expect(screen.queryByText('123456')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Entrar' }));
+    fireEvent.change(screen.getByLabelText(/código da sala/i), { target: { value: 'K7P4MXQ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Entrar na sala' }));
+    expect(current.joinRoomByCode).toHaveBeenCalledWith('K7P4MXQ', undefined);
   });
 
-  it('allows copying invite code via button and clicking the code value directly', () => {
+  it('allows copying an active room code', () => {
     const current = model(readyState({
       phase: 'idle',
       sessionModalOpen: true,
-      hosted: { code: 'K7P-4MX-Q', expiresAt: new Date(Date.now() + 60_000).toISOString() },
     }));
+    current.activeRoom = {
+      room: { id: 'room-1', name: 'Sala da Luma', hasPassword: true, schemaVersion: 2, createdAt: new Date().toISOString(), capacity: 4, needsPassword: false },
+      code: 'K7P-4MX-Q',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
     vi.mocked(useSession).mockReturnValue(current);
     render(<App />);
 
@@ -147,10 +156,52 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(copyBtn);
     expect(current.copyCode).toHaveBeenCalledOnce();
 
-    // Click code text directly
-    const codeSpan = screen.getByText('K7P-4MX-Q');
-    fireEvent.click(codeSpan);
-    expect(current.copyCode).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('K7P-4MX-Q')).toBeTruthy();
+  });
+
+  it('groups room members by call state in the sidebar', () => {
+    const current = model(readyState({ phase: 'connected' }));
+    current.activeRoom = {
+      room: { id: 'room-1', name: 'Sala da Luma', hasPassword: true, schemaVersion: 2, createdAt: new Date().toISOString(), capacity: 4, needsPassword: false },
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      memberCount: 2,
+    };
+    current.roomCallActive = true;
+    current.remoteRoomCallActive = false;
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    expect(screen.getByText('Na chamada (1)')).toBeTruthy();
+    expect(screen.getByText('Fora da chamada (1)')).toBeTruthy();
+  });
+
+  it('renders coordinator room events separately from user messages', () => {
+    const current = model(readyState({
+      phase: 'connected',
+      roomChatItems: [{
+        id: 'room-event-1',
+        sequence: 1,
+        type: 'system-event',
+        timestamp: new Date().toISOString(),
+        event: {
+          id: 'event-1',
+          sequence: 1,
+          kind: 'participant-joined',
+          timestamp: new Date().toISOString(),
+          participantName: 'Alex',
+        },
+      }],
+    }));
+    current.activeRoom = {
+      room: { id: 'room-1', name: 'Sala da Luma', hasPassword: true, schemaVersion: 2, createdAt: new Date().toISOString(), capacity: 4, needsPassword: false },
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      memberCount: 2,
+    };
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    expect(screen.getByText('Alex acabou de entrar no chat')).toBeTruthy();
+    expect(document.querySelector('[data-event-kind="participant-joined"]')).toBeTruthy();
   });
 
   it('displays connection status and Tailscale peers count in topbar', () => {
@@ -352,6 +403,36 @@ describe('SFScreen Discord layout', () => {
     fireEvent.change(microphoneVolume, { target: { value: '1' } });
     fireEvent.change(outputVolume, { target: { value: '1' } });
     fireEvent.click(screen.getByRole('radio', { name: /isolamento de voz/i }));
+  });
+
+  it('shows the runtime version and persists Windows startup only when supported', async () => {
+    const originalSfscreen = Object.getOwnPropertyDescriptor(window, 'sfscreen');
+    const getAppVersion = vi.fn(async () => '0.2.0');
+    const getStartupSettings = vi.fn(async () => ({ supported: true, enabled: false, opensVisible: true as const }));
+    const setWindowsStartup = vi.fn(async (enabled: boolean) => ({ supported: true, enabled, opensVisible: true as const }));
+    Object.defineProperty(window, 'sfscreen', {
+      configurable: true,
+      value: { getAppVersion, getStartupSettings, setWindowsStartup },
+    });
+
+    try {
+      const current = model();
+      vi.mocked(useSession).mockReturnValue(current);
+      render(<App />);
+      fireEvent.click(screen.getAllByRole('button', { name: /configurações/i })[0]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Aplicativo' }));
+      const startup = await screen.findByRole('checkbox', { name: 'Iniciar com Windows' });
+      expect(startup).toBeTruthy();
+      fireEvent.click(startup);
+      await waitFor(() => expect(setWindowsStartup).toHaveBeenCalledWith(true));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sobre' }));
+      expect(await screen.findByText(/Versão 0\.2\.0/)).toBeTruthy();
+    } finally {
+      if (originalSfscreen) Object.defineProperty(window, 'sfscreen', originalSfscreen);
+      else Reflect.deleteProperty(window, 'sfscreen');
+    }
   });
 
   it('lists audio outputs and saves the selected headset', async () => {
@@ -575,8 +656,10 @@ describe('SFScreen Discord layout', () => {
     const chevronBtn = screen.getByRole('button', { name: /opções de transmissão/i });
     fireEvent.click(chevronBtn);
 
-    expect(screen.getByText('Alterar a Transmissão')).toBeTruthy();
-    expect(screen.getByText(/Qualidade da transmissão/i)).toBeTruthy();
+    return waitFor(() => {
+      expect(screen.getByText('Alterar a transmissão')).toBeTruthy();
+      expect(screen.getByText(/Qualidade da transmissão/i)).toBeTruthy();
+    });
   });
 
   it('allows starting simulated peer session from settings and omits it from sidebar', () => {

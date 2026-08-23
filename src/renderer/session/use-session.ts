@@ -2,10 +2,15 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { formatSessionCode, normalizeSessionCode } from '../../shared/session/code';
 import { diagnosticsFormatVersion, type DiagnosticEvent, type DiagnosticsReport, type WebRtcMetrics } from '../../shared/diagnostics';
 import type { ScreenSelection, ScreenSource } from '../../shared/screen-source';
-import type { CameraState, ChatMessagePayload, RemoteControlConfig, RemoteControlStatus, RemoteInputPayload } from '../../shared/session/media-control';
-import type { HostedRoom, RoomSummary, SessionError, TailscaleStatus } from '../../shared/session/types';
+import type { CameraState, ChatMessagePayload, RemoteControlConfig, RemoteControlStatus, RemoteInputPayload, RoomChatRequest, ScreenQualitySignature } from '../../shared/session/media-control';
+import { roomInviteLifetimeMs, type ChatItem, type HostedRoom, type ParticipantState, type RoomMembershipSnapshot, type RoomSummary, type RoomSystemEventKind, type SessionError, type TailscaleStatus } from '../../shared/session/types';
 import { initialSessionState, normalizeUserName, sessionReducer, type AudioPhase, type MediaPhase, type SessionUiState } from './session-machine';
-import { WebRtcSession } from './webrtc-session';
+import { WebRtcSession, screenQualityProfileFor, type WebRtcQualitySample } from './webrtc-session';
+import { RoomMeshClient } from './room-mesh-client';
+import { VoiceActivityMonitor } from './voice-activity';
+import { QualityStabilizer, createIdleQualityStabilizationState, type QualitySample, type QualityStabilizationState, type QualityTarget } from './quality-stabilizer';
+import { playRoomSystemEventSound } from './room-event-sound';
+import { maxRoomChatItems } from './room-chat';
 import {
   MICROPHONE_PROCESSING_CHANGE_EVENT,
   MICROPHONE_VOLUME_CHANGE_EVENT,
@@ -20,6 +25,16 @@ const errorMessage = (error: SessionError | Error | unknown): string => {
 };
 
 const stopTracks = (stream: MediaStream | undefined): void => stream?.getTracks().forEach((track) => track.stop());
+
+const createRoomEntityId = (): string => {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    // The fallback is only for restricted test/webview environments. It is
+    // still opaque and meets the wire protocol's bounded identifier rules.
+    return `room-participant-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  }
+};
 
 const simulatedTailscaleStatus = (): TailscaleStatus => ({
   state: 'ready',
@@ -397,6 +412,20 @@ const createSimulatedCameraStream = (
 export type StreamResolution = '720p' | '1080p' | '1440p';
 export type StreamFps = 30 | 60;
 
+type QualitySampleDirection = 'outbound' | 'inbound';
+
+const qualityTargetFor = (resolution: StreamResolution, bitrateBps: number): QualityTarget => ({
+  ...resDimensionMap[resolution],
+  bitrateKbps: Math.max(1, Math.round(bitrateBps / 1_000)),
+});
+
+const qualitySampleFromWebRtc = (sample: WebRtcQualitySample, direction: QualitySampleDirection): QualitySample => ({
+  sampledAtMs: sample.sampledAtMs,
+  width: direction === 'outbound' ? sample.outboundFrameWidth : sample.inboundFrameWidth,
+  height: direction === 'outbound' ? sample.outboundFrameHeight : sample.inboundFrameHeight,
+  bitrateKbps: direction === 'outbound' ? sample.outboundBitrateKbps : sample.inboundBitrateKbps,
+});
+
 const getSavedStreamResolution = (): StreamResolution => {
   try {
     const saved = localStorage.getItem('sfscreen_stream_resolution');
@@ -440,6 +469,8 @@ export interface SessionModel {
   fps: StreamFps;
   captureFps?: number;
   outgoingFps?: number;
+  /** Bounded first-frame gate for the currently focused direct screen. */
+  qualityState?: QualityStabilizationState;
   localStream?: MediaStream;
   remoteStream?: MediaStream;
   localCameraStream?: MediaStream;
@@ -447,6 +478,10 @@ export interface SessionModel {
   cameraActive: boolean;
   voiceActive: boolean;
   voiceMuted: boolean;
+  /** Local-only speaking detector. It is driven solely by the microphone track. */
+  localSpeaking: boolean;
+  /** Remote-only speaking detector. Screen/system audio is never used here. */
+  remoteSpeaking: boolean;
   roomCallActive: boolean;
   remoteRoomCallActive: boolean;
   remoteMediaPhase?: MediaPhase;
@@ -454,6 +489,10 @@ export interface SessionModel {
   remoteAudioPhase?: AudioPhase;
   remoteAudioError?: string;
   activeRoom?: HostedRoom;
+  /** Authoritative V6 membership when this room uses the full direct mesh. */
+  roomMembership?: RoomMembershipSnapshot;
+  /** Direct WebRTC connections owned locally (never more than three). */
+  roomPeerCount?: number;
   isSimulatedPeer: boolean;
   testNetworkEnabled: boolean;
   remoteControlConfig: import('../../shared/session/media-control').RemoteControlConfig;
@@ -478,6 +517,7 @@ export interface SessionModel {
   hostRoom: () => Promise<HostedRoom | undefined>;
   discoverRooms: () => Promise<RoomSummary[]>;
   joinRoom: (room: RoomSummary, password: string) => Promise<void>;
+  joinRoomByCode: (code: string, password?: string) => Promise<void>;
   confirmSecurity: () => void;
   startSharing: () => Promise<void>;
   stopSharing: () => Promise<void>;
@@ -508,10 +548,15 @@ export const useSession = (): SessionModel => {
   const [sources, setSources] = useState<ScreenSource[]>([]);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [activeRoom, setActiveRoom] = useState<HostedRoom | undefined>(undefined);
+  const [roomMembership, setRoomMembership] = useState<RoomMembershipSnapshot | undefined>(undefined);
+  const [roomPeerCount, setRoomPeerCount] = useState(0);
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceMuted, setVoiceMuted] = useState(false);
+  const [localSpeaking, setLocalSpeaking] = useState(false);
+  const [remoteSpeaking, setRemoteSpeaking] = useState(false);
   const [roomCallActive, setRoomCallActive] = useState(false);
   const [remoteRoomCallActive, setRemoteRoomCallActive] = useState(false);
+  const remoteRoomCallActiveRef = useRef(false);
   const microphoneStreamRef = useRef<MediaStream | undefined>(undefined);
   const rawMicrophoneStreamRef = useRef<MediaStream | undefined>(undefined);
   const microphoneAudioContextRef = useRef<AudioContext | undefined>(undefined);
@@ -522,7 +567,16 @@ export const useSession = (): SessionModel => {
   const microphoneCompressorRef = useRef<DynamicsCompressorNode | undefined>(undefined);
   const microphoneGateIntervalRef = useRef<number | undefined>(undefined);
   const microphoneProcessingRef = useRef<EffectiveMicrophoneProcessing>(getEffectiveMicrophoneProcessing());
+  const localVoiceActivityRef = useRef<VoiceActivityMonitor | undefined>(undefined);
+  const remoteVoiceActivityRef = useRef<VoiceActivityMonitor | undefined>(undefined);
   const activeRoomRef = useRef<HostedRoom | undefined>(undefined);
+  const roomHostRef = useRef(false);
+  const localRoomParticipantIdRef = useRef(createRoomEntityId());
+  const remoteRoomParticipantRef = useRef<{ id?: string; name?: string; joined: boolean; left: boolean }>({ joined: false, left: false });
+  const roomChatSequenceRef = useRef(0);
+  const roomChatSeenKeysRef = useRef(new Set<string>());
+  const roomChatSeenKeyOrderRef = useRef<string[]>([]);
+  const roomChatRequestItemsRef = useRef(new Map<string, ChatItem>());
   const roomCallActiveRef = useRef(false);
   const [resolution, setResolutionState] = useState<StreamResolution>(getSavedStreamResolution);
   const [fps, setFpsState] = useState<StreamFps>(getSavedStreamFps);
@@ -530,6 +584,11 @@ export const useSession = (): SessionModel => {
   const fpsRef = useRef<StreamFps>(fps);
   const [captureFps, setCaptureFps] = useState<number | undefined>(undefined);
   const [outgoingFps, setOutgoingFps] = useState<number | undefined>(undefined);
+  const qualityStabilizerRef = useRef(new QualityStabilizer());
+  const qualitySamplingRef = useRef(false);
+  const qualityGenerationRef = useRef(0);
+  const qualityDirectionRef = useRef<QualitySampleDirection>('outbound');
+  const [qualityState, setQualityState] = useState<QualityStabilizationState>(createIdleQualityStabilizationState);
   const [localStream, setLocalStream] = useState<MediaStream | undefined>(undefined);
   const [localCameraStream, setLocalCameraStream] = useState<MediaStream | undefined>(undefined);
   const [remoteCameraStream, setRemoteCameraStream] = useState<MediaStream | undefined>(undefined);
@@ -565,6 +624,8 @@ export const useSession = (): SessionModel => {
 
   const simulatedStreamCleanupRef = useRef<(() => void) | null>(null);
   const controllerRef = useRef<WebRtcSession | undefined>(undefined);
+  const roomMeshRef = useRef<RoomMeshClient | undefined>(undefined);
+  const activatePreparedStreamRef = useRef<((stream: MediaStream) => Promise<void>) | undefined>(undefined);
 
   const remoteIpRef = useRef<string | undefined>(undefined);
   const localConfirmedRef = useRef(false);
@@ -593,9 +654,24 @@ export const useSession = (): SessionModel => {
     microphoneHighPassRef.current = undefined;
     microphoneLowPassRef.current = undefined;
     microphoneCompressorRef.current = undefined;
+    localVoiceActivityRef.current?.stop();
     const context = microphoneAudioContextRef.current;
     microphoneAudioContextRef.current = undefined;
     if (context && context.state !== 'closed') void context.close().catch(() => undefined);
+  }, []);
+
+  const watchLocalVoice = useCallback((stream: MediaStream | undefined): void => {
+    if (!localVoiceActivityRef.current) {
+      localVoiceActivityRef.current = new VoiceActivityMonitor({ onChange: setLocalSpeaking });
+    }
+    localVoiceActivityRef.current.watch(stream);
+  }, []);
+
+  const watchRemoteVoice = useCallback((stream: MediaStream | undefined): void => {
+    if (!remoteVoiceActivityRef.current) {
+      remoteVoiceActivityRef.current = new VoiceActivityMonitor({ onChange: setRemoteSpeaking });
+    }
+    remoteVoiceActivityRef.current.watch(stream);
   }, []);
 
   useEffect(() => {
@@ -650,7 +726,7 @@ export const useSession = (): SessionModel => {
         const currentProcessedStream = processedStream;
         void (async () => {
           try {
-            await controllerRef.current?.replaceAudioTrack(currentRawTrack);
+            await controllerRef.current?.replaceVoiceTrack(currentRawTrack);
           } catch {
             return;
           }
@@ -661,6 +737,7 @@ export const useSession = (): SessionModel => {
           }
           currentProcessedStream.getTracks().forEach((track) => track.stop());
           microphoneStreamRef.current = currentRawStream;
+          localVoiceActivityRef.current?.watch(currentRawStream);
           microphoneAudioContextRef.current = undefined;
           microphoneGainRef.current = undefined;
           microphoneGateRef.current = undefined;
@@ -693,6 +770,178 @@ export const useSession = (): SessionModel => {
     diagnosticEventsRef.current.push({ atMs: Math.max(0, Date.now() - startedAt), event });
   }, []);
 
+  const resetRoomChatTimeline = useCallback((): void => {
+    roomChatSequenceRef.current = 0;
+    roomChatSeenKeysRef.current.clear();
+    roomChatSeenKeyOrderRef.current = [];
+    roomChatRequestItemsRef.current.clear();
+    remoteRoomParticipantRef.current = { joined: false, left: false };
+    dispatch({ type: 'clear-room-chat' });
+  }, []);
+
+  /**
+   * A room item may be echoed through the coordinator or retried after a
+   * temporary reconnection. Keep a small id ledger so rendering and audio
+   * notification happen exactly once for the canonical item/event.
+   */
+  const ingestRoomChatItem = useCallback((item: ChatItem): boolean => {
+    const keys = [`item:${item.id}`];
+    if (item.type === 'system-event') keys.push(`event:${item.event.id}`);
+    if (keys.some((key) => roomChatSeenKeysRef.current.has(key))) return false;
+
+    keys.forEach((key) => {
+      roomChatSeenKeysRef.current.add(key);
+      roomChatSeenKeyOrderRef.current.push(key);
+    });
+    while (roomChatSeenKeyOrderRef.current.length > maxRoomChatItems * 4) {
+      const oldest = roomChatSeenKeyOrderRef.current.shift();
+      if (oldest) roomChatSeenKeysRef.current.delete(oldest);
+    }
+    roomChatSequenceRef.current = Math.max(roomChatSequenceRef.current, item.sequence);
+    dispatch({ type: 'add-room-chat-item', item });
+    if (item.type === 'system-event') playRoomSystemEventSound(item.event.kind);
+    return true;
+  }, []);
+
+  const publishRoomChatItem = useCallback((item: ChatItem): boolean => {
+    const inserted = ingestRoomChatItem(item);
+    if (inserted) controllerRef.current?.sendRoomChatItem(item);
+    return inserted;
+  }, [ingestRoomChatItem]);
+
+  const createRoomUserItem = useCallback((request: RoomChatRequest, senderId: string, senderName: string): ChatItem => {
+    const timestamp = new Date().toISOString();
+    return {
+      id: request.id,
+      sequence: ++roomChatSequenceRef.current,
+      type: 'user-message',
+      timestamp,
+      senderId,
+      senderName: normalizeUserName(senderName),
+      text: request.text.trim(),
+      ...(request.imageData ? { imageData: request.imageData } : {}),
+      ...(request.imageName ? { imageName: request.imageName } : {}),
+    };
+  }, []);
+
+  const emitRoomSystemEvent = useCallback((kind: RoomSystemEventKind, participantId?: string, participantName?: string): void => {
+    if (!activeRoomRef.current) return;
+    const timestamp = new Date().toISOString();
+    const id = createRoomEntityId();
+    const sequence = ++roomChatSequenceRef.current;
+    publishRoomChatItem({
+      id,
+      sequence,
+      type: 'system-event',
+      timestamp,
+      event: {
+        id,
+        sequence,
+        kind,
+        timestamp,
+        ...(participantId ? { participantId } : {}),
+        ...(participantName ? { participantName: normalizeUserName(participantName) } : {}),
+      },
+    });
+  }, [publishRoomChatItem]);
+
+  const beginQualityStabilization = useCallback((direction: QualitySampleDirection, targetOverride?: QualityTarget | ScreenQualitySignature): void => {
+    const profile = screenQualityProfileFor(resolutionRef.current, fpsRef.current);
+    qualityGenerationRef.current += 1;
+    qualityDirectionRef.current = direction;
+    setQualityState(qualityStabilizerRef.current.begin(targetOverride ?? qualityTargetFor(resolutionRef.current, profile.maxBitrateBps)));
+  }, []);
+
+  const resetQualityStabilization = useCallback((): void => {
+    qualityGenerationRef.current += 1;
+    qualitySamplingRef.current = false;
+    setQualityState(qualityStabilizerRef.current.reset());
+  }, []);
+
+  /**
+   * The regular UI still renders one focused remote stream, while the V6
+   * client keeps up to three independent direct peer sessions underneath it.
+   * Membership remains authoritative in the coordinator; media remains direct
+   * between the two participant browsers.
+   */
+  const createRoomMeshClient = useCallback((status: TailscaleStatus, isHost: boolean, hostIp?: string): RoomMeshClient => {
+    const localParticipant: ParticipantState = {
+      id: localRoomParticipantIdRef.current,
+      displayName: localUserNameRef.current,
+      joinedAt: new Date().toISOString(),
+      presence: 'connected',
+      callState: roomCallActiveRef.current ? 'in-call' : 'outside-call',
+    };
+    const client = new RoomMeshClient({
+      api: window.sfscreen,
+      localParticipant,
+      selfIps: status.selfIps ?? (status.selfIp ? [status.selfIp] : []),
+      stunServerIp: status.selfIp ?? '',
+      isHost,
+      hostIp,
+      events: {
+        onMembership: (snapshot, peerCount) => {
+          setRoomMembership(snapshot);
+          setRoomPeerCount(peerCount);
+          const active = activeRoomRef.current;
+          if (!active) return;
+          const updated = { ...active, memberCount: snapshot.participants.length };
+          activeRoomRef.current = updated;
+          setActiveRoom(updated);
+        },
+        onRemoteStream: (_participant, stream, trackKind) => {
+          setRemoteStream(stream);
+          if (trackKind === 'video') {
+            setRemoteMediaPhase('sharing');
+            setRemoteMediaError(undefined);
+          }
+        },
+        onRemoteCameraStream: (_participant, stream) => {
+          rawRemoteCameraStreamRef.current = stream;
+          setRemoteCameraStream(stream);
+        },
+        onRemoteVoiceStream: (_participant, stream) => watchRemoteVoice(stream),
+        onRemoteSystemAudioStream: () => {
+          setRemoteAudioPhase('active');
+          setRemoteAudioError(undefined);
+        },
+        onConnectionState: (_participant, connectionState) => {
+          if (connectionState !== 'connected' && connectionState !== 'connecting') {
+            setRoomPeerCount((count) => Math.max(0, count - 1));
+          }
+        },
+        onError: (error) => {
+          // A single peer can fail or be retried without tearing down the
+          // room. Preserve the error as media status instead of closing chat.
+          setRemoteMediaError(error.message);
+        },
+      },
+    });
+    return client;
+  }, [watchRemoteVoice]);
+
+  const syncMeshLocalTracks = useCallback(async (mesh = roomMeshRef.current): Promise<void> => {
+    if (!mesh) return;
+    const screen = localStreamRef.current?.getVideoTracks().find((track) => track.readyState === 'live');
+    const systemAudio = state.includeSystemAudio
+      ? localStreamRef.current?.getAudioTracks().find((track) => track.readyState === 'live')
+      : undefined;
+    const camera = localCameraStreamRef.current?.getVideoTracks().find((track) => track.readyState === 'live');
+    const voice = voiceActive
+      ? microphoneStreamRef.current?.getAudioTracks().find((track) => track.readyState === 'live')
+      : undefined;
+    const updates: Array<Promise<void>> = [];
+    updates.push(screen ? mesh.setLocalTrack('screen-video', screen) : mesh.removeLocalTrack('screen-video'));
+    updates.push(systemAudio ? mesh.setLocalTrack('screen-audio', systemAudio) : mesh.removeLocalTrack('screen-audio'));
+    updates.push(camera ? mesh.setLocalTrack('camera-video', camera) : mesh.removeLocalTrack('camera-video'));
+    updates.push(voice ? mesh.setLocalTrack('voice-audio', voice) : mesh.removeLocalTrack('voice-audio'));
+    await Promise.all(updates);
+  }, [state.includeSystemAudio, voiceActive]);
+
+  useEffect(() => {
+    void syncMeshLocalTracks().catch(() => undefined);
+  }, [localStream, localCameraStream, state.includeSystemAudio, syncMeshLocalTracks, voiceActive]);
+
   const refresh = useCallback(async (): Promise<TailscaleStatus | undefined> => {
     try {
       if (testNetworkEnabledRef.current) {
@@ -717,7 +966,8 @@ export const useSession = (): SessionModel => {
   const stopAudio = useCallback(async (): Promise<void> => {
     const stream = localStreamRef.current;
     if (!stream) return;
-    await controllerRef.current?.removeAudioTrack();
+    await controllerRef.current?.removeSystemAudioTrack();
+    await roomMeshRef.current?.removeLocalTrack('screen-audio');
     stream.getAudioTracks().forEach((track) => track.stop());
     controllerRef.current?.sendAudioState('stopped');
     dispatch({ type: 'audio', phase: 'stopped' });
@@ -728,8 +978,9 @@ export const useSession = (): SessionModel => {
     if (stoppingMediaRef.current) return;
     stoppingMediaRef.current = true;
     try {
+      resetQualityStabilization();
       await controllerRef.current?.parkVideoTrack();
-      await controllerRef.current?.removeAudioTrack();
+      await controllerRef.current?.removeSystemAudioTrack();
       controllerRef.current?.sendVideoState('stopped');
       controllerRef.current?.sendAudioState('stopped');
       stopTracks(localStreamRef.current);
@@ -745,7 +996,7 @@ export const useSession = (): SessionModel => {
     } finally {
       stoppingMediaRef.current = false;
     }
-  }, [clearSource, recordDiagnostic]);
+  }, [clearSource, recordDiagnostic, resetQualityStabilization]);
 
   const close = useCallback(async (): Promise<void> => {
     simulatedStreamCleanupRef.current?.();
@@ -753,7 +1004,33 @@ export const useSession = (): SessionModel => {
     simulatedCameraCleanupRef.current?.();
     simulatedCameraCleanupRef.current = null;
     setIsSimulatedPeer(false);
-    controllerRef.current?.close();
+    const mesh = roomMeshRef.current;
+    roomMeshRef.current = undefined;
+    if (mesh) {
+      try {
+        if (roomHostRef.current) mesh.dispose();
+        else await mesh.leave();
+      } catch {
+        // A failed best-effort leave must not strand local capture or tray
+        // shutdown. The host removes inactive guests after its 30 s grace.
+        mesh.dispose();
+      }
+    }
+    setRoomMembership(undefined);
+    setRoomPeerCount(0);
+    const controller = controllerRef.current;
+    if (activeRoomRef.current) {
+      if (roomHostRef.current) {
+        emitRoomSystemEvent('room-deleted', localRoomParticipantIdRef.current, localUserNameRef.current);
+      } else {
+        // The coordinator turns this into the canonical participant-left item.
+        controller?.sendRoomLeave();
+      }
+      // Ordered control messages place the room event ahead of the close
+      // notification for peers that are still connected.
+      controller?.sendSessionClosed();
+    }
+    controller?.close();
     controllerRef.current = undefined;
     remoteIpRef.current = undefined;
     localConfirmedRef.current = false;
@@ -766,18 +1043,25 @@ export const useSession = (): SessionModel => {
     setRemoteMediaError(undefined);
     setRemoteAudioPhase('unavailable');
     setRemoteAudioError(undefined);
+    resetQualityStabilization();
     setActiveRoom(undefined);
     activeRoomRef.current = undefined;
+    roomHostRef.current = false;
     roomCallActiveRef.current = false;
     setRoomCallActive(false);
+    remoteRoomCallActiveRef.current = false;
     setRemoteRoomCallActive(false);
+    resetRoomChatTimeline();
     stopMicrophoneCapture();
+    remoteVoiceActivityRef.current?.stop();
     setVoiceActive(false);
     setVoiceMuted(false);
+    setLocalSpeaking(false);
+    setRemoteSpeaking(false);
     await window.sfscreen.stopHostedSession();
     recordDiagnostic('session-closed');
     dispatch({ type: 'closed' });
-  }, [recordDiagnostic, stopMicrophoneCapture]);
+  }, [emitRoomSystemEvent, recordDiagnostic, resetQualityStabilization, resetRoomChatTimeline, stopMicrophoneCapture]);
 
 
   const createController = useCallback((): WebRtcSession => {
@@ -787,9 +1071,24 @@ export const useSession = (): SessionModel => {
     const controller = new WebRtcSession({
       onChannelOpen: () => {
         recordDiagnostic('channel-open');
-        controller.sendUserProfile(localUserNameRef.current, localUserAvatarRef.current);
+        controller.sendUserProfile(localUserNameRef.current, localUserAvatarRef.current, localRoomParticipantIdRef.current);
         if (activeRoomRef.current) controller.sendRoomCallState(roomCallActiveRef.current ? 'joined' : 'left');
-        dispatch({ type: 'verifying', message: 'Canal seguro conectado. Compare o código de segurança.' });
+        // DTLS/SRTP is already authenticated at this point. V6 room entry is
+        // direct, so a second bilateral confirmation must not block media.
+        localConfirmedRef.current = true;
+        remoteConfirmedRef.current = true;
+        recordDiagnostic('verified');
+        dispatch({ type: 'connected' });
+        if ((!activeRoomRef.current || roomCallActiveRef.current) && localStreamRef.current) {
+          void activatePreparedStreamRef.current?.(localStreamRef.current);
+        }
+        if ((!activeRoomRef.current || roomCallActiveRef.current) && localCameraStreamRef.current) {
+          const cameraTrack = localCameraStreamRef.current.getVideoTracks().find((track) => track.readyState === 'live');
+          if (cameraTrack) {
+            void controller.replaceCameraTrack(cameraTrack);
+            controller.sendCameraState('active');
+          }
+        }
       },
       onControlMessage: (message) => {
         if (message.type === 'security-confirmed') {
@@ -810,6 +1109,50 @@ export const useSession = (): SessionModel => {
         }
         if (message.type === 'user-profile') {
           dispatch({ type: 'set-remote-user-profile', userName: message.userName, userAvatar: message.userAvatar });
+          if (activeRoomRef.current) {
+            const remote = remoteRoomParticipantRef.current;
+            remote.id = message.participantId ?? remote.id;
+            remote.name = message.userName;
+            if (roomHostRef.current && !remote.joined) {
+              remote.joined = true;
+              remote.left = false;
+              emitRoomSystemEvent('participant-joined', remote.id, remote.name);
+            }
+          }
+          return;
+        }
+        if (message.type === 'room-chat-item') {
+          if (activeRoomRef.current) ingestRoomChatItem(message.item);
+          return;
+        }
+        if (message.type === 'room-chat-request') {
+          if (!activeRoomRef.current || !roomHostRef.current) return;
+          const existing = roomChatRequestItemsRef.current.get(message.request.id);
+          if (existing) {
+            // A retried request gets the original canonical envelope back.
+            controller.sendRoomChatItem(existing);
+            return;
+          }
+          const remote = remoteRoomParticipantRef.current;
+          const item = createRoomUserItem(
+            message.request,
+            remote.id ?? 'remote-participant',
+            remote.name ?? 'Um participante',
+          );
+          roomChatRequestItemsRef.current.set(message.request.id, item);
+          if (roomChatRequestItemsRef.current.size > maxRoomChatItems) {
+            const oldestRequestId = roomChatRequestItemsRef.current.keys().next().value;
+            if (oldestRequestId) roomChatRequestItemsRef.current.delete(oldestRequestId);
+          }
+          publishRoomChatItem(item);
+          return;
+        }
+        if (message.type === 'room-leave') {
+          if (activeRoomRef.current && roomHostRef.current && !remoteRoomParticipantRef.current.left) {
+            const remote = remoteRoomParticipantRef.current;
+            remote.left = true;
+            emitRoomSystemEvent('participant-left', remote.id, remote.name);
+          }
           return;
         }
         if (message.type === 'chat-message') {
@@ -837,7 +1180,14 @@ export const useSession = (): SessionModel => {
           return;
         }
         if (message.type === 'room-call-state') {
-          setRemoteRoomCallActive(message.state === 'joined');
+          const wasInCall = remoteRoomCallActiveRef.current;
+          const isInCall = message.state === 'joined';
+          remoteRoomCallActiveRef.current = isInCall;
+          setRemoteRoomCallActive(isInCall);
+          if (activeRoomRef.current && roomHostRef.current && wasInCall && !isInCall) {
+            const remote = remoteRoomParticipantRef.current;
+            emitRoomSystemEvent('participant-left-call', remote.id, remote.name);
+          }
           return;
         }
         if (message.type === 'session-closed') {
@@ -848,6 +1198,8 @@ export const useSession = (): SessionModel => {
           rawRemoteCameraStreamRef.current = undefined;
           setRemoteMediaPhase('stopped');
           setRemoteAudioPhase('unavailable');
+          remoteVoiceActivityRef.current?.stop();
+          resetQualityStabilization();
           dispatch({ type: 'closed' });
           return;
         }
@@ -856,12 +1208,15 @@ export const useSession = (): SessionModel => {
             setRemoteMediaPhase('sharing');
             setRemoteMediaError(undefined);
           } else if (message.state === 'starting') {
+            beginQualityStabilization('inbound', message.quality);
             setRemoteMediaPhase('starting');
             setRemoteMediaError(undefined);
           } else if (message.state === 'failed') {
+            resetQualityStabilization();
             setRemoteMediaPhase('failed');
             setRemoteMediaError('A outra pessoa não conseguiu iniciar o compartilhamento.');
           } else {
+            resetQualityStabilization();
             setRemoteMediaPhase('stopped');
             setRemoteMediaError(undefined);
           }
@@ -902,6 +1257,8 @@ export const useSession = (): SessionModel => {
           rawRemoteCameraStreamRef.current = undefined;
           setRemoteMediaPhase('stopped');
           setRemoteAudioPhase('unavailable');
+          remoteVoiceActivityRef.current?.stop();
+          resetQualityStabilization();
           dispatch({ type: 'failed', message: 'A conexão WebRTC falhou pela interface Tailscale.' });
         } else if (connectionState === 'closed' || connectionState === 'disconnected') {
           recordDiagnostic('session-closed');
@@ -911,6 +1268,8 @@ export const useSession = (): SessionModel => {
           rawRemoteCameraStreamRef.current = undefined;
           setRemoteMediaPhase('stopped');
           setRemoteAudioPhase('unavailable');
+          remoteVoiceActivityRef.current?.stop();
+          resetQualityStabilization();
           dispatch({ type: 'closed' });
         }
         if (connectionState === 'connected') {
@@ -931,10 +1290,13 @@ export const useSession = (): SessionModel => {
           setRemoteCameraStream(stream);
         }
       },
+      onRemoteVoiceStream: (stream) => {
+        watchRemoteVoice(stream);
+      },
     });
     controllerRef.current = controller;
     return controller;
-  }, [recordDiagnostic]);
+  }, [beginQualityStabilization, createRoomUserItem, emitRoomSystemEvent, ingestRoomChatItem, publishRoomChatItem, recordDiagnostic, resetQualityStabilization, watchRemoteVoice]);
 
   const activatePreparedStream = useCallback(async (stream: MediaStream): Promise<void> => {
     const controller = controllerRef.current;
@@ -942,11 +1304,14 @@ export const useSession = (): SessionModel => {
     const videoTrack = stream.getVideoTracks().find((track) => track.readyState === 'live');
     if (!videoTrack) throw new Error('Nenhuma faixa de vídeo foi disponibilizada pelo monitor selecionado.');
 
-    controller.sendVideoState('starting');
+    const profile = screenQualityProfileFor(resolutionRef.current, fpsRef.current);
+    const qualitySignature = qualityTargetFor(resolutionRef.current, profile.maxBitrateBps);
+    beginQualityStabilization('outbound', qualitySignature);
+    controller.sendVideoState('starting', qualitySignature);
     dispatch({ type: 'media', phase: 'starting' });
     recordDiagnostic('video-starting');
     videoTrack.enabled = true;
-    await controller.replaceVideoTrack(videoTrack);
+    await controller.replaceVideoTrack(videoTrack, profile.maxBitrateBps, profile.maxFramerate);
 
     if (state.includeSystemAudio) {
       controller.sendAudioState('starting');
@@ -955,7 +1320,7 @@ export const useSession = (): SessionModel => {
       const audioTrack = stream.getAudioTracks().find((track) => track.readyState === 'live');
       if (audioTrack) {
         audioTrack.enabled = true;
-        await controller.replaceAudioTrack(audioTrack);
+        await controller.replaceSystemAudioTrack(audioTrack);
         controller.sendAudioState('active');
         dispatch({ type: 'audio', phase: 'active' });
         recordDiagnostic('audio-active');
@@ -965,15 +1330,22 @@ export const useSession = (): SessionModel => {
         recordDiagnostic('audio-unavailable');
       }
     } else {
-      await controller.removeAudioTrack();
+      await controller.removeSystemAudioTrack();
       controller.sendAudioState('unavailable');
       dispatch({ type: 'audio', phase: 'unavailable' });
     }
 
-    controller.sendVideoState('active');
+    controller.sendVideoState('active', qualitySignature);
     dispatch({ type: 'media', phase: 'sharing' });
     recordDiagnostic('video-active');
-  }, [recordDiagnostic, state.includeSystemAudio]);
+  }, [beginQualityStabilization, recordDiagnostic, state.includeSystemAudio]);
+
+  useEffect(() => {
+    activatePreparedStreamRef.current = activatePreparedStream;
+    return () => {
+      activatePreparedStreamRef.current = undefined;
+    };
+  }, [activatePreparedStream]);
 
   const captureAndAttach = useCallback(async (source: ScreenSource, includeSystemAudio: boolean, selectionAlreadyArmed: boolean): Promise<void> => {
     const controller = controllerRef.current;
@@ -981,7 +1353,6 @@ export const useSession = (): SessionModel => {
     const previous = localStreamRef.current;
     let captured: MediaStream | undefined;
 
-    controller?.sendVideoState('starting');
     dispatch({ type: 'media', phase: 'starting' });
     recordDiagnostic('video-starting');
     if (includeSystemAudio) {
@@ -1014,12 +1385,11 @@ export const useSession = (): SessionModel => {
       videoTrack.onended = () => { if (localStreamRef.current === captured) void stopSharing(); };
 
       if (isConnected && controller) {
-        const resBitrateMap: Record<StreamResolution, number> = {
-          '720p': 3_000_000,
-          '1080p': 6_000_000,
-          '1440p': 12_000_000,
-        };
-        await controller.replaceVideoTrack(videoTrack, resBitrateMap[resolutionRef.current], fpsRef.current);
+        const profile = screenQualityProfileFor(resolutionRef.current, fpsRef.current);
+        const qualitySignature = qualityTargetFor(resolutionRef.current, profile.maxBitrateBps);
+        beginQualityStabilization('outbound', qualitySignature);
+        controller.sendVideoState('starting', qualitySignature);
+        await controller.replaceVideoTrack(videoTrack, profile.maxBitrateBps, profile.maxFramerate);
       }
 
 
@@ -1029,14 +1399,14 @@ export const useSession = (): SessionModel => {
           audioTrack.enabled = true;
           audioTrack.onended = () => { if (localStreamRef.current === captured) void stopAudio(); };
           if (isConnected && controller) {
-            await controller.replaceAudioTrack(audioTrack);
+            await controller.replaceSystemAudioTrack(audioTrack);
             controller.sendAudioState('active');
           }
           dispatch({ type: 'audio', phase: 'active' });
           recordDiagnostic('audio-active');
         } else {
           if (isConnected && controller) {
-            await controller.removeAudioTrack();
+            await controller.removeSystemAudioTrack();
             controller.sendAudioState('unavailable');
           }
           dispatch({ type: 'audio', phase: 'unavailable', error: 'O Windows não disponibilizou o áudio do sistema.' });
@@ -1044,7 +1414,7 @@ recordDiagnostic('audio-unavailable');
         }
       } else {
         if (isConnected && controller) {
-          await controller.removeAudioTrack();
+          await controller.removeSystemAudioTrack();
           controller.sendAudioState('unavailable');
         }
         dispatch({ type: 'audio', phase: 'unavailable' });
@@ -1054,7 +1424,10 @@ recordDiagnostic('audio-unavailable');
       capturedSourceIdRef.current = source.id;
       setLocalStream(captured);
       if (previous && previous !== captured) stopTracks(previous);
-      controller?.sendVideoState('active');
+      if (isConnected && controller) {
+        const profile = screenQualityProfileFor(resolutionRef.current, fpsRef.current);
+        controller.sendVideoState('active', qualityTargetFor(resolutionRef.current, profile.maxBitrateBps));
+      }
       dispatch({ type: 'media', phase: 'sharing' });
       recordDiagnostic('video-active');
     } catch (caught) {
@@ -1065,12 +1438,13 @@ recordDiagnostic('audio-unavailable');
         controller?.sendVideoState('active');
         dispatch({ type: 'media', phase: 'sharing', error: message });
       } else {
+        resetQualityStabilization();
         controller?.sendVideoState('failed');
         controller?.sendAudioState('failed');
         dispatch({ type: 'media', phase: 'failed', error: message });
       }
     }
-  }, [recordDiagnostic, state.phase, stopAudio, stopSharing]);
+  }, [beginQualityStabilization, recordDiagnostic, resetQualityStabilization, state.phase, stopAudio, stopSharing]);
 
   const openSourcePicker = useCallback(async (): Promise<void> => {
     const result = await window.sfscreen.listScreenSources();
@@ -1111,12 +1485,35 @@ recordDiagnostic('audio-unavailable');
         setOutgoingFps(metrics.videoFramesPerSecond);
       }).catch(() => undefined);
     }, 2_000);
+    const qualityTimer = window.setInterval(() => {
+      const stabilizer = qualityStabilizerRef.current;
+      if (stabilizer.state.phase === 'idle') return;
+      const controller = controllerRef.current;
+      if (!controller) {
+        setQualityState(stabilizer.tick(performance.now()));
+        return;
+      }
+      if (qualitySamplingRef.current) return;
+
+      qualitySamplingRef.current = true;
+      const generation = qualityGenerationRef.current;
+      const direction = qualityDirectionRef.current;
+      void controller.getQualitySample().then((sample) => {
+        if (generation !== qualityGenerationRef.current) return;
+        setQualityState(stabilizer.sample(qualitySampleFromWebRtc(sample, direction)));
+      }).catch(() => {
+        if (generation !== qualityGenerationRef.current) return;
+        setQualityState(stabilizer.tick(performance.now()));
+      }).finally(() => {
+        if (generation === qualityGenerationRef.current) qualitySamplingRef.current = false;
+      });
+    }, 250);
     const unsubscribe = window.sfscreen.onSessionAnswer((event) => {
       const controller = controllerRef.current;
       if (!controller) return;
-      void controller.applyAnswer(event.answer).then((securityCode) => {
+      void controller.applyAnswer(event.answer).then(() => {
         remoteIpRef.current = event.peerIp;
-        dispatch({ type: 'verifying', securityCode, message: 'Resposta recebida. Compare o código de segurança.' });
+        dispatch({ type: 'verifying', message: 'Resposta recebida. Autenticando o canal seguro…' });
       }).catch((caught: unknown) => dispatch({ type: 'failed', message: errorMessage(caught) }));
     });
     const unsubStatus = window.sfscreen.onRemoteControlStatusChanged?.((status) => {
@@ -1127,6 +1524,7 @@ recordDiagnostic('audio-unavailable');
     return () => {
       window.clearInterval(clock);
       window.clearInterval(metricsTimer);
+      window.clearInterval(qualityTimer);
       unsubscribe();
       unsubStatus?.();
       stopTracks(localStreamRef.current);
@@ -1140,6 +1538,18 @@ recordDiagnostic('audio-unavailable');
     const status = await refresh();
     if (!status || status.state !== 'ready' || !status.selfIp) {
       dispatch({ type: 'failed', message: status?.message ?? 'Tailscale indisponível.' });
+      return undefined;
+    }
+    return status;
+  }, [refresh]);
+
+  // A room may be opened before another machine is online. Tailscale still
+  // assigns a local address in `no-peers`, which is enough for the listener to
+  // bind and advertise later when a peer becomes available.
+  const requireRoomHostNetwork = useCallback(async (): Promise<TailscaleStatus | undefined> => {
+    const status = await refresh();
+    if (!status || !status.selfIp || (status.state !== 'ready' && status.state !== 'no-peers')) {
+      dispatch({ type: 'failed', message: status?.message ?? 'Tailscale indisponível para abrir a sala.' });
       return undefined;
     }
     return status;
@@ -1184,7 +1594,7 @@ recordDiagnostic('audio-unavailable');
         });
       }
       if (isConnected && controller) {
-        await controller.removeAudioTrack();
+        await controller.removeSystemAudioTrack();
         controller.sendAudioState('unavailable');
       }
       dispatch({ type: 'source-selected', source: state.selectedSource, includeSystemAudio: false });
@@ -1195,7 +1605,7 @@ recordDiagnostic('audio-unavailable');
       if (existingAudioTrack) {
         existingAudioTrack.enabled = true;
         if (isConnected && controller) {
-          await controller.replaceAudioTrack(existingAudioTrack);
+          await controller.replaceSystemAudioTrack(existingAudioTrack);
           controller.sendAudioState('active');
         }
         dispatch({ type: 'source-selected', source: state.selectedSource, includeSystemAudio: true });
@@ -1267,8 +1677,8 @@ recordDiagnostic('audio-unavailable');
       remoteIpRef.current = found.value.hostIp;
       dispatch({ type: 'begin', role: 'viewer', phase: 'negotiating', message: 'Sessão encontrada. Criando conexão segura…' });
       const controller = createController();
-      const { answer, securityCode } = await controller.createAnswer(found.value.offer, status.selfIps ?? [status.selfIp], found.value.hostIp);
-      dispatch({ type: 'verifying', securityCode, message: 'Resposta enviada. Compare o código de segurança.' });
+      const { answer } = await controller.createAnswer(found.value.offer, status.selfIps ?? [status.selfIp], found.value.hostIp);
+      dispatch({ type: 'verifying', message: 'Resposta enviada. Autenticando o canal seguro…' });
       const submitted = await window.sfscreen.submitAnswer(found.value.hostIp, code, answer);
       if (!submitted.ok) dispatch({ type: 'failed', message: submitted.error.message });
     } catch (caught) {
@@ -1278,16 +1688,19 @@ recordDiagnostic('audio-unavailable');
   }, [joinCode, createController, recordDiagnostic, requireReady]);
 
   const hostRoom = useCallback(async (): Promise<HostedRoom | undefined> => {
+    roomHostRef.current = false;
     roomCallActiveRef.current = false;
     setRoomCallActive(false);
+    remoteRoomCallActiveRef.current = false;
     setRemoteRoomCallActive(false);
+    resetRoomChatTimeline();
     dispatch({ type: 'begin', role: 'host', phase: 'hosting', message: 'Abrindo a sala privada na tailnet…' });
     sessionStartedAtRef.current = Date.now();
     diagnosticEventsRef.current = [];
     metricsRef.current = {};
     recordDiagnostic('session-started');
     try {
-      const status = await requireReady();
+      const status = await requireRoomHostNetwork();
       if (!status?.selfIp) return undefined;
       if (testNetworkEnabledRef.current) {
         const saved = await window.sfscreen.getLocalRoom();
@@ -1295,24 +1708,50 @@ recordDiagnostic('audio-unavailable');
         const hosted: HostedRoom = { room: saved.value, expiresAt: new Date(Date.now() + 10 * 60 * 1_000).toISOString() };
         activeRoomRef.current = hosted;
         setActiveRoom(hosted);
+        roomHostRef.current = true;
+        emitRoomSystemEvent('participant-joined', localRoomParticipantIdRef.current, localUserNameRef.current);
+        dispatch({ type: 'connected' });
         return hosted;
       }
-      if (typeof window.sfscreen?.hostRoomSession !== 'function') {
+      if (typeof window.sfscreen?.hostMeshRoomSession !== 'function') {
         throw new Error('O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.');
       }
-      const controller = createController();
-      const offer = await controller.createOffer(status.selfIps ?? [status.selfIp], status.selfIp, crypto.randomUUID(), crypto.randomUUID());
-      const result = await window.sfscreen.hostRoomSession(offer);
+      // The bootstrap offer keeps the listener contract compatible while the
+      // V6 coordinator exchanges a distinct direct offer/answer for every
+      // participant pair. It never carries room media itself.
+      const bootstrap = createController();
+      const offer = await bootstrap.createOffer(status.selfIps ?? [status.selfIp], status.selfIp, crypto.randomUUID(), crypto.randomUUID());
+      const hostParticipant: ParticipantState = {
+        id: localRoomParticipantIdRef.current,
+        displayName: localUserNameRef.current,
+        joinedAt: new Date().toISOString(),
+        presence: 'connected',
+        callState: 'outside-call',
+      };
+      const result = await window.sfscreen.hostMeshRoomSession(offer, hostParticipant);
       if (!result.ok) throw new Error(result.error.message);
+      bootstrap.close();
+      controllerRef.current = undefined;
+      const mesh = createRoomMeshClient(status, true);
+      roomMeshRef.current?.dispose();
+      roomMeshRef.current = mesh;
+      mesh.startHosted(result.value.membership);
+      await syncMeshLocalTracks(mesh);
       activeRoomRef.current = result.value;
       setActiveRoom(result.value);
+      roomHostRef.current = true;
+      emitRoomSystemEvent('participant-joined', localRoomParticipantIdRef.current, localUserNameRef.current);
+      // The owner is now inside the room even if no guest has connected yet.
+      // Entering the call remains a separate explicit action.
+      dispatch({ type: 'connected' });
       return result.value;
     } catch (caught) {
       controllerRef.current?.close();
+      roomHostRef.current = false;
       dispatch({ type: 'failed', message: errorMessage(caught) });
       return undefined;
     }
-  }, [createController, recordDiagnostic, requireReady]);
+  }, [createController, createRoomMeshClient, emitRoomSystemEvent, recordDiagnostic, requireRoomHostNetwork, resetRoomChatTimeline, syncMeshLocalTracks]);
 
   const discoverRooms = useCallback(async (): Promise<RoomSummary[]> => {
     if (testNetworkEnabledRef.current) return [simulatedRoom()];
@@ -1330,20 +1769,26 @@ recordDiagnostic('audio-unavailable');
     try { localStorage.setItem('sfscreen_test_network', String(enabled)); } catch { /* Ignored */ }
     setActiveRoom(undefined);
     activeRoomRef.current = undefined;
+    roomHostRef.current = false;
     roomCallActiveRef.current = false;
     setRoomCallActive(false);
+    remoteRoomCallActiveRef.current = false;
     setRemoteRoomCallActive(false);
+    resetRoomChatTimeline();
     dispatch({ type: 'closed' });
     await refresh();
-  }, [refresh]);
+  }, [refresh, resetRoomChatTimeline]);
 
   const joinRoom = useCallback(async (room: RoomSummary, password: string): Promise<void> => {
     const roomId = room.id;
     const hostedRoom: HostedRoom = { room, expiresAt: new Date(Date.now() + 10 * 60 * 1_000).toISOString() };
+    roomHostRef.current = false;
+    resetRoomChatTimeline();
     activeRoomRef.current = hostedRoom;
     setActiveRoom(hostedRoom);
     roomCallActiveRef.current = false;
     setRoomCallActive(false);
+    remoteRoomCallActiveRef.current = false;
     setRemoteRoomCallActive(false);
     dispatch({ type: 'begin', role: 'viewer', phase: 'searching', message: 'Entrando na sala privada pela tailnet…' });
     sessionStartedAtRef.current = Date.now();
@@ -1365,34 +1810,121 @@ recordDiagnostic('audio-unavailable');
       const found = await window.sfscreen.findRoom(roomId, password);
       if (!found.ok) throw new Error(found.error.message);
       remoteIpRef.current = found.value.hostIp;
+      if (found.value.topology === 'mesh') {
+        const mesh = createRoomMeshClient(status, false, found.value.hostIp);
+        roomMeshRef.current?.dispose();
+        roomMeshRef.current = mesh;
+        await mesh.join({ roomId, password });
+        await syncMeshLocalTracks(mesh);
+        dispatch({ type: 'connected' });
+        return;
+      }
       dispatch({ type: 'begin', role: 'viewer', phase: 'negotiating', message: 'Sala encontrada. Criando conexão P2P segura…' });
       const controller = createController();
-      const { answer, securityCode } = await controller.createAnswer(found.value.offer, status.selfIps ?? [status.selfIp], found.value.hostIp);
-      dispatch({ type: 'verifying', securityCode, message: 'Conexão com a sala criada. Compare o código de segurança.' });
+      const { answer } = await controller.createAnswer(found.value.offer, status.selfIps ?? [status.selfIp], found.value.hostIp);
+      dispatch({ type: 'verifying', message: 'Conexão com a sala criada. Autenticando o canal seguro…' });
       const submitted = await window.sfscreen.submitRoomAnswer(found.value.hostIp, roomId, password, answer);
       if (!submitted.ok) throw new Error(submitted.error.message);
     } catch (caught) {
       controllerRef.current?.close();
       activeRoomRef.current = undefined;
       setActiveRoom(undefined);
+      resetRoomChatTimeline();
       dispatch({ type: 'failed', message: errorMessage(caught) });
     }
-  }, [createController, recordDiagnostic, requireReady]);
+  }, [createController, createRoomMeshClient, recordDiagnostic, requireReady, resetRoomChatTimeline, syncMeshLocalTracks]);
+
+  const joinRoomByCode = useCallback(async (rawCode: string, password?: string): Promise<void> => {
+    const inviteCode = normalizeSessionCode(rawCode);
+    if (inviteCode.length !== 7) {
+      dispatch({ type: 'failed', message: 'Digite um código de sala válido no formato XXX-XXX-X.' });
+      return;
+    }
+
+    roomHostRef.current = false;
+    resetRoomChatTimeline();
+    roomCallActiveRef.current = false;
+    setRoomCallActive(false);
+    remoteRoomCallActiveRef.current = false;
+    setRemoteRoomCallActive(false);
+    dispatch({ type: 'begin', role: 'viewer', phase: 'searching', message: 'Procurando a sala pelo código…' });
+    sessionStartedAtRef.current = Date.now();
+    diagnosticEventsRef.current = [];
+    metricsRef.current = {};
+    recordDiagnostic('session-started');
+
+    try {
+      const status = await requireReady();
+      if (!status?.selfIp) return;
+      if (testNetworkEnabledRef.current) {
+        const room = simulatedRoom();
+        const hosted: HostedRoom = {
+          room,
+          code: inviteCode,
+          expiresAt: new Date(Date.now() + roomInviteLifetimeMs).toISOString(),
+        };
+        activeRoomRef.current = hosted;
+        setActiveRoom(hosted);
+        simulatePeerRef.current();
+        return;
+      }
+      if (typeof window.sfscreen?.findRoomByCode !== 'function' || typeof window.sfscreen?.submitRoomAnswer !== 'function') {
+        throw new Error('O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.');
+      }
+
+      const found = await window.sfscreen.findRoomByCode(inviteCode, password);
+      if (!found.ok) throw new Error(found.error.message);
+      const hosted: HostedRoom = {
+        room: found.value.room,
+        code: inviteCode,
+        expiresAt: new Date(Date.now() + roomInviteLifetimeMs).toISOString(),
+      };
+      activeRoomRef.current = hosted;
+      setActiveRoom(hosted);
+      remoteIpRef.current = found.value.hostIp;
+      if (found.value.topology === 'mesh') {
+        const mesh = createRoomMeshClient(status, false, found.value.hostIp);
+        roomMeshRef.current?.dispose();
+        roomMeshRef.current = mesh;
+        await mesh.join({ roomId: found.value.room.id, inviteCode, ...(password ? { password } : {}) });
+        await syncMeshLocalTracks(mesh);
+        dispatch({ type: 'connected' });
+        return;
+      }
+      dispatch({ type: 'begin', role: 'viewer', phase: 'negotiating', message: 'Sala encontrada. Criando conexão P2P segura…' });
+      const controller = createController();
+      const { answer } = await controller.createAnswer(found.value.offer, status.selfIps ?? [status.selfIp], found.value.hostIp);
+      dispatch({ type: 'verifying', message: 'Entrada autorizada. Autenticando o canal seguro…' });
+      const submitted = await window.sfscreen.submitRoomAnswer(found.value.hostIp, found.value.room.id, password, answer, inviteCode);
+      if (!submitted.ok) throw new Error(submitted.error.message);
+    } catch (caught) {
+      controllerRef.current?.close();
+      activeRoomRef.current = undefined;
+      setActiveRoom(undefined);
+      resetRoomChatTimeline();
+      dispatch({ type: 'failed', message: errorMessage(caught) });
+    }
+  }, [createController, createRoomMeshClient, recordDiagnostic, requireReady, resetRoomChatTimeline, syncMeshLocalTracks]);
 
   const toggleVoice = useCallback(async (): Promise<void> => {
     const controller = controllerRef.current;
     if (state.phase !== 'connected') return;
     if (activeRoomRef.current && !roomCallActiveRef.current) return;
-    if (!controller && !testNetworkEnabledRef.current) return;
+    if (!controller && !roomMeshRef.current && !testNetworkEnabledRef.current) return;
     if (voiceActive) {
       stopMicrophoneCapture();
       const systemTrack = state.includeSystemAudio ? localStreamRef.current?.getAudioTracks().find((track) => track.readyState === 'live') : undefined;
-      if (controller && systemTrack) {
-        await controller.replaceAudioTrack(systemTrack);
-        controller.sendAudioState('active');
-      } else if (controller) {
-        await controller.removeAudioTrack();
-        controller.sendAudioState('unavailable');
+      if (controller) {
+        // Voice and screen audio use independent transceivers. Stopping the
+        // microphone must never replace or remove the screen-audio sender.
+        await controller.removeVoiceTrack();
+        if (systemTrack) {
+          await controller.replaceSystemAudioTrack(systemTrack);
+          controller.sendAudioState('active');
+        } else {
+          await controller.removeSystemAudioTrack();
+          controller.sendAudioState('unavailable');
+        }
       }
       setVoiceActive(false);
       setVoiceMuted(false);
@@ -1537,8 +2069,10 @@ recordDiagnostic('audio-unavailable');
     track.enabled = true;
     const handleEnded = (): void => {
       if (microphoneStreamRef.current === stream || rawMicrophoneStreamRef.current === rawStream) {
+        localVoiceActivityRef.current?.stop();
         setVoiceActive(false);
         setVoiceMuted(false);
+        setLocalSpeaking(false);
       }
     };
     track.onended = handleEnded;
@@ -1553,10 +2087,10 @@ recordDiagnostic('audio-unavailable');
     microphoneLowPassRef.current = stream === rawStream ? undefined : lowPassNode;
     microphoneCompressorRef.current = stream === rawStream ? undefined : compressorNode;
     microphoneGateIntervalRef.current = stream === rawStream ? undefined : gateInterval;
+    watchLocalVoice(stream);
     try {
       if (controller) {
-        await controller.replaceAudioTrack(track);
-        controller.sendAudioState('active');
+        await controller.replaceVoiceTrack(track);
       }
     } catch (error) {
       stopMicrophoneCapture();
@@ -1564,19 +2098,22 @@ recordDiagnostic('audio-unavailable');
     }
     setVoiceActive(true);
     setVoiceMuted(false);
-  }, [state.includeSystemAudio, state.phase, stopMicrophoneCapture, voiceActive]);
+  }, [state.includeSystemAudio, state.phase, stopMicrophoneCapture, voiceActive, watchLocalVoice]);
 
   const toggleVoiceMute = useCallback((): void => {
     const track = microphoneStreamRef.current?.getAudioTracks()[0];
     if (!track || !voiceActive) return;
     track.enabled = !track.enabled;
     setVoiceMuted(!track.enabled);
+    if (!track.enabled) {
+      localVoiceActivityRef.current?.setInactive();
+    }
   }, [voiceActive]);
 
   const confirmSecurity = useCallback((): void => {
     localConfirmedRef.current = true;
     controllerRef.current?.confirmSecurity();
-    controllerRef.current?.sendUserProfile(localUserNameRef.current, localUserAvatarRef.current);
+    controllerRef.current?.sendUserProfile(localUserNameRef.current, localUserAvatarRef.current, localRoomParticipantIdRef.current);
     dispatch({ type: 'local-confirmed' });
     if (remoteConfirmedRef.current) {
       recordDiagnostic('verified');
@@ -1597,8 +2134,8 @@ recordDiagnostic('audio-unavailable');
   const setJoinCode = useCallback((value: string): void => setJoinCodeState(normalizeSessionCode(value)), []);
 
   const copyCode = useCallback(async (): Promise<boolean> => {
-    if (!state.hosted) return false;
-    const text = state.hosted.code;
+    const text = activeRoomRef.current?.code ?? state.hosted?.code;
+    if (!text) return false;
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
@@ -1634,7 +2171,15 @@ recordDiagnostic('audio-unavailable');
     const controllerMetrics = await controllerRef.current?.getMetrics().catch(() => undefined);
     if (controllerMetrics) metricsRef.current = controllerMetrics;
     const route = ['direct', 'relay', 'peer-relay', 'unknown'].includes(state.route) ? state.route as DiagnosticsReport['route'] : 'unknown';
-    const report: DiagnosticsReport = { formatVersion: diagnosticsFormatVersion, appVersion: '0.1.3', exportedAt: new Date().toISOString(), route, events: diagnosticEventsRef.current, metrics: metricsRef.current };
+    const appVersion = await window.sfscreen.getAppVersion?.().catch(() => '0.0.0') ?? '0.0.0';
+    const report: DiagnosticsReport = {
+      formatVersion: diagnosticsFormatVersion,
+      appVersion,
+      exportedAt: new Date().toISOString(),
+      route,
+      events: diagnosticEventsRef.current,
+      peers: controllerRef.current ? [{ id: 'peer-1', metrics: metricsRef.current }] : [],
+    };
     const result = await window.sfscreen.exportDiagnostics(report);
     return result.ok && result.value;
   }, [state.route]);
@@ -1654,12 +2199,8 @@ recordDiagnostic('audio-unavailable');
         }).catch(() => undefined);
       }
     }
-    const resBitrateMap: Record<StreamResolution, number> = {
-      '720p': 3_000_000,
-      '1080p': 6_000_000,
-      '1440p': 12_000_000,
-    };
-    void controllerRef.current?.updateVideoParameters(resBitrateMap[newResolution], fpsRef.current);
+    const profile = screenQualityProfileFor(newResolution, fpsRef.current);
+    void controllerRef.current?.updateVideoParameters(profile.maxBitrateBps, profile.maxFramerate);
   }, []);
 
   const setFps = useCallback((newFps: StreamFps): void => {
@@ -1676,12 +2217,8 @@ recordDiagnostic('audio-unavailable');
         }).catch(() => undefined);
       }
     }
-    const resBitrateMap: Record<StreamResolution, number> = {
-      '720p': 3_000_000,
-      '1080p': 6_000_000,
-      '1440p': 12_000_000,
-    };
-    void controllerRef.current?.updateVideoParameters(resBitrateMap[resolutionRef.current], newFps);
+    const profile = screenQualityProfileFor(resolutionRef.current, newFps);
+    void controllerRef.current?.updateVideoParameters(profile.maxBitrateBps, profile.maxFramerate);
   }, []);
 
   const deleteChatMessage = useCallback((id: string): void => {
@@ -1694,6 +2231,28 @@ recordDiagnostic('audio-unavailable');
   const sendChatMessage = useCallback((text: string, image?: { data: string; name: string }): void => {
     const trimmed = text.trim();
     if (!trimmed && !image) return;
+    if (activeRoomRef.current) {
+      const request: RoomChatRequest = {
+        id: createRoomEntityId(),
+        text: trimmed,
+        imageData: image?.data,
+        imageName: image?.name,
+      };
+      if (roomHostRef.current) {
+        const item = createRoomUserItem(request, localRoomParticipantIdRef.current, localUserNameRef.current);
+        roomChatRequestItemsRef.current.set(request.id, item);
+        if (roomChatRequestItemsRef.current.size > maxRoomChatItems) {
+          const oldestRequestId = roomChatRequestItemsRef.current.keys().next().value;
+          if (oldestRequestId) roomChatRequestItemsRef.current.delete(oldestRequestId);
+        }
+        publishRoomChatItem(item);
+      } else {
+        // Guests do not choose a sequence. They wait for the coordinator's
+        // echoed item, which avoids different local orders during reconnects.
+        controllerRef.current?.sendRoomChatRequest(request);
+      }
+      return;
+    }
     const message: ChatMessagePayload = {
       id: crypto.randomUUID(),
       senderName: state.localUserName,
@@ -1707,20 +2266,20 @@ recordDiagnostic('audio-unavailable');
     if (state.phase === 'connected') {
       controllerRef.current?.sendChatMessage(message);
     }
-  }, [state.localUserName, state.phase]);
+  }, [createRoomUserItem, publishRoomChatItem, state.localUserName, state.phase]);
 
   const setUserName = useCallback((name: string): void => {
     const normalized = normalizeUserName(name);
     dispatch({ type: 'set-user-name', name: normalized });
     if (state.phase === 'connected') {
-      controllerRef.current?.sendUserProfile(normalized, localUserAvatarRef.current);
+      controllerRef.current?.sendUserProfile(normalized, localUserAvatarRef.current, localRoomParticipantIdRef.current);
     }
   }, [state.phase]);
 
   const setUserAvatar = useCallback((avatar?: string): void => {
     dispatch({ type: 'set-local-user-avatar', avatar });
     if (state.phase === 'connected') {
-      controllerRef.current?.sendUserProfile(localUserNameRef.current, avatar);
+      controllerRef.current?.sendUserProfile(localUserNameRef.current, avatar, localRoomParticipantIdRef.current);
     }
   }, [state.phase]);
 
@@ -1809,6 +2368,7 @@ recordDiagnostic('audio-unavailable');
     setRoomCallActive(true);
     controllerRef.current?.sendRoomCallState('joined');
     if (testNetworkEnabledRef.current && isSimulatedPeer) {
+      remoteRoomCallActiveRef.current = true;
       setRemoteRoomCallActive(true);
       simulatePeerRef.current({ joinRoomCall: true, sendChatMessage: false });
     }
@@ -1827,7 +2387,10 @@ recordDiagnostic('audio-unavailable');
     roomCallActiveRef.current = false;
     setRoomCallActive(false);
     controllerRef.current?.sendRoomCallState('left');
-  }, [cameraActive, state.mediaPhase, stopCamera, stopSharing, toggleVoice, voiceActive]);
+    if (roomHostRef.current) {
+      emitRoomSystemEvent('participant-left-call', localRoomParticipantIdRef.current, localUserNameRef.current);
+    }
+  }, [cameraActive, emitRoomSystemEvent, state.mediaPhase, stopCamera, stopSharing, toggleVoice, voiceActive]);
 
   const simulatePeer = useCallback((enable?: boolean | SimulatedPeerOptions, options?: SimulatedPeerOptions): void => {
     let shouldEnable = true;
@@ -1994,6 +2557,7 @@ recordDiagnostic('audio-unavailable');
     fps,
     captureFps,
     outgoingFps,
+    qualityState,
     localStream,
     remoteStream,
     localCameraStream,
@@ -2001,6 +2565,8 @@ recordDiagnostic('audio-unavailable');
     cameraActive,
     voiceActive,
     voiceMuted,
+    localSpeaking,
+    remoteSpeaking,
     roomCallActive,
     remoteRoomCallActive,
     remoteMediaPhase,
@@ -2008,6 +2574,8 @@ recordDiagnostic('audio-unavailable');
     remoteAudioPhase,
     remoteAudioError,
     activeRoom,
+    roomMembership,
+    roomPeerCount,
     isSimulatedPeer,
     testNetworkEnabled,
     remoteControlConfig,
@@ -2032,6 +2600,7 @@ recordDiagnostic('audio-unavailable');
     hostRoom,
     discoverRooms,
     joinRoom,
+    joinRoomByCode,
     confirmSecurity,
     startSharing,
     stopSharing,

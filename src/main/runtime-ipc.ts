@@ -1,7 +1,7 @@
 import { BrowserWindow, type IpcMain, type WebContents } from 'electron';
-import { ipcChannels } from '../shared/ipc';
+import { ipcChannels, isTrayStateUpdate, type StartupSettings, type TrayStateUpdate } from '../shared/ipc';
 import { failure, toSessionResult } from '../shared/session/errors';
-import { DiscordAudioCaptureService } from './audio/discord-audio-capture-service';
+import type { DiscordAudioCaptureService } from './audio/discord-audio-capture-service';
 import type { RemoteInputService } from './input/remote-input-service';
 import type { RemoteControlConfig, RemoteInputPayload } from '../shared/session/media-control';
 
@@ -10,9 +10,26 @@ interface RuntimeIpcDependencies {
   audioCapture: DiscordAudioCaptureService;
   remoteInput: RemoteInputService;
   isAuthorizedSender: (sender: WebContents) => boolean;
+  getAppVersion?: () => string;
+  getStartupSettings?: () => StartupSettings;
+  setWindowsStartup?: (enabled: boolean) => StartupSettings;
+  setTrayState?: (state: TrayStateUpdate) => void;
+  completeGracefulShutdown?: () => void;
 }
 
-export const registerRuntimeIpc = ({ ipcMain, audioCapture, remoteInput, isAuthorizedSender }: RuntimeIpcDependencies): void => {
+const unsupportedStartupSettings = (): StartupSettings => ({ supported: false, enabled: false, opensVisible: true });
+
+export const registerRuntimeIpc = ({
+  ipcMain,
+  audioCapture,
+  remoteInput,
+  isAuthorizedSender,
+  getAppVersion = () => '',
+  getStartupSettings = unsupportedStartupSettings,
+  setWindowsStartup,
+  setTrayState,
+  completeGracefulShutdown,
+}: RuntimeIpcDependencies): void => {
   const authorized = (sender: WebContents): boolean => !sender.isDestroyed() && isAuthorizedSender(sender);
 
   ipcMain.handle(ipcChannels.toggleFullscreen, (event): boolean => {
@@ -70,6 +87,30 @@ export const registerRuntimeIpc = ({ ipcMain, audioCapture, remoteInput, isAutho
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window || window.isDestroyed()) return;
     window.close();
+  });
+
+  ipcMain.handle(ipcChannels.getAppVersion, (event): string => authorized(event.sender) ? getAppVersion() : '');
+
+  ipcMain.handle(ipcChannels.getStartupSettings, (event): StartupSettings => {
+    if (!authorized(event.sender)) return unsupportedStartupSettings();
+    return getStartupSettings();
+  });
+
+  ipcMain.handle(ipcChannels.setWindowsStartup, (event, enabled: unknown): StartupSettings => {
+    if (!authorized(event.sender)) return unsupportedStartupSettings();
+    if (typeof enabled !== 'boolean' || !setWindowsStartup) return getStartupSettings();
+    return setWindowsStartup(enabled);
+  });
+
+  ipcMain.handle(ipcChannels.setTrayState, (event, state: unknown): boolean => {
+    if (!authorized(event.sender) || !isTrayStateUpdate(state) || !setTrayState) return false;
+    setTrayState(state);
+    return true;
+  });
+
+  ipcMain.handle(ipcChannels.completeGracefulShutdown, (event): void => {
+    if (!authorized(event.sender)) return;
+    completeGracefulShutdown?.();
   });
 
   ipcMain.handle(ipcChannels.startFilteredSystemAudio, (event, excludedExecutables: unknown) => {

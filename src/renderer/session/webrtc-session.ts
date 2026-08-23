@@ -4,16 +4,18 @@ import {
   type AudioState,
   type CameraState,
   type ChatMessagePayload,
+  type RoomChatRequest,
   type RemoteControlConfig,
   type RemoteControlStatus,
   type RemoteInputPayload,
   type RoomCallState,
+  type ScreenQualitySignature,
   type SessionControlMessage,
   type VideoState,
 } from '../../shared/session/media-control';
 import { filterTailscaleCandidates, tailscaleStunUrl } from '../../shared/session/network';
-import { sessionLifetimeMs, sessionProtocolVersion, type CandidateData, type SessionDescription } from '../../shared/session/types';
-import type { WebRtcMetrics } from '../../shared/diagnostics';
+import { sessionLifetimeMs, sessionProtocolVersion, type CandidateData, type ChatItem, type MediaSlot, type ScreenSubscriptionTier, type SessionDescription } from '../../shared/session/types';
+import type { QualityLimitationReason, WebRtcMetrics } from '../../shared/diagnostics';
 
 export interface WebRtcSessionEvents {
   onChannelOpen: () => void;
@@ -21,7 +23,98 @@ export interface WebRtcSessionEvents {
   onConnectionState: (state: RTCPeerConnectionState) => void;
   onRemoteStream: (stream: MediaStream, trackKind: 'video' | 'audio') => void;
   onRemoteCameraStream?: (stream: MediaStream) => void;
+  /** Voice-only stream. System audio is deliberately excluded for VAD/UI use. */
+  onRemoteVoiceStream?: (stream: MediaStream) => void;
+  /** System audio from a screen share. Voice is deliberately excluded. */
+  onRemoteSystemAudioStream?: (stream: MediaStream) => void;
 }
+
+/**
+ * Stable media sections negotiated for every peer. Keeping audio sources in
+ * different sections is important: replacing a screen-audio track must never
+ * replace (or remove) the microphone track.
+ */
+export const mediaSlots = ['screen-video', 'camera-video', 'voice-audio', 'screen-audio'] as const;
+export type { MediaSlot, ScreenSubscriptionTier } from '../../shared/session/types';
+export type ScreenResolution = '720p' | '1080p' | '1440p';
+
+export interface VideoQualityProfile {
+  maxBitrateBps: number;
+  maxFramerate: number;
+  scaleResolutionDownBy?: number;
+  active?: boolean;
+  degradationPreference?: RTCDegradationPreference;
+  priority?: RTCPriorityType;
+  networkPriority?: RTCPriorityType;
+}
+
+export interface WebRtcQualitySample {
+  sampledAtMs: number;
+  outboundBitrateKbps?: number;
+  outboundFrameWidth?: number;
+  outboundFrameHeight?: number;
+  outboundFramesPerSecond?: number;
+  outboundQp?: number;
+  outboundQualityLimitationReason?: string;
+  inboundFrameWidth?: number;
+  inboundFrameHeight?: number;
+  inboundFramesPerSecond?: number;
+  inboundBitrateKbps?: number;
+  inboundPacketsLost?: number;
+  inboundNackCount?: number;
+  inboundPliCount?: number;
+  roundTripTimeMs?: number;
+}
+
+/**
+ * A sender profile for the currently supported one-to-one session. The same
+ * helper also exposes the lower multi-party tiers so a future mesh manager can
+ * subscribe without inventing a second set of limits.
+ */
+export const screenQualityProfileFor = (
+  resolution: ScreenResolution,
+  requestedFps: number,
+  participantCount = 2,
+  tier: ScreenSubscriptionTier = 'focused',
+): VideoQualityProfile => {
+  if (participantCount >= 3) {
+    if (tier === 'paused') return { maxBitrateBps: 0, maxFramerate: 1, active: false, degradationPreference: 'maintain-resolution', priority: 'very-low', networkPriority: 'very-low' };
+    if (tier === 'thumbnail') return { maxBitrateBps: 700_000, maxFramerate: 15, scaleResolutionDownBy: 2, degradationPreference: 'maintain-resolution', priority: 'low', networkPriority: 'low' };
+    if (tier === 'grid') return { maxBitrateBps: 1_200_000, maxFramerate: 15, degradationPreference: 'maintain-resolution', priority: 'medium', networkPriority: 'medium' };
+    return { maxBitrateBps: 5_000_000, maxFramerate: 30, degradationPreference: 'maintain-resolution', priority: 'high', networkPriority: 'high' };
+  }
+
+  const cappedFps = resolution === '1440p' ? Math.min(requestedFps, 30) : requestedFps;
+  const maxBitrateBps = resolution === '720p'
+    ? (cappedFps >= 60 ? 4_000_000 : 2_500_000)
+    : resolution === '1080p'
+      ? (cappedFps >= 60 ? 8_000_000 : 5_000_000)
+      : 10_000_000;
+  return { maxBitrateBps, maxFramerate: cappedFps, degradationPreference: 'maintain-resolution', priority: 'high', networkPriority: 'high' };
+};
+
+/**
+ * Cameras are deliberately modest next to a screen: at most 720p30/1.2 Mbps
+ * on their own, and 360p15/0.35 Mbps while a screen is active. The caller
+ * also applies matching capture constraints so the lower tier does not waste
+ * GPU cycles encoding a 720p source merely to downscale it at the sender.
+ */
+export const cameraQualityProfileFor = (screenActive: boolean): VideoQualityProfile => screenActive
+  ? {
+    maxBitrateBps: 350_000,
+    maxFramerate: 15,
+    scaleResolutionDownBy: 2,
+    degradationPreference: 'maintain-resolution',
+    priority: 'low',
+    networkPriority: 'low',
+  }
+  : {
+    maxBitrateBps: 1_200_000,
+    maxFramerate: 30,
+    degradationPreference: 'maintain-resolution',
+    priority: 'medium',
+    networkPriority: 'medium',
+  };
 
 const fingerprint = (sdp: string): string => {
   const value = /^a=fingerprint:sha-256\s+(.+)$/im.exec(sdp)?.[1]?.trim();
@@ -85,18 +178,25 @@ const preferVp8 = (transceiver: RTCRtpTransceiver): void => {
 export class WebRtcSession {
   private peer?: RTCPeerConnection;
   private channel?: RTCDataChannel;
+  /** screen-video sender, kept under the original name for API compatibility */
   private videoSender?: RTCRtpSender;
   private cameraSender?: RTCRtpSender;
+  private voiceAudioSender?: RTCRtpSender;
+  private systemAudioSender?: RTCRtpSender;
+  /** Legacy alias for integrations still reading the former screen-audio sender. */
   private audioSender?: RTCRtpSender;
-  private videoPlaceholder?: { stream: MediaStream; track: MediaStreamTrack };
-  private cameraPlaceholder?: { stream: MediaStream; track: MediaStreamTrack };
-  private audioPlaceholder?: { stream: MediaStream; track: MediaStreamTrack };
-  private readonly remoteTracks = new Map<string, MediaStreamTrack>();
+  private readonly slotTransceivers = new Map<MediaSlot, RTCRtpTransceiver>();
+  private readonly transceiverSlots = new Map<RTCRtpTransceiver, MediaSlot>();
+  private readonly remoteScreenTracks = new Map<string, MediaStreamTrack>();
   private readonly remoteCameraTracks = new Map<string, MediaStreamTrack>();
+  private readonly remoteVoiceTracks = new Map<string, MediaStreamTrack>();
+  private readonly remoteSystemAudioTracks = new Map<string, MediaStreamTrack>();
   private readonly candidates: CandidateData[] = [];
   private confirmed = false;
   private previousOutbound?: { bytes: number; at: number };
   private previousOutboundFrames?: { frames: number; at: number };
+  private previousQualityOutbound?: { bytes: number; at: number };
+  private previousQualityInbound?: { bytes: number; at: number };
 
   constructor(private readonly events: WebRtcSessionEvents) {}
 
@@ -106,25 +206,20 @@ export class WebRtcSession {
     sessionId: string,
     nonce: string,
     initialVideoTrack?: MediaStreamTrack,
-    initialAudioTrack?: MediaStreamTrack,
+    initialSystemAudioTrack?: MediaStreamTrack,
     initialCameraTrack?: MediaStreamTrack,
+    initialVoiceTrack?: MediaStreamTrack,
   ): Promise<SessionDescription> {
     const peer = this.createPeer(stunServerIp);
     this.attachChannel(peer.createDataChannel('sfscreen-diagnostics', { ordered: true }));
-    const videoTransceiver = peer.addTransceiver(initialVideoTrack ?? 'video', { direction: 'sendrecv' });
-    preferVp8(videoTransceiver);
-    this.videoSender = videoTransceiver.sender;
+    this.createSlotTransceivers(peer);
 
-    const cameraTransceiver = peer.addTransceiver(initialCameraTrack ?? 'video', { direction: 'sendrecv' });
-    preferVp8(cameraTransceiver);
-    this.cameraSender = cameraTransceiver.sender;
-
-    const audioTrack = initialAudioTrack ?? this.ensureAudioPlaceholder();
-    const audioTransceiver = peer.addTransceiver(audioTrack ?? 'audio', { direction: 'sendrecv' });
-    this.audioSender = audioTransceiver.sender;
-    if (audioTrack && this.audioSender.track !== audioTrack) {
-      void this.audioSender.replaceTrack(audioTrack);
-    }
+    // Do not negotiate a 16×9/1fps placeholder. The real track is attached to
+    // its fixed sender with its quality parameters before the first offer.
+    if (initialVideoTrack) await this.replaceVideoTrack(initialVideoTrack, ...this.profileForTrack(initialVideoTrack));
+    if (initialCameraTrack) await this.replaceCameraTrack(initialCameraTrack);
+    if (initialVoiceTrack) await this.replaceVoiceTrack(initialVoiceTrack);
+    if (initialSystemAudioTrack) await this.replaceSystemAudioTrack(initialSystemAudioTrack);
 
     const offer = await peer.createOffer();
     if (!offer.sdp) throw new Error('A oferta WebRTC não contém SDP.');
@@ -136,31 +231,7 @@ export class WebRtcSession {
   async createAnswer(offer: SessionDescription, selfIps: readonly string[], stunServerIp: string): Promise<{ answer: SessionDescription; securityCode: string }> {
     const peer = this.createPeer(stunServerIp);
     await this.applyDescription(offer);
-
-    const videoTransceivers = peer.getTransceivers().filter((transceiver) => transceiver.receiver.track.kind === 'video');
-    if (videoTransceivers[0]) {
-      videoTransceivers[0].direction = 'sendrecv';
-      preferVp8(videoTransceivers[0]);
-      this.videoSender = videoTransceivers[0].sender;
-      await this.videoSender.replaceTrack(this.ensureVideoPlaceholder());
-    }
-
-    if (videoTransceivers[1]) {
-      videoTransceivers[1].direction = 'sendrecv';
-      preferVp8(videoTransceivers[1]);
-      this.cameraSender = videoTransceivers[1].sender;
-      await this.cameraSender.replaceTrack(this.ensureCameraPlaceholder());
-    }
-
-    const audioTransceiver = peer.getTransceivers().find((transceiver) => transceiver.receiver.track.kind === 'audio');
-    if (audioTransceiver) {
-      audioTransceiver.direction = 'sendrecv';
-      this.audioSender = audioTransceiver.sender;
-      const placeholderAudio = this.ensureAudioPlaceholder();
-      if (placeholderAudio) {
-        await this.audioSender.replaceTrack(placeholderAudio);
-      }
-    }
+    this.bindAnswerSlotTransceivers(peer);
 
     const answer = await peer.createAnswer();
     if (!answer.sdp) throw new Error('A resposta WebRTC não contém SDP.');
@@ -182,8 +253,14 @@ export class WebRtcSession {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'security-confirmed' });
   }
 
-  sendUserProfile(userName: string, userAvatar?: string): void {
-    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'user-profile', userName, userAvatar });
+  sendUserProfile(userName: string, userAvatar?: string, participantId?: string): void {
+    this.sendControl({
+      protocolVersion: sessionProtocolVersion,
+      type: 'user-profile',
+      userName,
+      userAvatar,
+      ...(participantId ? { participantId } : {}),
+    });
   }
 
 
@@ -195,8 +272,20 @@ export class WebRtcSession {
     this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'delete-chat-message', messageId });
   }
 
-  sendVideoState(state: VideoState): void {
-    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'video-state', state });
+  sendRoomChatRequest(request: RoomChatRequest): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'room-chat-request', request });
+  }
+
+  sendRoomChatItem(item: ChatItem): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'room-chat-item', item });
+  }
+
+  sendRoomLeave(): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'room-leave' });
+  }
+
+  sendVideoState(state: VideoState, quality?: ScreenQualitySignature): void {
+    this.sendControl({ protocolVersion: sessionProtocolVersion, type: 'video-state', state, quality });
   }
 
   sendCameraState(state: CameraState): void {
@@ -237,83 +326,95 @@ export class WebRtcSession {
 
   async updateVideoParameters(maxBitrateBps?: number, maxFramerate?: number): Promise<void> {
     if (!this.videoSender) return;
-    try {
-      const parameters = this.videoSender.getParameters();
-      if (!parameters.encodings || parameters.encodings.length === 0) {
-        parameters.encodings = [{}];
-      }
-      if (maxBitrateBps !== undefined) parameters.encodings[0].maxBitrate = maxBitrateBps;
-      if (maxFramerate !== undefined) parameters.encodings[0].maxFramerate = maxFramerate;
-      await this.videoSender.setParameters(parameters);
-    } catch {
-      // Ignored if browser/peer doesn't support changing parameters on live track
-    }
+    await this.applyScreenQualityProfile({
+      maxBitrateBps: maxBitrateBps ?? 6_000_000,
+      maxFramerate: maxFramerate ?? 60,
+      degradationPreference: 'maintain-resolution',
+      priority: 'high',
+      networkPriority: 'high',
+    });
+  }
+
+  async applyScreenQualityProfile(profile: VideoQualityProfile): Promise<void> {
+    if (!this.videoSender) return;
+    await this.applyVideoParameters(this.videoSender, profile);
   }
 
   async replaceVideoTrack(track: MediaStreamTrack, maxBitrate = 6_000_000, maxFramerate = 60): Promise<void> {
     if (!this.videoSender) throw new Error('O canal de vídeo não foi negociado.');
     track.contentHint = maxFramerate === 60 ? 'motion' : 'detail';
+    const profile: VideoQualityProfile = {
+      maxBitrateBps: maxBitrate,
+      maxFramerate,
+      degradationPreference: 'maintain-resolution',
+      priority: 'high',
+      networkPriority: 'high',
+    };
+    // Chromium accepts parameters on the transceiver before a live track is
+    // attached. Applying them here prevents an uncapped first burst; applying
+    // once more after replaceTrack covers older Chromium versions.
+    await this.applyVideoParameters(this.videoSender, profile);
     if (this.videoSender.track !== track) await this.videoSender.replaceTrack(track);
-    try {
-      const parameters = this.videoSender.getParameters();
-      if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}];
-      parameters.encodings[0].maxBitrate = maxBitrate;
-      parameters.encodings[0].maxFramerate = maxFramerate;
-      await this.videoSender.setParameters(parameters);
-    } catch {
-      // Ignored
-    }
+    await this.applyVideoParameters(this.videoSender, profile);
   }
 
-
   async parkVideoTrack(): Promise<void> {
-    if (!this.videoSender) return;
-    const placeholder = this.ensureVideoPlaceholder();
-    if (this.videoSender.track !== placeholder) await this.videoSender.replaceTrack(placeholder);
+    await this.removeVideoTrack();
   }
 
   async removeVideoTrack(): Promise<void> {
     await this.videoSender?.replaceTrack(null);
   }
 
-  async replaceCameraTrack(track: MediaStreamTrack, maxBitrate = 2_500_000, maxFramerate = 30): Promise<void> {
+  async replaceCameraTrack(track: MediaStreamTrack, maxBitrate = 1_200_000, maxFramerate = 30): Promise<void> {
     if (!this.cameraSender) return;
     track.contentHint = 'motion';
+    const profile: VideoQualityProfile = {
+      maxBitrateBps: maxBitrate,
+      maxFramerate,
+      degradationPreference: 'maintain-resolution',
+      priority: 'medium',
+      networkPriority: 'medium',
+    };
+    await this.applyVideoParameters(this.cameraSender, profile);
     if (this.cameraSender.track !== track) await this.cameraSender.replaceTrack(track);
-    try {
-      const parameters = this.cameraSender.getParameters();
-      if (parameters.encodings && parameters.encodings[0]) {
-        parameters.encodings[0].maxBitrate = maxBitrate;
-        parameters.encodings[0].maxFramerate = maxFramerate;
-        await this.cameraSender.setParameters(parameters);
-      }
-    } catch {
-      // Ignored
-    }
+    await this.applyVideoParameters(this.cameraSender, profile);
   }
 
   async parkCameraTrack(): Promise<void> {
-    if (!this.cameraSender) return;
-    const placeholder = this.ensureCameraPlaceholder();
-    if (this.cameraSender.track !== placeholder) await this.cameraSender.replaceTrack(placeholder);
+    await this.removeCameraTrack();
   }
 
   async removeCameraTrack(): Promise<void> {
     await this.cameraSender?.replaceTrack(null);
   }
 
-  async replaceAudioTrack(track: MediaStreamTrack): Promise<void> {
-    if (!this.audioSender) throw new Error('O canal de áudio não foi negociado.');
-    if (this.audioSender.track !== track) await this.audioSender.replaceTrack(track);
+  async replaceVoiceTrack(track: MediaStreamTrack): Promise<void> {
+    if (!this.voiceAudioSender) throw new Error('O canal de voz não foi negociado.');
+    if (this.voiceAudioSender.track !== track) await this.voiceAudioSender.replaceTrack(track);
   }
 
+  async removeVoiceTrack(): Promise<void> {
+    await this.voiceAudioSender?.replaceTrack(null);
+  }
+
+  async replaceSystemAudioTrack(track: MediaStreamTrack): Promise<void> {
+    if (!this.systemAudioSender) throw new Error('O canal de áudio do compartilhamento não foi negociado.');
+    if (this.systemAudioSender.track !== track) await this.systemAudioSender.replaceTrack(track);
+  }
+
+  async removeSystemAudioTrack(): Promise<void> {
+    await this.systemAudioSender?.replaceTrack(null);
+  }
+
+  /** @deprecated Use replaceSystemAudioTrack or replaceVoiceTrack explicitly. */
+  async replaceAudioTrack(track: MediaStreamTrack): Promise<void> {
+    await this.replaceSystemAudioTrack(track);
+  }
+
+  /** @deprecated Use removeSystemAudioTrack or removeVoiceTrack explicitly. */
   async removeAudioTrack(): Promise<void> {
-    const placeholder = this.ensureAudioPlaceholder();
-    if (placeholder && this.audioSender) {
-      await this.audioSender.replaceTrack(placeholder);
-    } else {
-      await this.audioSender?.replaceTrack(null);
-    }
+    await this.removeSystemAudioTrack();
   }
 
   async getMetrics(): Promise<WebRtcMetrics> {
@@ -335,13 +436,26 @@ export class WebRtcSession {
         if (typeof value.bytesSent === 'number') outboundBytes = value.bytesSent;
         if (typeof value.framesPerSecond === 'number') metrics.videoFramesPerSecond = Math.round(value.framesPerSecond);
         if (typeof value.framesEncoded === 'number') outboundFrames = value.framesEncoded;
+        if (typeof value.frameWidth === 'number') metrics.outboundFrameWidth = value.frameWidth;
+        if (typeof value.frameHeight === 'number') metrics.outboundFrameHeight = value.frameHeight;
+        if (typeof value.qpSum === 'number' && typeof value.framesEncoded === 'number' && value.framesEncoded > 0) metrics.outboundQp = Math.round(value.qpSum / value.framesEncoded);
+        if (value.qualityLimitationReason === 'none' || value.qualityLimitationReason === 'cpu' || value.qualityLimitationReason === 'bandwidth' || value.qualityLimitationReason === 'other') metrics.qualityLimitationReason = value.qualityLimitationReason as QualityLimitationReason;
       }
       if (value.type === 'inbound-rtp' && value.kind === 'video') {
         if (typeof value.bytesReceived === 'number') metrics.videoBytesReceived = value.bytesReceived;
         if (typeof value.framesDecoded === 'number') metrics.videoFramesDecoded = value.framesDecoded;
         if (typeof value.framesPerSecond === 'number') metrics.videoFramesReceivedPerSecond = Math.round(value.framesPerSecond);
+        if (typeof value.frameWidth === 'number') metrics.inboundFrameWidth = value.frameWidth;
+        if (typeof value.frameHeight === 'number') metrics.inboundFrameHeight = value.frameHeight;
+        if (typeof value.qpSum === 'number' && typeof value.framesDecoded === 'number' && value.framesDecoded > 0) metrics.inboundQp = Math.round(value.qpSum / value.framesDecoded);
+        if (typeof value.pliCount === 'number') metrics.videoPliCount = value.pliCount;
+        if (typeof value.nackCount === 'number') metrics.videoNackCount = value.nackCount;
       }
-      if (value.type === 'remote-inbound-rtp' && value.kind === 'video' && typeof value.packetsLost === 'number') metrics.videoPacketsLost = value.packetsLost;
+      if (value.type === 'remote-inbound-rtp' && value.kind === 'video') {
+        if (typeof value.packetsLost === 'number') metrics.videoPacketsLost = value.packetsLost;
+        if (typeof value.pliCount === 'number') metrics.videoPliCount = value.pliCount;
+        if (typeof value.nackCount === 'number') metrics.videoNackCount = value.nackCount;
+      }
       if (value.type === 'remote-inbound-rtp' && value.kind === 'audio' && typeof value.packetsLost === 'number') metrics.audioPacketsLost = value.packetsLost;
     }
     if (screenStats) {
@@ -351,6 +465,10 @@ export class WebRtcSession {
         if (typeof value.bytesSent === 'number') outboundBytes = value.bytesSent;
         if (typeof value.framesPerSecond === 'number') metrics.videoFramesPerSecond = Math.round(value.framesPerSecond);
         if (typeof value.framesEncoded === 'number') outboundFrames = value.framesEncoded;
+        if (typeof value.frameWidth === 'number') metrics.outboundFrameWidth = value.frameWidth;
+        if (typeof value.frameHeight === 'number') metrics.outboundFrameHeight = value.frameHeight;
+        if (typeof value.qpSum === 'number' && typeof value.framesEncoded === 'number' && value.framesEncoded > 0) metrics.outboundQp = Math.round(value.qpSum / value.framesEncoded);
+        if (value.qualityLimitationReason === 'none' || value.qualityLimitationReason === 'cpu' || value.qualityLimitationReason === 'bandwidth' || value.qualityLimitationReason === 'other') metrics.qualityLimitationReason = value.qualityLimitationReason as QualityLimitationReason;
       }
     }
     const now = performance.now();
@@ -361,6 +479,66 @@ export class WebRtcSession {
     }
     if (outboundFrames !== undefined) this.previousOutboundFrames = { frames: outboundFrames, at: now };
     return metrics;
+  }
+
+  /**
+   * A privacy-safe, screen-specific sample for the quality overlay. This
+   * intentionally returns only aggregate transport/media counters; it never
+   * includes SDP, ICE candidates, IP addresses, identifiers, or media data.
+   */
+  async getQualitySample(): Promise<WebRtcQualitySample> {
+    const sampledAtMs = performance.now();
+    const sample: WebRtcQualitySample = { sampledAtMs };
+    if (!this.peer) return sample;
+
+    const peerStats = await this.peer.getStats();
+    let screenStats: RTCStatsReport | undefined;
+    try {
+      screenStats = await this.videoSender?.getStats();
+    } catch {
+      // The complete peer report remains a useful compatibility fallback.
+    }
+
+    let outboundBytes: number | undefined;
+    for (const stat of (screenStats ?? peerStats).values()) {
+      const value = stat as unknown as Record<string, unknown>;
+      if (value.type !== 'outbound-rtp' || value.kind !== 'video') continue;
+      if (typeof value.bytesSent === 'number') outboundBytes = value.bytesSent;
+      if (typeof value.frameWidth === 'number') sample.outboundFrameWidth = value.frameWidth;
+      if (typeof value.frameHeight === 'number') sample.outboundFrameHeight = value.frameHeight;
+      if (typeof value.framesPerSecond === 'number') sample.outboundFramesPerSecond = Math.round(value.framesPerSecond);
+      if (typeof value.qpSum === 'number' && typeof value.framesEncoded === 'number' && value.framesEncoded > 0) {
+        sample.outboundQp = Math.round(value.qpSum / value.framesEncoded);
+      }
+      if (typeof value.qualityLimitationReason === 'string') sample.outboundQualityLimitationReason = value.qualityLimitationReason;
+      break;
+    }
+    if (outboundBytes !== undefined && this.previousQualityOutbound && sampledAtMs > this.previousQualityOutbound.at) {
+      sample.outboundBitrateKbps = Math.max(0, Math.round(((outboundBytes - this.previousQualityOutbound.bytes) * 8) / (sampledAtMs - this.previousQualityOutbound.at)));
+    }
+    if (outboundBytes !== undefined) this.previousQualityOutbound = { bytes: outboundBytes, at: sampledAtMs };
+
+    let inboundBytes: number | undefined;
+    for (const stat of peerStats.values()) {
+      const value = stat as unknown as Record<string, unknown>;
+      if (value.type === 'candidate-pair' && value.nominated === true && typeof value.currentRoundTripTime === 'number') {
+        sample.roundTripTimeMs = Math.round(value.currentRoundTripTime * 1_000);
+      }
+      if (value.type !== 'inbound-rtp' || value.kind !== 'video') continue;
+      if (typeof value.bytesReceived === 'number') inboundBytes = value.bytesReceived;
+      if (typeof value.frameWidth === 'number') sample.inboundFrameWidth = value.frameWidth;
+      if (typeof value.frameHeight === 'number') sample.inboundFrameHeight = value.frameHeight;
+      if (typeof value.framesPerSecond === 'number') sample.inboundFramesPerSecond = Math.round(value.framesPerSecond);
+      if (typeof value.packetsLost === 'number') sample.inboundPacketsLost = value.packetsLost;
+      if (typeof value.nackCount === 'number') sample.inboundNackCount = value.nackCount;
+      if (typeof value.pliCount === 'number') sample.inboundPliCount = value.pliCount;
+      break;
+    }
+    if (inboundBytes !== undefined && this.previousQualityInbound && sampledAtMs > this.previousQualityInbound.at) {
+      sample.inboundBitrateKbps = Math.max(0, Math.round(((inboundBytes - this.previousQualityInbound.bytes) * 8) / (sampledAtMs - this.previousQualityInbound.at)));
+    }
+    if (inboundBytes !== undefined) this.previousQualityInbound = { bytes: inboundBytes, at: sampledAtMs };
+    return sample;
   }
 
   close(): void {
@@ -375,21 +553,22 @@ export class WebRtcSession {
     this.peer = undefined;
     this.videoSender = undefined;
     this.cameraSender = undefined;
+    this.voiceAudioSender = undefined;
+    this.systemAudioSender = undefined;
     this.audioSender = undefined;
-    this.videoPlaceholder?.stream.getTracks().forEach((track) => track.stop());
-    this.videoPlaceholder = undefined;
-    this.cameraPlaceholder?.stream.getTracks().forEach((track) => track.stop());
-    this.cameraPlaceholder = undefined;
-    this.audioPlaceholder?.stream.getTracks().forEach((track) => track.stop());
-    this.audioPlaceholder = undefined;
-    this.remoteTracks.forEach((track) => track.stop());
-    this.remoteTracks.clear();
+    this.slotTransceivers.clear();
+    this.transceiverSlots.clear();
+    this.stopAndClear(this.remoteScreenTracks);
     this.remoteCameraTracks.forEach((track) => track.stop());
     this.remoteCameraTracks.clear();
+    this.stopAndClear(this.remoteVoiceTracks);
+    this.stopAndClear(this.remoteSystemAudioTracks);
     this.candidates.length = 0;
     this.confirmed = false;
     this.previousOutbound = undefined;
     this.previousOutboundFrames = undefined;
+    this.previousQualityOutbound = undefined;
+    this.previousQualityInbound = undefined;
   }
 
   private createPeer(stunServerIp: string): RTCPeerConnection {
@@ -398,81 +577,147 @@ export class WebRtcSession {
     peer.onicecandidate = (event) => { if (event.candidate) this.candidates.push(candidateData(event.candidate)); };
     peer.onconnectionstatechange = () => this.events.onConnectionState(peer.connectionState);
     peer.ondatachannel = (event) => this.attachChannel(event.channel);
-    peer.ontrack = (event) => {
-      if (event.track.kind === 'audio') {
-        this.remoteTracks.set(event.track.id, event.track);
-        event.track.onended = () => this.remoteTracks.delete(event.track.id);
-        this.events.onRemoteStream(new MediaStream(Array.from(this.remoteTracks.values())), 'audio');
-        return;
-      }
-      if (event.track.kind === 'video') {
-        const transceivers = peer.getTransceivers().filter((t) => t.receiver.track.kind === 'video');
-        const isCamera = event.transceiver === transceivers[1];
-        if (isCamera) {
-          this.remoteCameraTracks.set(event.track.id, event.track);
-          event.track.onended = () => this.remoteCameraTracks.delete(event.track.id);
-          this.events.onRemoteCameraStream?.(new MediaStream(Array.from(this.remoteCameraTracks.values())));
-        } else {
-          this.remoteTracks.set(event.track.id, event.track);
-          event.track.onended = () => this.remoteTracks.delete(event.track.id);
-          this.events.onRemoteStream(new MediaStream(Array.from(this.remoteTracks.values())), 'video');
-        }
-      }
-    };
+    peer.ontrack = (event) => this.handleRemoteTrack(peer, event);
     this.peer = peer;
     return peer;
   }
 
-  private ensureAudioPlaceholder(): MediaStreamTrack | undefined {
-    if (this.audioPlaceholder?.track.readyState === 'live') return this.audioPlaceholder.track;
+  private createSlotTransceivers(peer: RTCPeerConnection): void {
+    for (const slot of mediaSlots) {
+      const transceiver = peer.addTransceiver(slot.endsWith('video') ? 'video' : 'audio', { direction: 'sendrecv' });
+      if (slot.endsWith('video')) preferVp8(transceiver);
+      this.bindSlot(slot, transceiver);
+    }
+  }
+
+  private bindAnswerSlotTransceivers(peer: RTCPeerConnection): void {
+    const videoTransceivers = peer.getTransceivers().filter((transceiver) => transceiver.receiver.track.kind === 'video');
+    const audioTransceivers = peer.getTransceivers().filter((transceiver) => transceiver.receiver.track.kind === 'audio');
+    const assignments: Array<readonly [MediaSlot, RTCRtpTransceiver | undefined]> = [
+      ['screen-video', videoTransceivers[0]],
+      ['camera-video', videoTransceivers[1]],
+      ['voice-audio', audioTransceivers[0]],
+      ['screen-audio', audioTransceivers[1]],
+    ];
+    for (const [slot, transceiver] of assignments) {
+      if (!transceiver) continue;
+      transceiver.direction = 'sendrecv';
+      if (slot.endsWith('video')) preferVp8(transceiver);
+      this.bindSlot(slot, transceiver);
+    }
+  }
+
+  private bindSlot(slot: MediaSlot, transceiver: RTCRtpTransceiver): void {
+    this.slotTransceivers.set(slot, transceiver);
+    this.transceiverSlots.set(transceiver, slot);
+    if (slot === 'screen-video') this.videoSender = transceiver.sender;
+    if (slot === 'camera-video') this.cameraSender = transceiver.sender;
+    if (slot === 'voice-audio') this.voiceAudioSender = transceiver.sender;
+    if (slot === 'screen-audio') {
+      this.systemAudioSender = transceiver.sender;
+      this.audioSender = transceiver.sender;
+    }
+  }
+
+  private profileForTrack(track: MediaStreamTrack): readonly [number, number] {
+    const settings = track.getSettings?.();
+    const height = typeof settings?.height === 'number' ? settings.height : 1080;
+    const frameRate = typeof settings?.frameRate === 'number' ? Math.round(settings.frameRate) : 30;
+    const resolution: ScreenResolution = height >= 1300 ? '1440p' : height >= 900 ? '1080p' : '720p';
+    const profile = screenQualityProfileFor(resolution, frameRate);
+    return [profile.maxBitrateBps, profile.maxFramerate];
+  }
+
+  private async applyVideoParameters(sender: RTCRtpSender, profile: VideoQualityProfile): Promise<void> {
+    let baselineApplied = false;
     try {
-      const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (AudioCtxClass) {
-        const ctx = new AudioCtxClass();
-        const dest = ctx.createMediaStreamDestination();
-        const track = dest.stream.getAudioTracks()[0];
-        if (track) {
-          track.enabled = true;
-          this.audioPlaceholder = { stream: dest.stream, track };
-          return track;
-        }
-      }
+      const parameters = sender.getParameters();
+      if (parameters.encodings.length === 0) parameters.encodings = [{}];
+      const encoding = parameters.encodings[0];
+      if (!encoding) return;
+      encoding.maxBitrate = profile.maxBitrateBps;
+      encoding.maxFramerate = profile.maxFramerate;
+      if (profile.scaleResolutionDownBy !== undefined) encoding.scaleResolutionDownBy = profile.scaleResolutionDownBy;
+      if (profile.active !== undefined) encoding.active = profile.active;
+      await sender.setParameters(parameters);
+      baselineApplied = true;
     } catch {
-      // Ignored
+      // Some Chromium builds reject parameters before a negotiated track exists.
+      // replaceVideoTrack retries after attachment, preserving compatibility.
     }
-    return undefined;
+    if (!baselineApplied || (profile.priority === undefined && profile.networkPriority === undefined && profile.degradationPreference === undefined)) return;
+    try {
+      const parameters = sender.getParameters();
+      if (parameters.encodings.length === 0) return;
+      const encoding = parameters.encodings[0];
+      if (!encoding) return;
+      if (profile.priority !== undefined) encoding.priority = profile.priority;
+      if (profile.networkPriority !== undefined) encoding.networkPriority = profile.networkPriority;
+      if (profile.degradationPreference !== undefined) parameters.degradationPreference = profile.degradationPreference;
+      await sender.setParameters(parameters);
+    } catch {
+      // Priority hints are best-effort. The bitrate/FPS cap above remains set.
+    }
   }
 
-  private ensureVideoPlaceholder(): MediaStreamTrack {
-    if (this.videoPlaceholder?.track.readyState === 'live') return this.videoPlaceholder.track;
-    const canvas = document.createElement('canvas');
-    canvas.width = 16;
-    canvas.height = 9;
-    const context = canvas.getContext('2d');
-    context?.fillRect(0, 0, canvas.width, canvas.height);
-    const stream = canvas.captureStream ? canvas.captureStream(1) : new MediaStream();
-    const track = stream.getVideoTracks()[0];
-    if (!track) throw new Error('Não foi possível criar a faixa de espera do WebRTC.');
-    track.enabled = false;
-    this.videoPlaceholder = { stream, track };
-    return track;
+  private handleRemoteTrack(peer: RTCPeerConnection, event: RTCTrackEvent): void {
+    const slot = this.transceiverSlots.get(event.transceiver) ?? this.inferRemoteSlot(peer, event.transceiver, event.track.kind);
+    if (slot === 'camera-video') {
+      this.addRemoteTrack(this.remoteCameraTracks, event.track, () => {
+        this.events.onRemoteCameraStream?.(new MediaStream(Array.from(this.remoteCameraTracks.values())));
+      });
+      return;
+    }
+    if (slot === 'voice-audio') {
+      this.addRemoteTrack(this.remoteVoiceTracks, event.track, () => {
+        this.events.onRemoteVoiceStream?.(new MediaStream(Array.from(this.remoteVoiceTracks.values())));
+        this.emitRemoteMainStream('audio');
+      });
+      return;
+    }
+    if (slot === 'screen-audio') {
+      this.addRemoteTrack(this.remoteSystemAudioTracks, event.track, () => {
+        this.events.onRemoteSystemAudioStream?.(new MediaStream(Array.from(this.remoteSystemAudioTracks.values())));
+        this.emitRemoteMainStream('audio');
+      });
+      return;
+    }
+    this.addRemoteTrack(this.remoteScreenTracks, event.track, () => this.emitRemoteMainStream(event.track.kind === 'audio' ? 'audio' : 'video'));
   }
 
-  private ensureCameraPlaceholder(): MediaStreamTrack {
-    if (this.cameraPlaceholder?.track.readyState === 'live') return this.cameraPlaceholder.track;
-    const canvas = document.createElement('canvas');
-    canvas.width = 16;
-    canvas.height = 9;
-    const context = canvas.getContext('2d');
-    context?.fillRect(0, 0, canvas.width, canvas.height);
-    const stream = canvas.captureStream ? canvas.captureStream(1) : new MediaStream();
-    const track = stream.getVideoTracks()[0];
-    if (track) {
-      track.enabled = false;
-      this.cameraPlaceholder = { stream, track };
-      return track;
-    }
-    return this.ensureVideoPlaceholder();
+  private inferRemoteSlot(peer: RTCPeerConnection, transceiver: RTCRtpTransceiver, kind: MediaStreamTrack['kind']): MediaSlot {
+    const matches = peer.getTransceivers().filter((candidate) => candidate.receiver.track.kind === kind);
+    const index = matches.indexOf(transceiver);
+    if (kind === 'video') return index === 1 ? 'camera-video' : 'screen-video';
+    // v5 peers had a single audio m-line. Treat it as voice rather than mixing
+    // it with screen audio, which is the safer failure mode for speech UI.
+    return index === 1 ? 'screen-audio' : 'voice-audio';
+  }
+
+  private addRemoteTrack(
+    tracks: Map<string, MediaStreamTrack>,
+    track: MediaStreamTrack,
+    onChanged: () => void,
+  ): void {
+    tracks.set(track.id, track);
+    track.onended = () => {
+      tracks.delete(track.id);
+      onChanged();
+    };
+    onChanged();
+  }
+
+  private emitRemoteMainStream(trackKind: 'video' | 'audio'): void {
+    this.events.onRemoteStream(new MediaStream([
+      ...this.remoteScreenTracks.values(),
+      ...this.remoteVoiceTracks.values(),
+      ...this.remoteSystemAudioTracks.values(),
+    ]), trackKind);
+  }
+
+  private stopAndClear(tracks: Map<string, MediaStreamTrack>): void {
+    tracks.forEach((track) => track.stop());
+    tracks.clear();
   }
 
   private attachChannel(channel: RTCDataChannel): void {

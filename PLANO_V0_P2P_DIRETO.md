@@ -1,4 +1,112 @@
-# SFScreen V0 — prova de conceito P2P direta
+# SFScreen — arquitetura e segurança (v0.2.0)
+
+> **Estado atual.** Esta seção define a arquitetura da versão v0.2.0 e
+> substitui as premissas da V0 histórica abaixo. O conteúdo histórico foi
+> preservado apenas como registro das decisões iniciais, não como requisito
+> de implementação.
+
+## Arquitetura atual
+
+O SFScreen é um aplicativo Electron para Windows que cria salas privadas de
+até quatro participantes. O Tailscale é somente a camada de transporte entre
+máquinas; não existe backend hospedado, SFU, TURN, relay próprio, banco de
+dados de usuários nem migração automática de dono.
+
+```text
+                         coordenador da sala
+              (membros, sinalização e ordem dos eventos)
+                                  |
+         +------------------------+------------------------+
+         |                        |                        |
+    WebRTC direto            WebRTC direto            WebRTC direto
+         |                        |                        |
+  participante A         participante B         participante C
+
+  A, B, C e dono formam uma malha completa: no máximo 3 conexões por
+  cliente e 6 conexões para uma sala cheia. O coordenador nunca retransmite mídia.
+```
+
+Cada conexão negocia quatro slots de mídia independentes: vídeo de tela,
+vídeo de câmera, voz do microfone e áudio do compartilhamento. Uma captura
+local é distribuída às conexões necessárias sem encerrar a track quando só um
+par sai. O sender de voz nunca é reutilizado para áudio da tela.
+
+O protocolo é **v6**. Ele inclui revisão monotônica da lista de membros,
+sequência de eventos de sala, estado de chamada separado do estado de sala e
+resumos de qualidade por tela. Clientes anteriores devem atualizar antes de
+entrar em uma sala v6.
+
+## Salas, entrada e disponibilidade
+
+- `RoomConfigV2` é persistido localmente com versão do schema, ID, nome,
+  data de criação, capacidade e salt/verificador de senha. A senha nunca é
+  persistida ou revelada.
+- A senha é obrigatória. Uma configuração antiga sem senha exige defini-la
+  antes de reabrir a sala.
+- O dono pode criar e manter uma sala local mesmo sem pares Tailscale. Quando
+  uma interface Tailscale válida aparece, a sala é anunciada automaticamente.
+- Um código de sete caracteres vale por dez minutos, pode receber vários
+  convidados até a capacidade e pode ser revogado. Código válido **ou** senha
+  válida permite entrada direta; não há confirmação bilateral de fingerprint.
+- A entrada é serializada pelo coordenador, rejeita o quinto membro antes da
+  negociação e faz rollback completo após 20 segundos.
+- O dono deve manter o aplicativo aberto (inclusive no tray). Ao sair da
+  sala, ela é encerrada para todos; não há eleição nem migração de host.
+
+Entrar na sala não inicia captura. “Entrar na chamada” inicia mídia; “Sair da
+chamada” encerra mídia e conserva a sala/chat; “Sair da sala” remove o membro.
+Reconexões dentro de 30 segundos usam token temporário e não repetem eventos
+ou sons. Controle remoto só existe com exatamente dois participantes e é
+revogado imediatamente quando entra um terceiro.
+
+## Qualidade, áudio e privacidade
+
+Os perfis são aplicados no sender antes do primeiro frame. A primeira versão
+mantém VP8 para evitar uma mudança de codec/SDP arriscada. Para duas pessoas:
+720p30/2,5 Mbps, 720p60/4 Mbps, 1080p30/5 Mbps, 1080p60/8 Mbps e
+1440p30/10 Mbps. Com três ou quatro pessoas, a tela em foco pode usar
+1080p30/5 Mbps; grade, miniatura e telas invisíveis usam, respectivamente,
+720p15/1,2 Mbps, 540p15/0,7 Mbps e nenhum RTP.
+
+O app mostra “Ajustando qualidade…” até duas amostras atingirem 90% da
+resolução e 40% do bitrate previstos. Após três segundos ele revela a mídia
+com aviso de rede limitada, sem ampliar uma imagem borrada. Os diagnósticos
+v2 armazenam apenas até três pares com pseudônimos locais e contadores
+agregados (resolução, FPS, bitrate, perda, RTT, QP, PLI/NACK e limitação de
+qualidade). Nunca incluem nome, IP, candidato ICE, SDP, token, senha, chave
+ou conteúdo de mídia.
+
+No Windows, o áudio de sistema usa captura de loopback apenas quando a árvore
+de processos do SFScreen pode ser excluída. Se a exclusão não puder ser
+garantida, o áudio do compartilhamento é recusado com uma mensagem clara; não
+há fallback que possa vazar o microfone.
+
+## Segurança do Electron e encerramento
+
+- Renderer sandboxed, `nodeIntegration: false`, `contextIsolation: true`, CSP
+  restritiva e APIs privilegiadas mínimas via preload tipado/validado.
+- O listener limita-se ao IP Tailscale e a política/firewall deve permitir
+  somente a porta do SFScreen nessa interface; não são anunciadas sub-redes,
+  exit node ou Tailscale SSH.
+- DTLS-SRTP protege a mídia WebRTC; o Tailscale fornece uma camada adicional
+  de transporte, mas não recebe ou retransmite mídia do aplicativo.
+- O tray é permanente; fechar a janela apenas a oculta. Um único fluxo de
+  desligamento notifica participantes, encerra sala/mídia/listener/áudio e
+  então encerra o processo em no máximo dois segundos. Atualização e
+  desligamento do sistema podem fechar o processo.
+
+## Validação e release
+
+Antes de publicar a release estável `v0.2.0`/`latest`, executar typecheck,
+lint, testes unitários e Electron, 20 ciclos de mídia, salas com 2/3/4
+clientes, entrada concorrente e rejeição do quinto, quedas abaixo/acima de 30
+segundos, e os testes manuais prolongados de duas e quatro pessoas. O
+atualizador distribui a release estável pelo GitHub Releases; não é necessário
+hospedar um site próprio.
+
+---
+
+# Histórico: SFScreen V0 — prova de conceito P2P direta
 
 ## 1. Objetivo
 

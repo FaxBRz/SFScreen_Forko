@@ -1,9 +1,21 @@
-import { sessionProtocolVersion } from './types';
+import { isChatItem } from './protocol';
+import { sessionProtocolVersion, type ChatItem } from './types';
 
 export type VideoState = 'starting' | 'active' | 'stopped' | 'failed';
 export type AudioState = 'unavailable' | 'starting' | 'active' | 'stopped' | 'failed';
 export type CameraState = 'starting' | 'active' | 'stopped' | 'failed';
 export type RoomCallState = 'joined' | 'left';
+
+/**
+ * The sender's requested screen profile. It is deliberately a media-only
+ * value so receivers can gate their first frame without learning network or
+ * endpoint details.
+ */
+export interface ScreenQualitySignature {
+  width: number;
+  height: number;
+  bitrateKbps: number;
+}
 
 export type RemoteControlStatus = 'idle' | 'active' | 'paused-by-host' | 'disabled';
 
@@ -31,13 +43,24 @@ export interface ChatMessagePayload {
   isSelf?: boolean;
 }
 
+/** A non-authoritative room chat submission. The coordinator assigns sequence. */
+export interface RoomChatRequest {
+  id: string;
+  text: string;
+  imageData?: string;
+  imageName?: string;
+}
+
 export type SessionControlMessage =
   | { protocolVersion: typeof sessionProtocolVersion; type: 'security-confirmed' }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'session-closed' }
-  | { protocolVersion: typeof sessionProtocolVersion; type: 'user-profile'; userName: string; userAvatar?: string }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'user-profile'; userName: string; userAvatar?: string; participantId?: string }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'chat-message'; message: ChatMessagePayload }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'delete-chat-message'; messageId: string }
-  | { protocolVersion: typeof sessionProtocolVersion; type: 'video-state'; state: VideoState }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'room-chat-request'; request: RoomChatRequest }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'room-chat-item'; item: ChatItem }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'room-leave' }
+  | { protocolVersion: typeof sessionProtocolVersion; type: 'video-state'; state: VideoState; quality?: ScreenQualitySignature }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'camera-state'; state: CameraState }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'audio-state'; state: AudioState }
   | { protocolVersion: typeof sessionProtocolVersion; type: 'room-call-state'; state: RoomCallState }
@@ -48,6 +71,14 @@ export type SessionControlMessage =
   | { protocolVersion: typeof sessionProtocolVersion; type: 'select-monitor'; monitorIndex: number };
 
 export const serializeControlMessage = (message: SessionControlMessage): string => JSON.stringify(message);
+
+export const isScreenQualitySignature = (value: unknown): value is ScreenQualitySignature => {
+  if (typeof value !== 'object' || value === null) return false;
+  const quality = value as Record<string, unknown>;
+  return typeof quality.width === 'number' && Number.isInteger(quality.width) && quality.width >= 320 && quality.width <= 7_680
+    && typeof quality.height === 'number' && Number.isInteger(quality.height) && quality.height >= 180 && quality.height <= 4_320
+    && typeof quality.bitrateKbps === 'number' && Number.isFinite(quality.bitrateKbps) && quality.bitrateKbps >= 100 && quality.bitrateKbps <= 100_000;
+};
 
 export const parseControlMessage = (value: unknown): SessionControlMessage | undefined => {
   if (typeof value !== 'string') return undefined;
@@ -60,7 +91,16 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
     if (control.type === 'session-closed') return { protocolVersion: sessionProtocolVersion, type: 'session-closed' };
     if (control.type === 'user-profile' && typeof control.userName === 'string' && control.userName.trim().length > 0 && control.userName.length <= 64) {
       const userAvatar = typeof control.userAvatar === 'string' && control.userAvatar.length <= 250000 ? control.userAvatar : undefined;
-      return { protocolVersion: sessionProtocolVersion, type: 'user-profile', userName: control.userName.trim(), userAvatar };
+      const participantId = typeof control.participantId === 'string' && control.participantId.length >= 16 && control.participantId.length <= 128
+        ? control.participantId
+        : undefined;
+      return {
+        protocolVersion: sessionProtocolVersion,
+        type: 'user-profile',
+        userName: control.userName.trim(),
+        userAvatar,
+        ...(participantId ? { participantId } : {}),
+      };
     }
 
     if (control.type === 'delete-chat-message' && typeof control.messageId === 'string' && control.messageId.length > 0 && control.messageId.length <= 128) {
@@ -89,7 +129,41 @@ export const parseControlMessage = (value: unknown): SessionControlMessage | und
         };
       }
     }
-    if (control.type === 'video-state' && (control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'video-state', state: control.state };
+    if (control.type === 'room-chat-request' && typeof control.request === 'object' && control.request !== null) {
+      const request = control.request as Record<string, unknown>;
+      const imageData = typeof request.imageData === 'string' && request.imageData.startsWith('data:image/') && request.imageData.length <= 1_500_000
+        ? request.imageData
+        : undefined;
+      if (
+        typeof request.id === 'string' && request.id.length >= 16 && request.id.length <= 128
+        && typeof request.text === 'string' && request.text.length <= 4096
+        && (request.text.trim().length > 0 || imageData !== undefined)
+      ) {
+        return {
+          protocolVersion: sessionProtocolVersion,
+          type: 'room-chat-request',
+          request: {
+            id: request.id,
+            text: request.text,
+            imageData,
+            imageName: typeof request.imageName === 'string' && request.imageName.length <= 128 ? request.imageName : undefined,
+          },
+        };
+      }
+    }
+    if (control.type === 'room-chat-item' && isChatItem(control.item)) {
+      return { protocolVersion: sessionProtocolVersion, type: 'room-chat-item', item: control.item };
+    }
+    if (control.type === 'room-leave') return { protocolVersion: sessionProtocolVersion, type: 'room-leave' };
+    if (control.type === 'video-state' && (control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) {
+      if (control.quality !== undefined && !isScreenQualitySignature(control.quality)) return undefined;
+      return {
+        protocolVersion: sessionProtocolVersion,
+        type: 'video-state',
+        state: control.state,
+        quality: isScreenQualitySignature(control.quality) ? control.quality : undefined,
+      };
+    }
     if (control.type === 'camera-state' && (control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'camera-state', state: control.state };
     if (control.type === 'audio-state' && (control.state === 'unavailable' || control.state === 'starting' || control.state === 'active' || control.state === 'stopped' || control.state === 'failed')) return { protocolVersion: sessionProtocolVersion, type: 'audio-state', state: control.state };
     if (control.type === 'room-call-state' && (control.state === 'joined' || control.state === 'left')) return { protocolVersion: sessionProtocolVersion, type: 'room-call-state', state: control.state };
