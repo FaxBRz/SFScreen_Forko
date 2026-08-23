@@ -99,6 +99,12 @@ const MessageSquareIcon = (): ReactElement => (
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
+const MicrophoneIcon = (): ReactElement => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8" /></svg>
+);
+const MicrophoneOffIcon = (): ReactElement => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m2 2 20 20M9 9v1a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6M17 16.95A7 7 0 0 0 19 12v-2M5 10v2a7 7 0 0 0 10.12 6.25M12 19v3M8 22h8" /></svg>
+);
 const ImageIcon = (): ReactElement => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-4.5-4.5L6 21" />
@@ -3461,7 +3467,7 @@ export const App = (): ReactElement => {
                     <strong>{state.localUserName}</strong>
                     {state.role === "host" && <span className="crown-icon" title="Host da sessão"><CrownIcon /></span>}
                   </span>
-                  <small>{localSharing ? "Transmitindo tela" : isConnected ? "Conectado" : "Na sala"}</small>
+                  <small>{localSharing ? "Transmitindo tela" : session.voiceActive ? (session.voiceMuted ? "Na voz · microfone mutado" : "Falando na voz") : isConnected ? "Conectado" : "Na sala"}</small>
                 </div>
               </div>
             </div>
@@ -4492,6 +4498,19 @@ export const App = (): ReactElement => {
               >
                 <CameraIcon />
               </button>
+
+              {isConnected && (
+                <button
+                  className={`dock-icon-btn is-voice-btn ${session.voiceActive ? "is-active" : ""} ${session.voiceMuted ? "is-muted" : ""}`}
+                  type="button"
+                  onClick={() => session.voiceActive ? session.toggleVoiceMute() : void session.toggleVoice()}
+                  onContextMenu={(event) => { event.preventDefault(); if (session.voiceActive) void session.toggleVoice(); }}
+                  title={session.voiceActive ? (session.voiceMuted ? "Ativar microfone · clique direito para sair da voz" : "Mutar · clique direito para sair da voz") : "Entrar na voz"}
+                  aria-label={session.voiceActive ? (session.voiceMuted ? "Ativar microfone" : "Mutar microfone") : "Entrar na voz"}
+                >
+                  {session.voiceMuted ? <MicrophoneOffIcon /> : <MicrophoneIcon />}
+                </button>
+              )}
 
               <button className={`dock-icon-btn ${state.chatPanelOpen ? "is-active" : ""}`} type="button" title="Chat" onClick={handleToggleChat}>
                 <MessageSquareIcon />

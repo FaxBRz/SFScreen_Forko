@@ -417,6 +417,8 @@ export interface SessionModel {
   localCameraStream?: MediaStream;
   remoteCameraStream?: MediaStream;
   cameraActive: boolean;
+  voiceActive: boolean;
+  voiceMuted: boolean;
   remoteMediaPhase?: MediaPhase;
   remoteMediaError?: string;
   remoteAudioPhase?: AudioPhase;
@@ -432,6 +434,8 @@ export interface SessionModel {
   setFps: (fps: StreamFps) => void;
   toggleSystemAudio: () => Promise<void>;
   toggleCamera: () => Promise<void>;
+  toggleVoice: () => Promise<void>;
+  toggleVoiceMute: () => void;
   refresh: () => Promise<TailscaleStatus | undefined>;
   openSourcePicker: () => Promise<void>;
   closeSourcePicker: () => void;
@@ -469,6 +473,9 @@ export const useSession = (): SessionModel => {
   const [sources, setSources] = useState<ScreenSource[]>([]);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [activeRoom, setActiveRoom] = useState<HostedRoom | undefined>(undefined);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const microphoneStreamRef = useRef<MediaStream | undefined>(undefined);
   const [resolution, setResolutionState] = useState<StreamResolution>(getSavedStreamResolution);
   const [fps, setFpsState] = useState<StreamFps>(getSavedStreamFps);
   const resolutionRef = useRef<StreamResolution>(resolution);
@@ -604,6 +611,10 @@ export const useSession = (): SessionModel => {
     setRemoteAudioPhase('unavailable');
     setRemoteAudioError(undefined);
     setActiveRoom(undefined);
+    microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
+    microphoneStreamRef.current = undefined;
+    setVoiceActive(false);
+    setVoiceMuted(false);
     await window.sfscreen.stopHostedSession();
     recordDiagnostic('session-closed');
     dispatch({ type: 'closed' });
@@ -1145,6 +1156,53 @@ recordDiagnostic('audio-unavailable');
     }
   }, [createController, recordDiagnostic, requireReady]);
 
+  const toggleVoice = useCallback(async (): Promise<void> => {
+    const controller = controllerRef.current;
+    if (!controller || state.phase !== 'connected') return;
+    if (voiceActive) {
+      microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
+      microphoneStreamRef.current = undefined;
+      const systemTrack = state.includeSystemAudio ? localStreamRef.current?.getAudioTracks().find((track) => track.readyState === 'live') : undefined;
+      if (systemTrack) {
+        await controller.replaceAudioTrack(systemTrack);
+        controller.sendAudioState('active');
+      } else {
+        await controller.removeAudioTrack();
+        controller.sendAudioState('unavailable');
+      }
+      setVoiceActive(false);
+      setVoiceMuted(false);
+      return;
+    }
+    const preferred = (() => { try { return localStorage.getItem('sfscreen_preferred_microphone') || 'default'; } catch { return 'default'; } })();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: preferred === 'default' ? 'default' : { exact: preferred },
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
+    const track = stream.getAudioTracks()[0];
+    if (!track) throw new Error('O microfone selecionado não ficou disponível.');
+    track.enabled = true;
+    track.onended = () => { if (microphoneStreamRef.current === stream) { setVoiceActive(false); setVoiceMuted(false); } };
+    microphoneStreamRef.current?.getTracks().forEach((previous) => previous.stop());
+    microphoneStreamRef.current = stream;
+    await controller.replaceAudioTrack(track);
+    controller.sendAudioState('active');
+    setVoiceActive(true);
+    setVoiceMuted(false);
+  }, [state.includeSystemAudio, state.phase, voiceActive]);
+
+  const toggleVoiceMute = useCallback((): void => {
+    const track = microphoneStreamRef.current?.getAudioTracks()[0];
+    if (!track || !voiceActive) return;
+    track.enabled = !track.enabled;
+    setVoiceMuted(!track.enabled);
+  }, [voiceActive]);
+
   const confirmSecurity = useCallback((): void => {
     localConfirmedRef.current = true;
     controllerRef.current?.confirmSecurity();
@@ -1537,6 +1595,8 @@ recordDiagnostic('audio-unavailable');
     localCameraStream,
     remoteCameraStream,
     cameraActive,
+    voiceActive,
+    voiceMuted,
     remoteMediaPhase,
     remoteMediaError,
     remoteAudioPhase,
@@ -1552,6 +1612,8 @@ recordDiagnostic('audio-unavailable');
     setFps,
     toggleSystemAudio,
     toggleCamera,
+    toggleVoice,
+    toggleVoiceMute,
     refresh,
     openSourcePicker,
     closeSourcePicker: () => setSourcePickerOpen(false),

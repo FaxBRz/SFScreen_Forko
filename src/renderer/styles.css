@@ -3141,6 +3141,8 @@ button:disabled {
 .room-list { display:flex; flex-direction:column; gap:5px; max-height:170px; overflow-y:auto; }
 .room-list-item { width:100%; padding:9px 10px; border:1px solid rgba(255,255,255,.055); border-radius:8px; background:#181a21; text-align:left; }
 .room-list-item:hover,.room-list-item.is-selected { border-color:rgba(87,242,135,.28); background:rgba(35,165,90,.1); }
+.dock-icon-btn.is-voice-btn.is-active { color:#b8f7cf; background:rgba(35,165,90,.2); border-color:rgba(87,242,135,.3); }
+.dock-icon-btn.is-voice-btn.is-muted { color:#ff9b9f; background:rgba(218,55,60,.16); border-color:rgba(255,123,127,.25); }
 
 /* ─── Floating In-Stage Control Dock (Discord In-Stage Style) ─── */
 .stage-dock-trigger-zone {
