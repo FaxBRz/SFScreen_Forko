@@ -129,13 +129,20 @@ const connectedState = (state: SessionUiState, route = state.route): SessionUiSt
 
 export const sessionReducer = (state: SessionUiState, action: SessionAction): SessionUiState => {
   switch (action.type) {
-    case 'status':
+    case 'status': {
+      const recoveredFromNetworkFailure = action.status.state === 'ready'
+        && state.phase === 'failed'
+        && state.tailscale.state !== 'ready';
       return {
         ...state,
         tailscale: action.status,
-        phase: state.phase === 'checking' ? (action.status.state === 'ready' ? 'idle' : 'failed') : state.phase,
-        message: state.phase === 'checking' ? (action.status.state === 'ready' ? 'Tailscale pronto. Sala ativa.' : action.status.message ?? 'Tailscale indisponível.') : state.message,
+        phase: state.phase === 'checking' || recoveredFromNetworkFailure ? (action.status.state === 'ready' ? 'idle' : 'failed') : state.phase,
+        error: recoveredFromNetworkFailure ? undefined : state.error,
+        message: state.phase === 'checking' || recoveredFromNetworkFailure
+          ? (action.status.state === 'ready' ? action.status.message ?? 'Tailscale pronto. Sala ativa.' : action.status.message ?? 'Tailscale indisponível.')
+          : state.message,
       };
+    }
     case 'begin':
       return {
         ...state,

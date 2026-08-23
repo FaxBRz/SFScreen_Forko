@@ -27,17 +27,24 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   localCameraStream: undefined,
   remoteCameraStream: undefined,
   cameraActive: false,
+  voiceActive: false,
+  voiceMuted: false,
   setJoinCode: vi.fn(),
   setResolution: vi.fn(),
   setFps: vi.fn(),
   toggleSystemAudio: vi.fn(async () => undefined),
   toggleCamera: vi.fn(async () => undefined),
+  toggleVoice: vi.fn(async () => undefined),
+  toggleVoiceMute: vi.fn(),
   refresh: vi.fn(async () => state.tailscale),
   openSourcePicker: vi.fn(async () => undefined),
   closeSourcePicker: vi.fn(),
   selectSource: vi.fn(async () => undefined),
   host: vi.fn(async () => undefined),
   join: vi.fn(async () => undefined),
+  hostRoom: vi.fn(async () => undefined),
+  discoverRooms: vi.fn(async () => []),
+  joinRoom: vi.fn(async () => undefined),
   confirmSecurity: vi.fn(),
   startSharing: vi.fn(async () => undefined),
   stopSharing: vi.fn(async () => undefined),
@@ -46,6 +53,7 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   copyCode: vi.fn(async () => true),
   exportDiagnostics: vi.fn(async () => true),
   isSimulatedPeer: false,
+  testNetworkEnabled: false,
 
   setUserName: vi.fn(),
   setUserAvatar: vi.fn(),
@@ -54,6 +62,7 @@ const model = (state = readyState({ selectedSource: { id: 'screen:1', name: 'Mon
   toggleSessionModal: vi.fn(),
   toggleChatPanel: vi.fn(),
   simulatePeer: vi.fn(),
+  setTestNetworkEnabled: vi.fn(async () => undefined),
   getMetrics: vi.fn(async () => ({})),
   remoteControlConfig: { enabled: false, allowMouse: true, allowKeyboard: true, allowClipboard: true },
   remotePeerControlConfig: { enabled: false, allowMouse: false, allowKeyboard: false, allowClipboard: false },
@@ -366,6 +375,18 @@ describe('SFScreen Discord layout', () => {
       screenResolution: '1080p',
       sendChatMessage: true,
     }));
+  });
+
+  it('enables the simulated Tailscale network from test mode', () => {
+    const current = model();
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /configurações/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /modo de teste/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /simular rede tailscale/i }));
+
+    expect(current.setTestNetworkEnabled).toHaveBeenCalledWith(true);
   });
 
   it('allows customizing simulated peer options (screen, camera, chat message)', () => {

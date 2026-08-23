@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { formatSessionCode, normalizeSessionCode } from '../../shared/session/code';
 import { diagnosticsFormatVersion, type DiagnosticEvent, type DiagnosticsReport, type WebRtcMetrics } from '../../shared/diagnostics';
 import type { ScreenSelection, ScreenSource } from '../../shared/screen-source';
-import type { ChatMessagePayload } from '../../shared/session/media-control';
+import type { CameraState, ChatMessagePayload, RemoteControlConfig, RemoteControlStatus, RemoteInputPayload } from '../../shared/session/media-control';
 import type { HostedRoom, RoomSummary, SessionError, TailscaleStatus } from '../../shared/session/types';
 import { initialSessionState, normalizeUserName, sessionReducer, type AudioPhase, type MediaPhase, type SessionUiState } from './session-machine';
 import { WebRtcSession } from './webrtc-session';
@@ -13,6 +13,26 @@ const errorMessage = (error: SessionError | Error | unknown): string => {
 };
 
 const stopTracks = (stream: MediaStream | undefined): void => stream?.getTracks().forEach((track) => track.stop());
+
+const simulatedTailscaleStatus = (): TailscaleStatus => ({
+  state: 'ready',
+  selfIp: '100.100.100.1',
+  selfIps: ['100.100.100.1'],
+  peers: [{ id: 'test-peer-alex', name: 'Alex (Simulado)', ip: '100.100.100.2', online: true, route: 'direct' }],
+  message: 'Rede de teste ativa. Nenhum tráfego está sendo enviado pelo Tailscale.',
+});
+
+const getSavedTestNetwork = (): boolean => {
+  try { return localStorage.getItem('sfscreen_test_network') === 'true'; } catch { return false; }
+};
+
+const simulatedRoom = (): RoomSummary => ({
+  id: 'test-room-alex',
+  name: 'Sala de Alex (Simulada)',
+  hasPassword: false,
+  hostIp: '100.100.100.2',
+  hostName: 'Alex (Simulado)',
+});
 
 const resDimensionMap: Record<StreamResolution, { width: number; height: number }> = {
   '720p': { width: 1280, height: 720 },
@@ -425,6 +445,7 @@ export interface SessionModel {
   remoteAudioError?: string;
   activeRoom?: HostedRoom;
   isSimulatedPeer: boolean;
+  testNetworkEnabled: boolean;
   remoteControlConfig: import('../../shared/session/media-control').RemoteControlConfig;
   remotePeerControlConfig: import('../../shared/session/media-control').RemoteControlConfig;
   remoteControlStatus: import('../../shared/session/media-control').RemoteControlStatus;
@@ -459,10 +480,12 @@ export interface SessionModel {
   toggleSessionModal: (open?: boolean) => void;
   toggleChatPanel: (open?: boolean) => void;
   simulatePeer: (enable?: boolean | SimulatedPeerOptions, options?: SimulatedPeerOptions) => void;
+  setTestNetworkEnabled: (enabled: boolean) => Promise<void>;
   getMetrics: () => Promise<WebRtcMetrics>;
   updateRemoteControlConfig: (cfg: Partial<import('../../shared/session/media-control').RemoteControlConfig>) => Promise<void>;
   sendRemoteInput: (input: import('../../shared/session/media-control').RemoteInputPayload) => void;
   sendRemoteClipboard: (text: string) => void;
+  sendSelectMonitor: (monitorIndex: number) => void;
   resumeRemoteControlOverride: () => Promise<void>;
 }
 
@@ -497,6 +520,9 @@ export const useSession = (): SessionModel => {
   const [remoteAudioPhase, setRemoteAudioPhase] = useState<AudioPhase>('unavailable');
   const [remoteAudioError, setRemoteAudioError] = useState<string | undefined>(undefined);
   const [isSimulatedPeer, setIsSimulatedPeer] = useState(false);
+  const [testNetworkEnabled, setTestNetworkEnabledState] = useState(getSavedTestNetwork);
+  const testNetworkEnabledRef = useRef(testNetworkEnabled);
+  const simulatePeerRef = useRef<(options?: SimulatedPeerOptions) => void>(() => undefined);
   const [remoteControlConfig, setRemoteControlConfigState] = useState<RemoteControlConfig>({
     enabled: false,
     allowMouse: true,
@@ -544,6 +570,11 @@ export const useSession = (): SessionModel => {
 
   const refresh = useCallback(async (): Promise<TailscaleStatus | undefined> => {
     try {
+      if (testNetworkEnabledRef.current) {
+        const status = simulatedTailscaleStatus();
+        dispatch({ type: 'status', status });
+        return status;
+      }
       const status = await window.sfscreen.getTailscaleStatus();
       dispatch({ type: 'status', status });
       return status;
@@ -1055,6 +1086,10 @@ recordDiagnostic('audio-unavailable');
     try {
       const status = await requireReady();
       if (!status?.selfIp) return;
+      if (testNetworkEnabledRef.current) {
+        dispatch({ type: 'hosted', hosted: { code: 'TST-000-1', expiresAt: new Date(Date.now() + 10 * 60 * 1_000).toISOString() } });
+        return;
+      }
 
       const videoTrack = localStreamRef.current?.getVideoTracks().find((track) => track.readyState === 'live');
       const audioTrack = state.includeSystemAudio ? localStreamRef.current?.getAudioTracks().find((track) => track.readyState === 'live') : undefined;
@@ -1089,6 +1124,10 @@ recordDiagnostic('audio-unavailable');
     try {
       const status = await requireReady();
       if (!status?.selfIp) return;
+      if (testNetworkEnabledRef.current) {
+        simulatePeerRef.current();
+        return;
+      }
       const found = await window.sfscreen.findSession(code);
       if (!found.ok) return dispatch({ type: 'failed', message: found.error.message });
       remoteIpRef.current = found.value.hostIp;
@@ -1113,6 +1152,13 @@ recordDiagnostic('audio-unavailable');
     try {
       const status = await requireReady();
       if (!status?.selfIp) return undefined;
+      if (testNetworkEnabledRef.current) {
+        const saved = await window.sfscreen.getLocalRoom();
+        if (!saved.ok || !saved.value) throw new Error(saved.ok ? 'Crie uma sala antes de hospedá-la.' : saved.error.message);
+        const hosted: HostedRoom = { room: saved.value, expiresAt: new Date(Date.now() + 10 * 60 * 1_000).toISOString() };
+        setActiveRoom(hosted);
+        return hosted;
+      }
       if (typeof window.sfscreen?.hostRoomSession !== 'function') {
         throw new Error('O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.');
       }
@@ -1130,6 +1176,7 @@ recordDiagnostic('audio-unavailable');
   }, [createController, recordDiagnostic, requireReady]);
 
   const discoverRooms = useCallback(async (): Promise<RoomSummary[]> => {
+    if (testNetworkEnabledRef.current) return [simulatedRoom()];
     if (typeof window.sfscreen?.discoverRooms !== 'function') {
       throw new Error('O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.');
     }
@@ -1137,6 +1184,15 @@ recordDiagnostic('audio-unavailable');
     if (!result.ok) throw new Error(result.error.message);
     return result.value;
   }, []);
+
+  const setTestNetworkEnabled = useCallback(async (enabled: boolean): Promise<void> => {
+    testNetworkEnabledRef.current = enabled;
+    setTestNetworkEnabledState(enabled);
+    try { localStorage.setItem('sfscreen_test_network', String(enabled)); } catch { /* Ignored */ }
+    setActiveRoom(undefined);
+    dispatch({ type: 'closed' });
+    await refresh();
+  }, [refresh]);
 
   const joinRoom = useCallback(async (roomId: string, password: string): Promise<void> => {
     dispatch({ type: 'begin', role: 'viewer', phase: 'searching', message: 'Entrando na sala privada pela tailnet…' });
@@ -1147,6 +1203,13 @@ recordDiagnostic('audio-unavailable');
     try {
       const status = await requireReady();
       if (!status?.selfIp) return;
+      if (testNetworkEnabledRef.current) {
+        const room = simulatedRoom();
+        if (room.id !== roomId) throw new Error('A sala simulada não está mais disponível.');
+        setActiveRoom({ room, expiresAt: new Date(Date.now() + 10 * 60 * 1_000).toISOString() });
+        simulatePeerRef.current();
+        return;
+      }
       if (typeof window.sfscreen?.findRoom !== 'function' || typeof window.sfscreen?.submitRoomAnswer !== 'function') {
         throw new Error('O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.');
       }
@@ -1528,6 +1591,10 @@ recordDiagnostic('audio-unavailable');
     }
   }, [isSimulatedPeer]);
 
+  useEffect(() => {
+    simulatePeerRef.current = (options) => simulatePeer(true, options);
+  }, [simulatePeer]);
+
   const getMetrics = useCallback(async (): Promise<WebRtcMetrics> => {
     if (controllerRef.current) {
       try {
@@ -1612,6 +1679,7 @@ recordDiagnostic('audio-unavailable');
     remoteAudioError,
     activeRoom,
     isSimulatedPeer,
+    testNetworkEnabled,
     remoteControlConfig,
     remotePeerControlConfig,
     remoteControlStatus,
@@ -1646,6 +1714,7 @@ recordDiagnostic('audio-unavailable');
     toggleSessionModal,
     toggleChatPanel,
     simulatePeer,
+    setTestNetworkEnabled,
     getMetrics,
     updateRemoteControlConfig,
     sendRemoteInput,

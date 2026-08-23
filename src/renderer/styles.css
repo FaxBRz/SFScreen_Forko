@@ -4835,6 +4835,40 @@ button:disabled {
   border-color: rgba(255, 255, 255, 0.14);
 }
 
+.test-network-card.is-active {
+  border-color: rgba(35, 165, 90, 0.42);
+  background: linear-gradient(135deg, rgba(35, 165, 90, 0.1), #111319 58%);
+}
+
+.test-network-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(35, 165, 90, 0.2);
+  border-radius: 9px;
+  background: rgba(7, 10, 13, 0.52);
+  color: #b5bac1;
+  font-size: 0.72rem;
+}
+
+.test-network-summary span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.test-network-summary strong {
+  color: #3ddc84;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.75rem;
+}
+
+.test-network-summary small {
+  grid-column: 1 / -1;
+  color: #7f8490;
+}
+
 .test-card-header-row {
   display: flex;
   align-items: center;

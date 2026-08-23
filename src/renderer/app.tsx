@@ -9,6 +9,7 @@ import {
 
 import { formatSessionCode } from "../shared/session/code";
 import type { ScreenSource } from "../shared/screen-source";
+import type { RemoteControlConfig } from "../shared/session/media-control";
 import type { LocalRoomConfig, RoomSummary } from "../shared/session/types";
 import { type SessionModel, type StreamFps, type StreamResolution, useSession } from "./session/use-session";
 import sfLogoPng from "./assets/icon.png";
@@ -965,7 +966,7 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
 
         <div className={`session-modal-network-status ${state.tailscale.state === "ready" ? "is-ready" : "is-unavailable"}`}>
           <span className="session-modal-network-dot" />
-          <span>{state.tailscale.state === "ready" ? "Tailscale pronto para conexão segura" : "Tailscale precisa estar conectado para iniciar"}</span>
+          <span>{session.testNetworkEnabled ? "Rede Tailscale simulada · ambiente de teste" : state.tailscale.state === "ready" ? "Tailscale pronto para conexão segura" : "Tailscale precisa estar conectado para iniciar"}</span>
         </div>
 
         {state.securityCode ? (
@@ -1574,11 +1575,42 @@ const SettingsModal = ({
                   </div>
                 </div>
                 <p className="modal-subtext">
-                  Configure detalhadamente o comportamento de Alex (participante simulado) para testar compartilhamento de tela, webcam, resoluções e chat sem precisar de um segundo dispositivo.
+                  Simule a tailnet e o comportamento de Alex para testar salas, convites, compartilhamento de tela, webcam e chat sem precisar de Tailscale ou de um segundo dispositivo.
                 </p>
               </div>
 
               <div className="test-config-section">
+                <div className={`test-card-box test-network-card ${session.testNetworkEnabled ? "is-active" : ""}`}>
+                  <div className="test-card-header-row">
+                    <div className="test-card-label-col">
+                      <div className="test-card-icon-title">
+                        <ServerIcon />
+                        <strong>Simular rede Tailscale</strong>
+                      </div>
+                      <span className="test-card-desc">Cria uma tailnet virtual com IP e peer simulados. Permite criar salas, gerar convites e localizar a sala de Alex sem abrir nenhuma conexão real.</span>
+                    </div>
+                    <div className="switch-toggle-wrapper">
+                      <input
+                        type="checkbox"
+                        className="switch-toggle-input"
+                        checked={session.testNetworkEnabled}
+                        onChange={(event) => void session.setTestNetworkEnabled(event.target.checked)}
+                        aria-label="Simular rede Tailscale"
+                      />
+                      <div className={`switch-toggle-track ${session.testNetworkEnabled ? "is-checked" : ""}`}>
+                        <div className="switch-toggle-thumb" />
+                      </div>
+                    </div>
+                  </div>
+                  {session.testNetworkEnabled && (
+                    <div className="test-network-summary" role="status">
+                      <span><strong>100.100.100.1</strong> Este computador</span>
+                      <span><strong>100.100.100.2</strong> Alex (Simulado)</span>
+                      <small>Somente simulação local · zero tráfego externo</small>
+                    </div>
+                  )}
+                </div>
+
                 {/* 0. Foto e Avatar de Alex */}
                 <div className="test-card-box">
                   <div className="test-card-header-row">
@@ -3392,11 +3424,13 @@ export const App = (): ReactElement => {
             <>
               <div
                 className="status-pill status-connection"
-                title={`Status da rede Tailscale: ${state.tailscale.peers?.length || 0} peer(s) na tailnet (${(state.tailscale.peers || []).filter((p) => p.online).length} online)`}
+                title={session.testNetworkEnabled ? "Rede Tailscale simulada para testes locais" : `Status da rede Tailscale: ${state.tailscale.peers?.length || 0} peer(s) na tailnet (${(state.tailscale.peers || []).filter((p) => p.online).length} online)`}
               >
                 <SignalWifiIcon />
                 <span>
-                  {state.tailscale.state === "ready"
+                  {session.testNetworkEnabled
+                    ? "Rede de teste · Alex online"
+                    : state.tailscale.state === "ready"
                     ? `Conexão excelente · 18 ms · ${state.tailscale.peers?.length || 0} peer${(state.tailscale.peers?.length || 0) !== 1 ? "s" : ""}`
                     : "Tailscale conectando…"}
                 </span>

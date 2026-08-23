@@ -4,6 +4,15 @@ import { initialSessionState, normalizeUserName, sessionReducer } from '../../sr
 const ready = { state: 'ready' as const, selfIp: '100.90.1.2', peers: [] };
 
 describe('session machine', () => {
+  it('recovers from an offline network failure when the network becomes ready', () => {
+    const offline = sessionReducer(initialSessionState, { type: 'status', status: { state: 'offline', peers: [], message: 'Offline' } });
+    const recovered = sessionReducer(offline, { type: 'status', status: { state: 'ready', selfIp: '100.100.100.1', peers: [], message: 'Rede de teste ativa.' } });
+
+    expect(recovered.phase).toBe('idle');
+    expect(recovered.error).toBeUndefined();
+    expect(recovered.message).toBe('Rede de teste ativa.');
+  });
+
   it('uses Usuario instead of legacy Você profile names', () => {
     expect(normalizeUserName()).toBe('Usuario');
     expect(normalizeUserName('Você')).toBe('Usuario');

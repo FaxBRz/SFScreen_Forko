@@ -107,7 +107,8 @@ app.whenReady().then(() => {
     && !mainWindow.isDestroyed()
     && webContents === mainWindow.webContents;
 
-  const canRequestDisplayCapture = (webContents: Electron.WebContents | null): boolean => isAuthorizedWebContents(webContents)
+  const canRequestDisplayCapture = (webContents: Electron.WebContents | null): boolean => webContents !== null
+    && isAuthorizedWebContents(webContents)
     && screenCapture.hasSelection(webContents.id);
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
@@ -115,7 +116,7 @@ app.whenReady().then(() => {
       callback(isAuthorizedWebContents(webContents));
       return;
     }
-    if (permission === 'display-capture') {
+    if ((permission as string) === 'display-capture') {
       callback(canRequestDisplayCapture(webContents));
       return;
     }
@@ -126,7 +127,7 @@ app.whenReady().then(() => {
     if (permission === 'media') {
       return isAuthorizedWebContents(webContents);
     }
-    if (permission === 'display-capture') {
+    if ((permission as string) === 'display-capture') {
       return canRequestDisplayCapture(webContents);
     }
     return false;
