@@ -400,11 +400,12 @@ describe('SFScreen Discord layout', () => {
       expiresAt: '2026-08-23T01:00:00.000Z',
     };
     vi.mocked(useSession).mockReturnValue(current);
-    render(<App />);
+    const { container } = render(<App />);
 
-    expect(screen.getByText('O chat já está disponível. Entre na chamada somente quando quiser usar microfone, câmera ou compartilhar a tela.')).toBeTruthy();
+    expect(container.querySelector('.discord-body.is-room-chat-mode')).toBeTruthy();
+    expect(screen.getByPlaceholderText(/conversar em sala privada/i)).toBeTruthy();
     expect(screen.queryByText('Voz conectada')).toBeNull();
-    fireEvent.click(screen.getAllByRole('button', { name: /entrar na chamada/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /iniciar chamada/i }));
     expect(current.joinRoomCall).toHaveBeenCalledOnce();
   });
 

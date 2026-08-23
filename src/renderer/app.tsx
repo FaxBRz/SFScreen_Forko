@@ -121,6 +121,11 @@ const PhoneOffIcon = (): ReactElement => (
     <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" /><line x1="2" x2="22" y1="2" y2="22" />
   </svg>
 );
+const PhoneIcon = (): ReactElement => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z" />
+  </svg>
+);
 const FullscreenIcon = (): ReactElement => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
@@ -2207,6 +2212,7 @@ export const App = (): ReactElement => {
   const isRoomSession = !!session.activeRoom;
   const localInCall = isConnected && (!isRoomSession || session.roomCallActive);
   const remoteInCall = isConnected && (!isRoomSession || session.remoteRoomCallActive);
+  const isRoomChatMode = isRoomSession && isConnected && !session.roomCallActive;
   const roomMediaLocked = isRoomSession && !session.roomCallActive;
   const localSharing = (!isRoomSession || session.roomCallActive) && state.mediaPhase === "sharing" && !!session.localStream;
   const remotePhase = session.remoteMediaPhase ?? "stopped";
@@ -2329,12 +2335,12 @@ export const App = (): ReactElement => {
   }, [state.chatMessages.length]);
 
   useEffect(() => {
-    if (state.chatPanelOpen) {
+    if (state.chatPanelOpen || isRoomChatMode) {
       if (typeof chatMessagesEndRef.current?.scrollIntoView === "function") {
         chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
       }
     }
-  }, [state.chatMessages.length, isConnected, state.chatPanelOpen]);
+  }, [state.chatMessages.length, isConnected, isRoomChatMode, state.chatPanelOpen]);
 
 
   const userManuallyToggledChatRef = useRef(false);
@@ -3473,7 +3479,7 @@ export const App = (): ReactElement => {
       </header>
 
       {/* Main Body: Sidebar + Stage + Chat (Flex Resizable Layout) */}
-      <div className={`discord-body ${sidebarOpen ? "" : "is-sidebar-collapsed"}`}>
+      <div className={`discord-body ${sidebarOpen ? "" : "is-sidebar-collapsed"} ${isRoomChatMode ? "is-room-chat-mode" : ""}`}>
         {/* Left Sidebar (Collapsible & Resizable) */}
         {sidebarOpen && (
           <aside className="discord-sidebar" style={{ width: `${sidebarWidth}px` }}>
@@ -3554,11 +3560,6 @@ export const App = (): ReactElement => {
 
 
             <div className="sidebar-footer">
-              {isConnected && isRoomSession && !session.roomCallActive && (
-                <button className="button primary sidebar-join-call-btn" type="button" onClick={() => void session.joinRoomCall()}>
-                  <MicrophoneIcon /> Entrar na chamada
-                </button>
-              )}
               {localInCall && (
                 <div className="sidebar-voice-connected-wrap">
                   {voicePopoverOpen && (
@@ -3612,7 +3613,8 @@ export const App = (): ReactElement => {
         )}
 
         {/* Main Stage (Clean Video Area with Floating Overlay Dock) */}
-        <main
+        {!isRoomChatMode && (
+          <main
           className="discord-stage-area"
           onMouseMove={handleStageMouseMove}
           onMouseLeave={handleStageMouseLeave}
@@ -4628,11 +4630,12 @@ export const App = (): ReactElement => {
               )}
             </div>
           </div>
-        </main>
+          </main>
+        )}
 
 
         {/* Right Collapsible Chat Drawer (Resizable) */}
-        {state.chatPanelOpen && (
+        {(state.chatPanelOpen || isRoomChatMode) && (
           <aside
             className={`discord-chat-drawer ${isChatDropActive ? "is-drop-active" : ""}`}
             style={{ width: `${chatWidth}px` }}
@@ -4651,11 +4654,21 @@ export const App = (): ReactElement => {
             <div className="chat-header">
               <div className="chat-title-group">
                 <span className="chat-title-icon"><MessageSquareIcon /></span>
-                <div><h3>{isRoomSession ? "Chat da Sala" : "Chat da Chamada"}</h3><span>{participantsCount} {participantsCount === 1 ? "pessoa" : "pessoas"} na sala</span></div>
+                <div><h3>{isRoomSession ? session.activeRoom?.room.name : "Chat da Chamada"}</h3><span>{isRoomSession ? `Conversa privada · ${participantsCount} membros` : `${participantsCount} ${participantsCount === 1 ? "pessoa" : "pessoas"} na sala`}</span></div>
               </div>
-              <button className="icon-action-button" type="button" onClick={handleCloseChat} aria-label="Fechar chat">
-                <XCloseIcon />
-              </button>
+              <div className="chat-header-actions">
+                {isRoomChatMode && (
+                  <button className="chat-start-call-btn" type="button" onClick={() => void session.joinRoomCall()} aria-label="Iniciar chamada" title={session.remoteRoomCallActive ? `${state.remoteUserName} já está na chamada` : "Iniciar chamada"}>
+                    <PhoneIcon />
+                    {session.remoteRoomCallActive && <span className="chat-call-presence-dot" />}
+                  </button>
+                )}
+                {!isRoomChatMode && (
+                  <button className="icon-action-button" type="button" onClick={handleCloseChat} aria-label="Fechar chat">
+                    <XCloseIcon />
+                  </button>
+                )}
+              </div>
             </div>
 
             {isChatDropActive && (
@@ -4667,6 +4680,13 @@ export const App = (): ReactElement => {
             )}
 
             <div className="chat-messages-container">
+              {state.chatMessages.length === 0 && isRoomChatMode && (
+                <div className="room-chat-welcome">
+                  <UserAvatar name={state.remoteUserName} avatar={state.remoteUserAvatar} className="room-chat-welcome-avatar" />
+                  <h2>{session.activeRoom?.room.name}</h2>
+                  <p>Este é o início da conversa com {state.remoteUserName}. As mensagens são efêmeras e desaparecem quando a sala for encerrada.</p>
+                </div>
+              )}
               {state.chatMessages.length === 0 && !isConnected && (
                 <div className="chat-notice chat-empty-state">
                   <MessageSquareIcon />
@@ -4732,7 +4752,7 @@ export const App = (): ReactElement => {
                 className="chat-text-input"
                 value={chatText}
                 onChange={(e) => setChatText(e.target.value)}
-                placeholder="Conversar no canal…"
+                placeholder={isRoomSession ? `Conversar em ${session.activeRoom?.room.name ?? "sala"}…` : "Conversar no canal…"}
                 title={`Use @${isConnected ? state.remoteUserName : "Usuario"} para mencionar`}
               />
               {mentionQuery !== undefined && !mentionAlreadyCompleted && (
