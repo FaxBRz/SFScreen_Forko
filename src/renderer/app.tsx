@@ -839,6 +839,9 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
     setRoomBusy(true);
     setRoomError("");
     try {
+      if (typeof window.sfscreen?.createLocalRoom !== "function") {
+        throw new Error("O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.");
+      }
       const saved = await window.sfscreen.createLocalRoom(roomName, roomPassword);
       if (!saved.ok) throw new Error(saved.error.message);
       setLocalRoom(saved.value);
@@ -856,18 +859,39 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
   const handleUpdateRoomPassword = async (): Promise<void> => {
     if (roomPassword !== roomPasswordConfirm) return setRoomError("As senhas não coincidem.");
     setRoomBusy(true);
-    const result = await window.sfscreen.updateLocalRoomPassword(roomPassword);
-    if (result.ok) { setLocalRoom(result.value); setEditingRoomPassword(false); setRoomPassword(""); setRoomPasswordConfirm(""); setRoomError(""); }
-    else setRoomError(result.error.message);
-    setRoomBusy(false);
+    setRoomError("");
+    try {
+      if (typeof window.sfscreen?.updateLocalRoomPassword !== "function") {
+        throw new Error("O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.");
+      }
+      const result = await window.sfscreen.updateLocalRoomPassword(roomPassword);
+      if (!result.ok) throw new Error(result.error.message);
+      setLocalRoom(result.value);
+      setEditingRoomPassword(false);
+      setRoomPassword("");
+      setRoomPasswordConfirm("");
+    } catch (error) {
+      setRoomError(error instanceof Error ? error.message : "Não foi possível alterar a senha.");
+    } finally {
+      setRoomBusy(false);
+    }
   };
 
   const handleRemoveRoomPassword = async (): Promise<void> => {
     setRoomBusy(true);
-    const result = await window.sfscreen.removeLocalRoomPassword();
-    if (result.ok) { setLocalRoom(result.value); setRoomError(""); }
-    else setRoomError(result.error.message);
-    setRoomBusy(false);
+    setRoomError("");
+    try {
+      if (typeof window.sfscreen?.removeLocalRoomPassword !== "function") {
+        throw new Error("O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.");
+      }
+      const result = await window.sfscreen.removeLocalRoomPassword();
+      if (!result.ok) throw new Error(result.error.message);
+      setLocalRoom(result.value);
+    } catch (error) {
+      setRoomError(error instanceof Error ? error.message : "Não foi possível remover a senha.");
+    } finally {
+      setRoomBusy(false);
+    }
   };
 
   const handleJoinRoom = async (event: FormEvent): Promise<void> => {
@@ -1039,7 +1063,7 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
                     <input id="room-password" className="text-input" type="password" value={roomPassword} minLength={4} onChange={(event) => setRoomPassword(event.target.value)} />
                     <label className="code-label" htmlFor="room-password-confirm">Confirmar senha</label>
                     <input id="room-password-confirm" className="text-input" type="password" value={roomPasswordConfirm} minLength={4} onChange={(event) => setRoomPasswordConfirm(event.target.value)} />
-                    <button className="button primary full-width" type="submit" disabled={roomBusy || roomName.trim().length === 0 || roomPassword.length < 4}>{roomBusy ? "Criando…" : "Criar sala"}</button>
+                    <button className="button primary full-width" type="submit" disabled={roomBusy || state.tailscale.state !== "ready" || roomName.trim().length === 0 || roomPassword.length < 4}>{roomBusy ? "Criando…" : "Criar sala"}</button>
                   </form>
                 )}
                 {roomError && <p className="empty-warning" role="alert">{roomError}</p>}

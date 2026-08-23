@@ -1113,6 +1113,9 @@ recordDiagnostic('audio-unavailable');
     try {
       const status = await requireReady();
       if (!status?.selfIp) return undefined;
+      if (typeof window.sfscreen?.hostRoomSession !== 'function') {
+        throw new Error('O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.');
+      }
       const controller = createController();
       const offer = await controller.createOffer(status.selfIps ?? [status.selfIp], status.selfIp, crypto.randomUUID(), crypto.randomUUID());
       const result = await window.sfscreen.hostRoomSession(offer);
@@ -1127,6 +1130,9 @@ recordDiagnostic('audio-unavailable');
   }, [createController, recordDiagnostic, requireReady]);
 
   const discoverRooms = useCallback(async (): Promise<RoomSummary[]> => {
+    if (typeof window.sfscreen?.discoverRooms !== 'function') {
+      throw new Error('O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.');
+    }
     const result = await window.sfscreen.discoverRooms();
     if (!result.ok) throw new Error(result.error.message);
     return result.value;
@@ -1141,6 +1147,9 @@ recordDiagnostic('audio-unavailable');
     try {
       const status = await requireReady();
       if (!status?.selfIp) return;
+      if (typeof window.sfscreen?.findRoom !== 'function' || typeof window.sfscreen?.submitRoomAnswer !== 'function') {
+        throw new Error('O SFScreen foi atualizado. Feche e abra o aplicativo para carregar o novo sistema de salas.');
+      }
       const found = await window.sfscreen.findRoom(roomId, password);
       if (!found.ok) throw new Error(found.error.message);
       remoteIpRef.current = found.value.hostIp;
