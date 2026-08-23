@@ -4822,7 +4822,7 @@ export const App = (): ReactElement => {
 
 
         <div className="topbar-right window-no-drag">
-          <button className="icon-action-button" type="button" title="Configurações" onClick={() => setSettingsOpen(true)}>
+          <button className="icon-action-button" type="button" title="Configurações" aria-label="Configurações" onClick={() => setSettingsOpen(true)}>
             <GearIcon />
           </button>
           <button className="user-avatar-button" type="button" title={`Perfil: ${state.localUserName}`} onClick={() => setSettingsOpen(true)}>
