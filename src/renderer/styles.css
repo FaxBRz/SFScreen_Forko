@@ -3516,47 +3516,58 @@ button:disabled {
 }
 
 .session-modal-panel {
-  width: min(540px, 100%);
+  width: min(560px, 100%);
   max-height: calc(100vh - 40px);
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 22px;
-  background: #14161d;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 24px;
+  background: linear-gradient(145deg, #171920, #111217);
+  box-shadow: 0 28px 84px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 
 /* ─── Settings Modal (Clean Tabbed View) ─── */
 .settings-modal-panel {
-  width: min(800px, 94vw);
-  height: min(620px, calc(100vh - 40px));
+  width: min(860px, 94vw);
+  height: min(680px, calc(100vh - 40px));
   max-height: calc(100vh - 40px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
   background: #14161d;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: 218px minmax(0, 1fr);
   overflow: hidden;
 }
 
+.settings-modal-panel.is-profile {
+  height: min(540px, calc(100vh - 40px));
+}
+
 .settings-sidebar {
-  background: #0f1015;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
-  padding: 16px 10px;
+  background: linear-gradient(180deg, #11131a 0%, #0d0f14 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 20px 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
 .settings-nav-header h3 {
-  margin: 0 0 6px 8px;
-  font-size: 0.8rem;
+  margin: 0 0 4px 8px;
+  font-size: 0.84rem;
   font-weight: 800;
   color: #6d7380;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.settings-nav-header span {
+  display: block;
+  margin: 0 0 12px 8px;
+  color: #737b88;
+  font-size: 0.68rem;
 }
 
 .settings-nav-list {
@@ -3569,8 +3580,8 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 9px 10px;
+  border-radius: 9px;
   color: #949ba4;
   font-size: 0.8rem;
   font-weight: 600;
@@ -3589,16 +3600,17 @@ button:disabled {
 }
 
 .settings-nav-item.is-active {
-  background: rgba(88, 101, 242, 0.15);
+  background: linear-gradient(90deg, rgba(35, 165, 90, 0.2), rgba(35, 165, 90, 0.07));
+  box-shadow: inset 2px 0 0 #23a55a;
   color: #fff;
 }
 
 .settings-nav-item.is-active svg {
-  stroke: #5865f2;
+  stroke: #57f287;
 }
 
 .settings-content-body {
-  padding: 20px 24px;
+  padding: 22px 26px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -3610,12 +3622,12 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  padding-bottom: 12px;
+  padding-bottom: 15px;
 }
 
 .settings-section-heading {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.12rem;
   font-weight: 700;
   color: #fff;
 }
@@ -3675,9 +3687,9 @@ button:disabled {
 /* ─── Modern Discord-Style Profile Settings Card ─── */
 .discord-profile-card {
   width: 100%;
-  background: #111319;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
+  background: linear-gradient(145deg, #151820, #101217);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   margin-bottom: 6px;
@@ -3735,7 +3747,7 @@ button:disabled {
 
 .discord-profile-body {
   padding: 0 18px 16px;
-  background: #111319;
+  background: transparent;
 }
 
 .discord-profile-avatar-row {
@@ -3987,14 +3999,15 @@ button:disabled {
 .settings-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 17px;
 }
 
 .settings-actions-footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 2px;
+  padding-top: 4px;
 }
 
 /* ─── Modal Elements ─── */
@@ -4010,6 +4023,61 @@ button:disabled {
   font-size: 1.1rem;
   color: #fff;
   font-weight: 700;
+}
+
+.session-modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.session-modal-title-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(35, 165, 90, 0.35);
+  border-radius: 11px;
+  background: rgba(35, 165, 90, 0.12);
+  color: #57f287;
+  box-shadow: 0 0 18px rgba(35, 165, 90, 0.12);
+}
+
+.session-modal-title-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.session-modal-network-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 16px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #929ba8;
+  font-size: 0.72rem;
+}
+
+.session-modal-network-status.is-ready {
+  border-color: rgba(35, 165, 90, 0.22);
+  background: rgba(35, 165, 90, 0.07);
+  color: #b7eecb;
+}
+
+.session-modal-network-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #da373c;
+  box-shadow: 0 0 0 4px rgba(218, 55, 60, 0.1);
+}
+
+.session-modal-network-status.is-ready .session-modal-network-dot {
+  background: #23a55a;
+  box-shadow: 0 0 0 4px rgba(35, 165, 90, 0.1), 0 0 10px rgba(35, 165, 90, 0.55);
 }
 
 .section-kicker {
@@ -4126,10 +4194,11 @@ button:disabled {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  background: #0f1015;
+  background: rgba(6, 7, 10, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.045);
   padding: 4px;
-  border-radius: 8px;
-  margin-bottom: 14px;
+  border-radius: 10px;
+  margin-bottom: 16px;
 }
 
 .tab-pill {
@@ -4141,7 +4210,8 @@ button:disabled {
 }
 
 .tab-pill.is-active {
-  background: #1e2029;
+  background: linear-gradient(145deg, #272a35, #1d2028);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.24);
   color: #fff;
 }
 
@@ -4158,11 +4228,30 @@ button:disabled {
   line-height: 1.4;
 }
 
+.invite-action-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(35, 165, 90, 0.16);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(35, 165, 90, 0.08), rgba(255, 255, 255, 0.015));
+}
+
+.invite-action-box .button {
+  box-shadow: 0 8px 20px rgba(35, 165, 90, 0.18);
+}
+
+.invite-action-box .empty-warning {
+  margin: 0;
+  padding-top: 2px;
+}
+
 .invite-code-card {
-  background: #0f1015;
-  border: 1px solid rgba(35, 165, 90, 0.25);
-  border-radius: 10px;
-  padding: 14px;
+  background: linear-gradient(145deg, rgba(35, 165, 90, 0.11), rgba(11, 16, 13, 0.9));
+  border: 1px solid rgba(35, 165, 90, 0.3);
+  border-radius: 14px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4180,7 +4269,7 @@ button:disabled {
   cursor: pointer;
   padding: 4px 10px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.22);
   transition: all 0.15s ease;
 }
 
@@ -4810,6 +4899,12 @@ button:disabled {
 .source-mode-tab svg {
   width: 17px;
   height: 17px;
+}
+
+.settings-section-caption {
+  margin: 4px 0 0;
+  color: #7f8895;
+  font-size: 0.74rem;
 }
 
 .source-quality-config {

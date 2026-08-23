@@ -845,11 +845,19 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
     <div className="modal-backdrop" role="presentation">
       <section className="session-modal-panel" role="dialog" aria-modal="true" aria-labelledby="session-modal-title">
         <div className="modal-heading">
-          <div>
-            <p className="section-kicker">Conexão Segura</p>
-            <h2 id="session-modal-title">Conectar ou Convidar</h2>
+          <div className="session-modal-title-group">
+            <div className="session-modal-title-icon"><LockShieldIcon /></div>
+            <div>
+              <p className="section-kicker">Conexão segura</p>
+              <h2 id="session-modal-title">Conectar ou convidar</h2>
+            </div>
           </div>
           <button className="button ghost icon-only" type="button" onClick={onClose} aria-label="Fechar"><XCloseIcon /></button>
+        </div>
+
+        <div className={`session-modal-network-status ${state.tailscale.state === "ready" ? "is-ready" : "is-unavailable"}`}>
+          <span className="session-modal-network-dot" />
+          <span>{state.tailscale.state === "ready" ? "Tailscale pronto para conexão segura" : "Tailscale precisa estar conectado para iniciar"}</span>
         </div>
 
         {state.securityCode ? (
@@ -1147,11 +1155,12 @@ const SettingsModal = ({
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="settings-modal-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <section className={`settings-modal-panel is-${activeTab}`} role="dialog" aria-modal="true" aria-labelledby="settings-title">
         {/* Settings Navigation Sidebar */}
         <aside className="settings-sidebar">
           <div className="settings-nav-header">
             <h3 id="settings-title">Configurações</h3>
+            <span>Seu espaço no SFScreen</span>
           </div>
           <nav className="settings-nav-list">
             <button className={`settings-nav-item ${activeTab === "profile" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("profile")}>
@@ -1178,14 +1187,24 @@ const SettingsModal = ({
         {/* Settings Main Content */}
         <div className="settings-content-body">
           <div className="settings-header-row">
-            <h2 className="settings-section-heading">
-              {activeTab === "profile" && "Perfil de Usuário"}
-              {activeTab === "network" && "Rede & Tailscale"}
-              {activeTab === "media" && "Qualidade & Parâmetros de Mídia"}
-              {activeTab === "diagnostics" && "Telemetria & Diagnóstico"}
-              {activeTab === "testing" && "Simulador de Chamada e Testes"}
-              {activeTab === "about" && "Sobre o SFScreen"}
-            </h2>
+            <div>
+              <h2 className="settings-section-heading">
+                {activeTab === "profile" && "Perfil de Usuário"}
+                {activeTab === "network" && "Rede & Tailscale"}
+                {activeTab === "media" && "Qualidade & Parâmetros de Mídia"}
+                {activeTab === "diagnostics" && "Telemetria & Diagnóstico"}
+                {activeTab === "testing" && "Simulador de Chamada e Testes"}
+                {activeTab === "about" && "Sobre o SFScreen"}
+              </h2>
+              <p className="settings-section-caption">
+                {activeTab === "profile" && "Defina como você aparece para as outras pessoas."}
+                {activeTab === "network" && "Acompanhe o estado da sua conexão privada."}
+                {activeTab === "media" && "Consulte os parâmetros ativos de áudio e vídeo."}
+                {activeTab === "diagnostics" && "Exporte informações para investigar uma sessão."}
+                {activeTab === "testing" && "Simule uma chamada sem precisar de outro computador."}
+                {activeTab === "about" && "Informações sobre o aplicativo e a conexão."}
+              </p>
+            </div>
 
             <button className="button ghost icon-only" type="button" onClick={onClose} aria-label="Fechar configurações">
               <XCloseIcon />
@@ -1211,7 +1230,7 @@ const SettingsModal = ({
                   </div>
                   <div className="discord-profile-banner-badge">
                     <span className="live-dot" />
-                    <span>{state.role === "host" ? "Host da Sessão" : "Conectado"}</span>
+                    <span>{state.role === "host" ? "Host da Sessão" : state.phase === "connected" ? "Conectado" : "Disponível"}</span>
                   </div>
                 </div>
 
