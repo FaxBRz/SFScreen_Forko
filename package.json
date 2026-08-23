@@ -1,7 +1,7 @@
 {
   "name": "sfscreen",
   "productName": "SFScreen",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Teste privado de compartilhamento de tela e áudio por Tailscale e WebRTC.",
   "main": ".vite/build/main.js",
   "scripts": {
