@@ -175,6 +175,22 @@ describe('SFScreen Discord layout', () => {
     expect(screen.getByText('Fora da chamada (1)')).toBeTruthy();
   });
 
+  it('keeps an explicit join-call action available to a room owner', () => {
+    const current = model(readyState({ phase: 'connected' }));
+    current.activeRoom = {
+      room: { id: 'room-host', name: 'Sala do host', hasPassword: true, schemaVersion: 2, createdAt: new Date().toISOString(), capacity: 4, needsPassword: false },
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      memberCount: 1,
+    };
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    const joinActions = screen.getAllByRole('button', { name: 'Iniciar chamada' });
+    expect(joinActions.length).toBeGreaterThan(0);
+    fireEvent.click(joinActions[0]);
+    expect(current.joinRoomCall).toHaveBeenCalledOnce();
+  });
+
   it('renders coordinator room events separately from user messages', () => {
     const current = model(readyState({
       phase: 'connected',

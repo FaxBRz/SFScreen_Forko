@@ -5,6 +5,8 @@ const sessions = vi.hoisted((): Array<{
   createOffer: ReturnType<typeof vi.fn>;
   createAnswer: ReturnType<typeof vi.fn>;
   applyAnswer: ReturnType<typeof vi.fn>;
+  sendRoomCallState: ReturnType<typeof vi.fn>;
+  sendCameraState: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
 }> => []);
 
@@ -13,6 +15,8 @@ vi.mock('../../src/renderer/session/webrtc-session', () => ({
     readonly createOffer = vi.fn(async (): Promise<SessionDescription> => description('offer'));
     readonly createAnswer = vi.fn(async (): Promise<{ answer: SessionDescription; securityCode: string }> => ({ answer: description('answer'), securityCode: '000000' }));
     readonly applyAnswer = vi.fn(async (): Promise<string> => '000000');
+    readonly sendRoomCallState = vi.fn();
+    readonly sendCameraState = vi.fn();
     readonly replaceVideoTrack = vi.fn(async () => undefined);
     readonly removeVideoTrack = vi.fn(async () => undefined);
     readonly replaceCameraTrack = vi.fn(async () => undefined);
@@ -91,6 +95,10 @@ describe('RoomMeshClient', () => {
     expect(sent).toMatchObject({ fromParticipantId: host.id, toParticipantId: peer.id, kind: 'offer', membershipRevision: 2 });
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.createOffer).toHaveBeenCalledOnce();
+    client.sendRoomCallState('joined');
+    client.sendCameraState('active');
+    expect(sessions[0]?.sendRoomCallState).toHaveBeenCalledWith('joined');
+    expect(sessions[0]?.sendCameraState).toHaveBeenCalledWith('active');
 
     hostEvent?.({
       sequence: 2,

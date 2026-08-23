@@ -805,7 +805,10 @@ export const useSession = (): SessionModel => {
 
   const publishRoomChatItem = useCallback((item: ChatItem): boolean => {
     const inserted = ingestRoomChatItem(item);
-    if (inserted) controllerRef.current?.sendRoomChatItem(item);
+    if (inserted) {
+      controllerRef.current?.sendRoomChatItem(item);
+      roomMeshRef.current?.sendRoomChatItem(item);
+    }
     return inserted;
   }, [ingestRoomChatItem]);
 
@@ -875,11 +878,51 @@ export const useSession = (): SessionModel => {
     const client = new RoomMeshClient({
       api: window.sfscreen,
       localParticipant,
+      localUserAvatar: localUserAvatarRef.current,
       selfIps: status.selfIps ?? (status.selfIp ? [status.selfIp] : []),
       stunServerIp: status.selfIp ?? '',
       isHost,
       hostIp,
       events: {
+        onControlMessage: (participant, message) => {
+          if (message.type === 'user-profile') {
+            dispatch({ type: 'set-remote-user-profile', userName: message.userName, userAvatar: message.userAvatar });
+            const remote = remoteRoomParticipantRef.current;
+            remote.id = message.participantId ?? participant.id;
+            remote.name = message.userName;
+            return;
+          }
+          if (message.type === 'room-call-state') {
+            const inCall = message.state === 'joined';
+            remoteRoomCallActiveRef.current = inCall;
+            setRemoteRoomCallActive(inCall);
+            if (!inCall) setRemoteCameraStream(undefined);
+            return;
+          }
+          if (message.type === 'camera-state') {
+            remoteCameraStateRef.current = message.state;
+            if (message.state === 'active' && remoteRoomCallActiveRef.current && rawRemoteCameraStreamRef.current) {
+              setRemoteCameraStream(rawRemoteCameraStreamRef.current);
+            } else if (message.state !== 'active') {
+              setRemoteCameraStream(undefined);
+            }
+            return;
+          }
+          if (message.type === 'room-chat-item') {
+            ingestRoomChatItem(message.item);
+            return;
+          }
+          if (message.type === 'room-chat-request' && activeRoomRef.current && roomHostRef.current) {
+            const known = roomChatRequestItemsRef.current.get(message.request.id);
+            if (known) {
+              publishRoomChatItem(known);
+              return;
+            }
+            const item = createRoomUserItem(message.request, participant.id, participant.displayName);
+            roomChatRequestItemsRef.current.set(message.request.id, item);
+            publishRoomChatItem(item);
+          }
+        },
         onMembership: (snapshot, peerCount) => {
           setRoomMembership(snapshot);
           setRoomPeerCount(peerCount);
@@ -898,7 +941,11 @@ export const useSession = (): SessionModel => {
         },
         onRemoteCameraStream: (_participant, stream) => {
           rawRemoteCameraStreamRef.current = stream;
-          setRemoteCameraStream(stream);
+          // A transceiver can surface its empty receiver stream before the
+          // participant actually joins the call. Never render it as a camera.
+          if (remoteRoomCallActiveRef.current && remoteCameraStateRef.current === 'active') {
+            setRemoteCameraStream(stream);
+          }
         },
         onRemoteVoiceStream: (_participant, stream) => watchRemoteVoice(stream),
         onRemoteSystemAudioStream: () => {
@@ -918,7 +965,7 @@ export const useSession = (): SessionModel => {
       },
     });
     return client;
-  }, [watchRemoteVoice]);
+  }, [createRoomUserItem, ingestRoomChatItem, publishRoomChatItem, watchRemoteVoice]);
 
   const syncMeshLocalTracks = useCallback(async (mesh = roomMeshRef.current): Promise<void> => {
     if (!mesh) return;
@@ -1065,7 +1112,11 @@ export const useSession = (): SessionModel => {
 
 
   const createController = useCallback((): WebRtcSession => {
-    controllerRef.current?.close();
+    const previousController = controllerRef.current;
+    // Closing an obsolete bootstrap/previous controller emits a final WebRTC
+    // state event. Detach it first so that event cannot close the new room.
+    controllerRef.current = undefined;
+    previousController?.close();
     remoteCameraStateRef.current = 'stopped';
     rawRemoteCameraStreamRef.current = undefined;
     const controller = new WebRtcSession({
@@ -1249,6 +1300,7 @@ export const useSession = (): SessionModel => {
         }
       },
       onConnectionState: (connectionState) => {
+        if (controllerRef.current !== controller) return;
         if (connectionState === 'failed') {
           recordDiagnostic('connection-failed');
           setRemoteStream(undefined);
@@ -1730,8 +1782,10 @@ recordDiagnostic('audio-unavailable');
       };
       const result = await window.sfscreen.hostMeshRoomSession(offer, hostParticipant);
       if (!result.ok) throw new Error(result.error.message);
+      // The bootstrap peer exists only to reserve the listener. Detach it
+      // before closing so its `closed` callback cannot reset the room state.
+      if (controllerRef.current === bootstrap) controllerRef.current = undefined;
       bootstrap.close();
-      controllerRef.current = undefined;
       const mesh = createRoomMeshClient(status, true);
       roomMeshRef.current?.dispose();
       roomMeshRef.current = mesh;
@@ -2250,6 +2304,7 @@ recordDiagnostic('audio-unavailable');
         // Guests do not choose a sequence. They wait for the coordinator's
         // echoed item, which avoids different local orders during reconnects.
         controllerRef.current?.sendRoomChatRequest(request);
+        roomMeshRef.current?.sendRoomChatRequest(request);
       }
       return;
     }
@@ -2273,6 +2328,7 @@ recordDiagnostic('audio-unavailable');
     dispatch({ type: 'set-user-name', name: normalized });
     if (state.phase === 'connected') {
       controllerRef.current?.sendUserProfile(normalized, localUserAvatarRef.current, localRoomParticipantIdRef.current);
+      roomMeshRef.current?.sendUserProfile(normalized, localUserAvatarRef.current);
     }
   }, [state.phase]);
 
@@ -2280,6 +2336,7 @@ recordDiagnostic('audio-unavailable');
     dispatch({ type: 'set-local-user-avatar', avatar });
     if (state.phase === 'connected') {
       controllerRef.current?.sendUserProfile(localUserNameRef.current, avatar, localRoomParticipantIdRef.current);
+      roomMeshRef.current?.sendUserProfile(localUserNameRef.current, avatar);
     }
   }, [state.phase]);
 
@@ -2302,6 +2359,7 @@ recordDiagnostic('audio-unavailable');
       await controllerRef.current.parkCameraTrack();
       controllerRef.current.sendCameraState('stopped');
     }
+    roomMeshRef.current?.sendCameraState('stopped');
   }, []);
 
   const toggleCamera = useCallback(async (): Promise<void> => {
@@ -2353,12 +2411,14 @@ recordDiagnostic('audio-unavailable');
           await controllerRef.current.replaceCameraTrack(camTrack);
           controllerRef.current.sendCameraState('active');
         }
+        roomMeshRef.current?.sendCameraState('active');
       }
     } catch {
       const sim = createSimulatedCameraStream(state.localUserName, state.localUserAvatar);
       localCameraStreamRef.current = sim.stream;
       setLocalCameraStream(sim.stream);
       setCameraActive(true);
+      roomMeshRef.current?.sendCameraState('active');
     }
   }, [cameraActive, state.localUserAvatar, state.localUserName, stopCamera]);
 
@@ -2367,6 +2427,7 @@ recordDiagnostic('audio-unavailable');
     roomCallActiveRef.current = true;
     setRoomCallActive(true);
     controllerRef.current?.sendRoomCallState('joined');
+    roomMeshRef.current?.sendRoomCallState('joined');
     if (testNetworkEnabledRef.current && isSimulatedPeer) {
       remoteRoomCallActiveRef.current = true;
       setRemoteRoomCallActive(true);
@@ -2387,6 +2448,7 @@ recordDiagnostic('audio-unavailable');
     roomCallActiveRef.current = false;
     setRoomCallActive(false);
     controllerRef.current?.sendRoomCallState('left');
+    roomMeshRef.current?.sendRoomCallState('left');
     if (roomHostRef.current) {
       emitRoomSystemEvent('participant-left-call', localRoomParticipantIdRef.current, localUserNameRef.current);
     }

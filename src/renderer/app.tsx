@@ -1225,18 +1225,22 @@ const RoomSessionModal = ({ session, onClose }: { session: SessionModel; onClose
   const [error, setError] = useState("");
   const [editingPassword, setEditingPassword] = useState(false);
   const [copied, setCopied] = useState(false);
+  const localRoomRequestRevision = useRef(0);
   const hostNetworkReady = session.testNetworkEnabled || state.tailscale.state === "ready" || state.tailscale.state === "no-peers";
   const joinNetworkReady = session.testNetworkEnabled || state.tailscale.state === "ready";
 
   useEffect(() => {
+    const revision = ++localRoomRequestRevision.current;
     const request = window.sfscreen?.getLocalRoom?.();
     if (!request) return;
     void request.then((result) => {
+      if (revision !== localRoomRequestRevision.current) return;
       if (result.ok && result.value) {
         setLocalRoom(result.value);
         setRoomName(result.value.name);
       }
     });
+    return () => { localRoomRequestRevision.current += 1; };
   }, []);
 
   const refreshRooms = async (): Promise<void> => {
@@ -1312,9 +1316,12 @@ const RoomSessionModal = ({ session, onClose }: { session: SessionModel; onClose
       await session.close();
       const result = await window.sfscreen.deleteLocalRoom();
       if (!result.ok) throw new Error(result.error.message);
+      localRoomRequestRevision.current += 1;
       setLocalRoom(undefined);
+      setRoomName("Minha sala privada");
       setPassword("");
       setPasswordConfirm("");
+      setEditingPassword(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível excluir a sala.");
     } finally {
@@ -1413,7 +1420,7 @@ const RoomSessionModal = ({ session, onClose }: { session: SessionModel; onClose
                 <label className="code-label" htmlFor="room-name-v2">Nome da sala</label>
                 <input id="room-name-v2" className="text-input" value={roomName} maxLength={48} onChange={(event) => setRoomName(event.target.value)} />
                 <label className="code-label" htmlFor="room-password-v2">Senha</label>
-                <input id="room-password-v2" className="text-input" type="password" value={password} minLength={4} onChange={(event) => setPassword(event.target.value)} />
+                <input id="room-password-v2" className="text-input" type="password" value={password} minLength={4} onChange={(event) => setPassword(event.target.value)} autoFocus />
                 <label className="code-label" htmlFor="room-password-confirm-v2">Confirmar senha</label>
                 <input id="room-password-confirm-v2" className="text-input" type="password" value={passwordConfirm} minLength={4} onChange={(event) => setPasswordConfirm(event.target.value)} />
                 <button className="button primary full-width" type="submit" disabled={busy || !hostNetworkReady || roomName.trim().length === 0 || password.length < 4}>{busy ? "Criando…" : "Criar sala"}</button>
@@ -5803,6 +5810,18 @@ export const App = (): ReactElement => {
               className={`stage-floating-dock stage-fade-element ${!isAutoHideActive || controlsVisible || streamMenuOpen ? "is-visible" : ""}`}
               onMouseEnter={showControls}
             >
+              {isRoomSession && !localInCall && (
+                <button
+                  className="dock-action-btn is-join-call"
+                  type="button"
+                  onClick={() => void session.joinRoomCall()}
+                  title="Entrar na chamada"
+                  aria-label="Entrar na chamada"
+                >
+                  <PhoneIcon />
+                  <span>Entrar na chamada</span>
+                </button>
+              )}
               {/* Screen Share Button & Discord Popover Menu */}
               {localSharing ? (
 

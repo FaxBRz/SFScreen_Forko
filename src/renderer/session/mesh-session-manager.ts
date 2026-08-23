@@ -6,6 +6,7 @@ import {
   type RoomMembershipSnapshot,
   type ScreenSubscriptionTier,
 } from '../../shared/session/types';
+import type { RoomChatRequest } from '../../shared/session/media-control';
 
 /**
  * The room coordinator owns signaling and membership, but media never travels
@@ -40,6 +41,14 @@ export interface MeshPeerController {
   removeVoiceTrack(): Promise<void>;
   replaceSystemAudioTrack(track: MediaStreamTrack): Promise<void>;
   removeSystemAudioTrack(): Promise<void>;
+  /** Control messages are optional in tests, but implemented by WebRtcSession. */
+  sendUserProfile?(userName: string, userAvatar?: string, participantId?: string): void;
+  sendRoomCallState?(state: 'joined' | 'left'): void;
+  sendCameraState?(state: 'starting' | 'active' | 'stopped' | 'failed'): void;
+  sendRoomChatRequest?(request: RoomChatRequest): void;
+  sendRoomChatItem?(item: import('../../shared/session/types').ChatItem): void;
+  sendRoomLeave?(): void;
+  sendSessionClosed?(): void;
   close(): void;
 }
 
@@ -155,6 +164,11 @@ export class MeshSessionManager {
 
   getPeerIds(): readonly string[] {
     return Array.from(this.controllers.keys()).sort();
+  }
+
+  /** Direct sessions only; callers use this to broadcast typed control state. */
+  getPeerControllers(): readonly MeshPeerController[] {
+    return Array.from(this.controllers.values());
   }
 
   getDesiredPeerIds(): readonly string[] {

@@ -1,5 +1,6 @@
-import type { SessionControlMessage } from '../../shared/session/media-control';
+import type { RoomCallState, RoomChatRequest, SessionControlMessage } from '../../shared/session/media-control';
 import {
+  type ChatItem,
   type MediaSlot,
   type ParticipantState,
   type RoomMembershipSnapshot,
@@ -49,6 +50,7 @@ export interface RoomMeshClientOptions {
     | 'sendHostedRoomMeshSignal' | 'onRoomMeshEvent'
   >;
   localParticipant: ParticipantState;
+  localUserAvatar?: string;
   selfIps: readonly string[];
   stunServerIp: string;
   isHost: boolean;
@@ -82,6 +84,7 @@ export class RoomMeshClient {
   private hostIp?: string;
   private auth?: RoomMeshClientAuth;
   private latestSnapshot?: RoomMembershipSnapshot;
+  private localCallState: RoomCallState;
 
   constructor(private readonly options: RoomMeshClientOptions) {
     if (!options.localParticipant.id.trim()) throw new Error('A malha da sala precisa de um participante local.');
@@ -90,6 +93,7 @@ export class RoomMeshClient {
     this.hostIp = options.hostIp;
     this.pollEveryMs = options.pollIntervalMs ?? pollIntervalMs;
     this.reconnectDelayMs = options.reconnectAttemptDelayMs ?? reconnectAttemptDelayMs;
+    this.localCallState = options.localParticipant.callState === 'in-call' ? 'joined' : 'left';
     this.manager = new MeshSessionManager({
       localParticipantId: options.localParticipant.id,
       events: {
@@ -178,6 +182,31 @@ export class RoomMeshClient {
   async removeLocalTrack(slot: MediaSlot): Promise<void> {
     this.assertActive();
     await this.manager.removeLocalTrack(slot);
+  }
+
+  sendRoomCallState(state: RoomCallState): void {
+    this.localCallState = state;
+    this.broadcast((controller) => controller.sendRoomCallState?.(state));
+  }
+
+  sendCameraState(state: 'starting' | 'active' | 'stopped' | 'failed'): void {
+    this.broadcast((controller) => controller.sendCameraState?.(state));
+  }
+
+  sendUserProfile(userName: string, userAvatar?: string): void {
+    this.broadcast((controller) => controller.sendUserProfile?.(userName, userAvatar, this.options.localParticipant.id));
+  }
+
+  sendRoomChatRequest(request: RoomChatRequest): void {
+    this.broadcast((controller) => controller.sendRoomChatRequest?.(request));
+  }
+
+  sendRoomChatItem(item: ChatItem): void {
+    this.broadcast((controller) => controller.sendRoomChatItem?.(item));
+  }
+
+  sendRoomLeave(): void {
+    this.broadcast((controller) => controller.sendRoomLeave?.());
   }
 
   /** Explicit room exit. It is intentionally separate from leaving a call. */
@@ -352,8 +381,12 @@ export class RoomMeshClient {
 
   private createController(participant: ParticipantState): WebRtcSession {
     const snapshotParticipant = { ...participant };
-    return new WebRtcSession({
-      onChannelOpen: () => this.options.events?.onChannelOpen?.(snapshotParticipant),
+    const controller = new WebRtcSession({
+      onChannelOpen: () => {
+        controller.sendUserProfile(this.options.localParticipant.displayName, this.options.localUserAvatar, this.options.localParticipant.id);
+        controller.sendRoomCallState(this.localCallState);
+        this.options.events?.onChannelOpen?.(snapshotParticipant);
+      },
       onControlMessage: (message) => this.options.events?.onControlMessage?.(snapshotParticipant, message),
       onConnectionState: (state) => {
         if (state === 'connected') {
@@ -369,6 +402,11 @@ export class RoomMeshClient {
       onRemoteVoiceStream: (stream) => this.options.events?.onRemoteVoiceStream?.(snapshotParticipant, stream),
       onRemoteSystemAudioStream: (stream) => this.options.events?.onRemoteSystemAudioStream?.(snapshotParticipant, stream),
     });
+    return controller;
+  }
+
+  private broadcast(callback: (controller: MeshPeerController) => void): void {
+    for (const controller of this.manager.getPeerControllers()) callback(controller);
   }
 
   private scheduleReconnect(participantId: string): void {
