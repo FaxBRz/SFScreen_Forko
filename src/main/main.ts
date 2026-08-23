@@ -83,15 +83,8 @@ const createWindow = (): void => {
     if (mainWindow === createdWindow) mainWindow = null;
   });
 
-  const localIndexPath = path.join(__dirname, '../renderer/main_window/index.html');
-  const devServerUrl = typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== 'undefined' && MAIN_WINDOW_VITE_DEV_SERVER_URL ? MAIN_WINDOW_VITE_DEV_SERVER_URL : undefined;
-
-  if (devServerUrl && !fs.existsSync(localIndexPath)) {
-    void mainWindow.loadURL(devServerUrl);
-  } else if (fs.existsSync(localIndexPath)) {
-    void mainWindow.loadFile(localIndexPath);
-  } else if (devServerUrl) {
-    void mainWindow.loadURL(devServerUrl);
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
     void mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
