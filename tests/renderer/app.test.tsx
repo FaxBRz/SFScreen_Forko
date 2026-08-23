@@ -330,6 +330,37 @@ describe('SFScreen Discord layout', () => {
     expect(screen.getByText('Qualidade & Parâmetros de Mídia')).toBeTruthy();
   });
 
+  it('lists audio outputs and saves the selected headset', async () => {
+    const originalMediaDevices = navigator.mediaDevices;
+    const enumerateDevices = vi.fn(async () => [
+      { deviceId: 'microphone-1', groupId: 'group-1', kind: 'audioinput', label: 'Microfone USB', toJSON: () => ({}) },
+      { deviceId: 'headset-1', groupId: 'group-1', kind: 'audiooutput', label: 'Fone USB', toJSON: () => ({}) },
+    ] as MediaDeviceInfo[]);
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { enumerateDevices, addEventListener: vi.fn(), removeEventListener: vi.fn() },
+    });
+    localStorage.removeItem('sfscreen_preferred_audio_output');
+
+    try {
+      const current = model();
+      vi.mocked(useSession).mockReturnValue(current);
+      render(<App />);
+
+      fireEvent.click(screen.getAllByRole('button', { name: /configurações/i })[0]);
+      fireEvent.click(screen.getByRole('button', { name: /vídeo & áudio/i }));
+
+      const outputSelector = screen.getByRole('combobox', { name: /saída de áudio/i });
+      expect((outputSelector as HTMLSelectElement).value).toBe('default');
+      expect(await screen.findByRole('option', { name: 'Fone USB' })).toBeTruthy();
+
+      fireEvent.change(outputSelector, { target: { value: 'headset-1' } });
+      expect(localStorage.getItem('sfscreen_preferred_audio_output')).toBe('headset-1');
+    } finally {
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: originalMediaDevices });
+    }
+  });
+
   it('shows stream popover menu when sharing and allows stopping directly or via menu', () => {
     const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
     const current = model(readyState({

@@ -112,7 +112,7 @@ app.whenReady().then(() => {
     && screenCapture.hasSelection(webContents.id);
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'media') {
+    if (permission === 'media' || permission === 'speaker-selection') {
       callback(isAuthorizedWebContents(webContents));
       return;
     }
@@ -124,7 +124,7 @@ app.whenReady().then(() => {
   });
 
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-    if (permission === 'media') {
+    if (permission === 'media' || (permission as string) === 'speaker-selection') {
       return isAuthorizedWebContents(webContents);
     }
     if ((permission as string) === 'display-capture') {

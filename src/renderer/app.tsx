@@ -307,6 +307,40 @@ const getStreamTrackInfo = (
   return { resolution: res, fps };
 };
 
+const AUDIO_OUTPUT_STORAGE_KEY = "sfscreen_preferred_audio_output";
+const AUDIO_OUTPUT_CHANGE_EVENT = "sfscreen:audio-output-changed";
+
+const readPreferredAudioOutput = (): string => {
+  try {
+    return localStorage.getItem(AUDIO_OUTPUT_STORAGE_KEY) || "default";
+  } catch {
+    return "default";
+  }
+};
+
+const saveAudioOutputPreference = (deviceId: string): void => {
+  try {
+    localStorage.setItem(AUDIO_OUTPUT_STORAGE_KEY, deviceId);
+  } catch {
+    // The current session still receives the change even when storage is unavailable.
+  }
+  window.dispatchEvent(new CustomEvent<string>(AUDIO_OUTPUT_CHANGE_EVENT, { detail: deviceId }));
+};
+
+const usePreferredAudioOutput = (): string => {
+  const [deviceId, setDeviceId] = useState(readPreferredAudioOutput);
+
+  useEffect(() => {
+    const handleChange = (event: Event): void => {
+      setDeviceId((event as CustomEvent<string>).detail || "default");
+    };
+    window.addEventListener(AUDIO_OUTPUT_CHANGE_EVENT, handleChange);
+    return () => window.removeEventListener(AUDIO_OUTPUT_CHANGE_EVENT, handleChange);
+  }, []);
+
+  return deviceId;
+};
+
 /* ─── Video Renderer ─── */
 const Video = ({ stream, muted = false, volume = 1, className }: { stream?: MediaStream; muted?: boolean; volume?: number; className?: string }): ReactElement => {
   const ref = useRef<HTMLVideoElement>(null);
@@ -351,6 +385,7 @@ const Video = ({ stream, muted = false, volume = 1, className }: { stream?: Medi
 /* ─── Dedicated Remote Audio Player ─── */
 const RemoteAudio = ({ stream, muted = false, volume = 1 }: { stream?: MediaStream; muted?: boolean; volume?: number }): ReactElement => {
   const ref = useRef<HTMLAudioElement>(null);
+  const preferredAudioOutput = usePreferredAudioOutput();
 
   useEffect(() => {
     const el = ref.current;
@@ -377,6 +412,16 @@ const RemoteAudio = ({ stream, muted = false, volume = 1 }: { stream?: MediaStre
       ref.current.muted = muted;
     }
   }, [volume, muted]);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || typeof element.setSinkId !== "function") return;
+
+    void element.setSinkId(preferredAudioOutput).catch(() => {
+      if (preferredAudioOutput === "default") return;
+      void element.setSinkId("default").catch(() => undefined).then(() => saveAudioOutputPreference("default"));
+    });
+  }, [preferredAudioOutput]);
 
   return <audio ref={ref} autoPlay playsInline muted={muted} style={{ display: 'none' }} />;
 };
@@ -1112,17 +1157,26 @@ const SettingsModal = ({
   const [copiedDiag, setCopiedDiag] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
+  const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
   const [preferredMicrophone, setPreferredMicrophone] = useState(() => {
     try { return localStorage.getItem("sfscreen_preferred_microphone") || "default"; } catch { return "default"; }
   });
+  const preferredAudioOutput = usePreferredAudioOutput();
 
   useEffect(() => {
     const refreshDevices = async (): Promise<void> => {
       try {
         const devices = await navigator.mediaDevices?.enumerateDevices?.();
         setMicrophones((devices ?? []).filter((device) => device.kind === "audioinput"));
+        const outputs = (devices ?? []).filter((device) => device.kind === "audiooutput" && device.deviceId !== "default");
+        setAudioOutputs(outputs);
+        const current = readPreferredAudioOutput();
+        if (current !== "default" && !outputs.some((device) => device.deviceId === current)) {
+          saveAudioOutputPreference("default");
+        }
       } catch {
         setMicrophones([]);
+        setAudioOutputs([]);
       }
     };
     void refreshDevices();
@@ -1133,6 +1187,10 @@ const SettingsModal = ({
   const savePreferredMicrophone = (deviceId: string): void => {
     setPreferredMicrophone(deviceId);
     try { localStorage.setItem("sfscreen_preferred_microphone", deviceId); } catch { /* Ignored */ }
+  };
+
+  const savePreferredAudioOutput = (deviceId: string): void => {
+    saveAudioOutputPreference(deviceId);
   };
 
   // Estados de Configuração da Simulação (Modo de Teste)
@@ -1516,11 +1574,19 @@ const SettingsModal = ({
             <div className="settings-info-grid">
               <div className="setting-card full-span">
                 <span className="card-key">Microfone para o modo voz</span>
-                <select className="text-input media-device-select" value={preferredMicrophone} onChange={(event) => savePreferredMicrophone(event.target.value)}>
+                <select aria-label="Microfone" className="text-input media-device-select" value={preferredMicrophone} onChange={(event) => savePreferredMicrophone(event.target.value)}>
                   <option value="default">Padrão do sistema (detecção automática)</option>
                   {microphones.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Microfone ${index + 1}`}</option>)}
                 </select>
                 <p className="setting-field-hint">A escolha será usada ao entrar na voz. O modo padrão acompanha o dispositivo definido no Windows.</p>
+              </div>
+              <div className="setting-card full-span">
+                <span className="card-key">Fone de ouvido ou alto-falante</span>
+                <select aria-label="Saída de áudio" className="text-input media-device-select" value={preferredAudioOutput} onChange={(event) => savePreferredAudioOutput(event.target.value)}>
+                  <option value="default">Padrão do sistema (detecção automática)</option>
+                  {audioOutputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Saída de áudio ${index + 1}`}</option>)}
+                </select>
+                <p className="setting-field-hint">Todo o áudio recebido será reproduzido nesta saída. Se ela for desconectada, o SFScreen volta ao padrão do Windows.</p>
               </div>
               <div className="setting-card">
                 <span className="card-key">Resolução Máxima</span>
@@ -3866,8 +3932,8 @@ export const App = (): ReactElement => {
                         <div className="screenshare-ambient-backdrop" />
                         <Video
                           stream={session.remoteStream}
-                          muted={remoteMuted}
-                          volume={remoteVolume}
+                          muted
+                          volume={0}
                           className="stage-video is-contain"
                         />
                       </div>
@@ -4144,8 +4210,8 @@ export const App = (): ReactElement => {
                   >
                     <Video
                       stream={focusedStream}
-                      muted={focusedIsLocal || remoteMuted}
-                      volume={focusedIsLocal ? 0 : remoteVolume}
+                      muted
+                      volume={0}
                       className={`stage-video ${videoFit === "cover" ? "is-cover" : "is-contain"}`}
                     />
                   </div>
@@ -4411,8 +4477,8 @@ export const App = (): ReactElement => {
                   ) : (
                     <Video
                       stream={otherStream}
-                      muted={otherTarget === "local-screen" || otherTarget === "local-camera" || remoteMuted}
-                      volume={otherTarget === "local-screen" || otherTarget === "local-camera" ? 0 : remoteVolume}
+                      muted
+                      volume={0}
                       className="pip-video"
                     />
                   )}
