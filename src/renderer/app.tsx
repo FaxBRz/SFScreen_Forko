@@ -1969,31 +1969,38 @@ const SettingsModal = ({
                 {microphoneTestError && <p className="discord-microphone-error" role="alert">{microphoneTestError}</p>}
                 <p className="discord-voice-help">Fale normalmente durante o teste: você ouvirá sua própria voz no alto-falante selecionado e o indicador mostrará o nível enviado.</p>
 
-                <div className="discord-input-processing">
-                  <h4>Perfil de entrada</h4>
-                  <div className="discord-input-profiles" role="radiogroup" aria-label="Perfil de entrada">
+                <div className="sfs-input-processing">
+                  <div className="sfs-processing-heading">
+                    <span className="sfs-processing-kicker">Processamento local</span>
+                    <h4>Escolha o comportamento do microfone</h4>
+                    <p>O áudio é tratado neste computador antes de seguir pela conexão P2P.</p>
+                  </div>
+                  <div className="sfs-profile-cards" role="radiogroup" aria-label="Perfil de entrada">
                     {([
-                      ["voice-isolation", "Isolamento de voz", "Prioriza sua voz e reduz teclado, ventilador e ruído constante."],
-                      ["studio", "Estúdio", "Microfone aberto, sem gate, filtros ou tratamento adicional."],
-                      ["custom", "Personalizado", "Controle manual da supressão, sensibilidade e cancelamento de eco."],
-                    ] as Array<[InputProfile, string, string]>).map(([value, label, description]) => (
-                      <label key={value} className={`discord-profile-option ${microphoneProcessing.profile === value ? "is-selected" : ""}`}>
+                      ["voice-isolation", "Isolamento", "Voz limpa", <EcoZapIcon />],
+                      ["studio", "Natural", "Sem tratamento", <MicrophoneIcon />],
+                      ["custom", "Manual", "Ajuste fino", <SlidersIcon />],
+                    ] as Array<[InputProfile, string, string, ReactElement]>).map(([value, label, description, icon]) => (
+                      <label key={value} className={`sfs-profile-card ${microphoneProcessing.profile === value ? "is-selected" : ""}`}>
                         <input
                           type="radio"
                           name="input-profile"
                           value={value}
+                          aria-label={value === "voice-isolation" ? "Isolamento de voz" : value === "studio" ? "Estúdio" : "Personalizado"}
                           checked={microphoneProcessing.profile === value}
                           onChange={(event) => { stopMicrophoneTest(); saveInputProfile(event.target.value as InputProfile); }}
                         />
-                        <span className="discord-radio-dot" />
-                        <span><strong>{label}</strong><small>{description}</small></span>
+                        <span className="sfs-profile-icon">{icon}</span>
+                        <span className="sfs-profile-copy"><strong>{label}</strong><small>{description}</small></span>
+                        <span className="sfs-profile-check" aria-hidden="true">✓</span>
                       </label>
                     ))}
                   </div>
 
                   {microphoneProcessing.profile === "custom" && (
-                    <div className="discord-custom-processing">
-                      <label className="discord-processing-row">
+                    <div className="sfs-custom-processing">
+                      <div className="sfs-custom-header"><SlidersIcon /><span><strong>Ajuste manual</strong><small>As alterações são aplicadas na chamada em tempo real.</small></span></div>
+                      <label className="sfs-processing-row">
                         <span><strong>Ajustar automaticamente a sensibilidade</strong><small>Detecta o piso de ruído e abre o microfone quando sua voz aparece.</small></span>
                         <span className="switch-toggle-wrapper">
                           <input
@@ -2008,7 +2015,7 @@ const SettingsModal = ({
                       </label>
 
                       {!microphoneProcessing.autoSensitivity && (
-                        <label className="discord-processing-sensitivity">
+                        <label className="sfs-processing-sensitivity">
                           <span>Sensibilidade de entrada <output>{Math.round(microphoneProcessing.sensitivity * 100)}%</output></span>
                           <input
                             aria-label="Sensibilidade de entrada"
@@ -2024,11 +2031,11 @@ const SettingsModal = ({
                         </label>
                       )}
 
-                      <label className="discord-processing-select-row">
+                      <label className="sfs-processing-select-row">
                         <span><strong>Supressão de ruído</strong><small>Combina o DSP do WebRTC com o filtro adaptativo local.</small></span>
                         <select
                           aria-label="Supressão de ruído"
-                          className="discord-processing-select"
+                          className="sfs-processing-select"
                           value={microphoneProcessing.noiseSuppression}
                           onChange={(event) => { stopMicrophoneTest(); saveNoiseSuppression(event.target.value as NoiseSuppressionLevel); }}
                         >
@@ -2038,7 +2045,7 @@ const SettingsModal = ({
                         </select>
                       </label>
 
-                      <label className="discord-processing-row">
+                      <label className="sfs-processing-row">
                         <span><strong>Cancelamento de eco</strong><small>Evita que o áudio do alto-falante retorne para a chamada.</small></span>
                         <span className="switch-toggle-wrapper">
                           <input
