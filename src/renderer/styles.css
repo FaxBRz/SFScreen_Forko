@@ -912,6 +912,7 @@ button:disabled {
 
 /* ─── Main Stage (Video Player Area) ─── */
 .discord-stage-area {
+  container-type: inline-size;
   flex: 1 1 0%;
   min-width: 0;
   height: 100%;
@@ -3456,6 +3457,9 @@ button:disabled {
   transform: translate(-50%, 10px);
   z-index: 45;
   display: flex;
+  width: max-content;
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
@@ -3466,8 +3470,13 @@ button:disabled {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.15);
   opacity: 0;
   pointer-events: none;
+  overflow-x: auto;
+  scrollbar-width: none;
   transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1), transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+.stage-floating-dock::-webkit-scrollbar { display: none; }
+.stage-floating-dock > * { flex: 0 0 auto; }
 
 .stage-dock-trigger-zone:hover ~ .stage-floating-dock,
 .stage-floating-dock:hover,
@@ -3690,6 +3699,21 @@ button:disabled {
 .dock-stream-chevron-btn svg {
   width: 14px;
   height: 14px;
+}
+
+@container (max-width: 600px) {
+  .stage-floating-dock { gap: 6px; padding: 6px 9px; }
+  .dock-action-btn { width: 40px; padding: 0; justify-content: center; }
+  .dock-action-btn > span { display: none; }
+}
+
+@container (max-width: 450px) {
+  .stage-floating-dock { bottom: 12px; gap: 4px; padding: 5px 7px; border-radius: 24px; }
+  .dock-icon-btn,.dock-action-btn { width: 36px; height: 36px; }
+  .dock-icon-btn svg { width: 16px; height: 16px; }
+  .dock-stream-split-btn { height: 36px; border-radius: 18px; }
+  .dock-stream-main-btn { padding: 0 10px 0 11px; }
+  .dock-stream-chevron-btn { padding: 0 8px 0 6px; }
 }
 
 /* ─── Popover Menu Floating Box ─── */
