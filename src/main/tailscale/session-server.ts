@@ -4,7 +4,7 @@ import { fault } from '../../shared/session/errors';
 import { formatGeneratedSessionCode, normalizeSessionCode } from '../../shared/session/code';
 import { isTailscaleIp, tailscaleHttpUrl } from '../../shared/session/network';
 import { isSessionCode, isSessionDescription } from '../../shared/session/protocol';
-import { maxSignalBytes, sessionLifetimeMs, sessionProtocolVersion, signalingPort, type DiscoveredSession, type HostedSession, type SessionAnswerEvent, type SessionDescription, type TailscaleStatus } from '../../shared/session/types';
+import { maxSignalBytes, sessionLifetimeMs, sessionProtocolVersion, signalingPort, type DiscoveredSession, type HostedRoom, type HostedSession, type LocalRoomConfig, type RoomSummary, type SessionAnswerEvent, type SessionDescription, type TailscaleStatus } from '../../shared/session/types';
 import { RateLimiter } from './rate-limiter';
 
 interface ActiveSession {
@@ -15,6 +15,7 @@ interface ActiveSession {
   rateLimiter: RateLimiter;
   expirationTimer: NodeJS.Timeout;
   onAnswer: (event: SessionAnswerEvent) => void;
+  room?: LocalRoomConfig;
 }
 
 interface SessionServerDependencies {
@@ -23,6 +24,8 @@ interface SessionServerDependencies {
   random?: (size: number) => Uint8Array;
   fetch?: typeof fetch;
   isAllowedIp?: (ip: string) => boolean;
+  getRoom?: () => Promise<LocalRoomConfig | undefined>;
+  verifyRoomPassword?: (password: string) => Promise<boolean>;
 }
 
 const response = (target: ServerResponse, status: number, body?: unknown): void => {
@@ -69,6 +72,8 @@ export class SessionServer {
   private readonly random: (size: number) => Uint8Array;
   private readonly request: typeof fetch;
   private readonly allowedIp: (ip: string) => boolean;
+  private readonly getRoomConfig: () => Promise<LocalRoomConfig | undefined>;
+  private readonly verifyRoomPassword: (password: string) => Promise<boolean>;
 
   constructor(
     private readonly getTailscaleStatus: () => Promise<TailscaleStatus>,
@@ -79,9 +84,11 @@ export class SessionServer {
     this.random = dependencies.random ?? randomBytes;
     this.request = dependencies.fetch ?? fetch;
     this.allowedIp = dependencies.isAllowedIp ?? isTailscaleIp;
+    this.getRoomConfig = dependencies.getRoom ?? (() => Promise.resolve(undefined));
+    this.verifyRoomPassword = dependencies.verifyRoomPassword ?? (() => Promise.resolve(false));
   }
 
-  async host(offer: SessionDescription, status: TailscaleStatus, onAnswer: (event: SessionAnswerEvent) => void): Promise<HostedSession> {
+  async host(offer: SessionDescription, status: TailscaleStatus, onAnswer: (event: SessionAnswerEvent) => void, room?: LocalRoomConfig): Promise<HostedSession> {
     if (status.state !== 'ready' || !status.selfIp) throw fault('tailscale-unavailable', status.message ?? 'Tailscale indisponível.');
     if (!isSessionDescription(offer, 'offer')) throw fault('invalid-request', 'A oferta WebRTC é incompatível com esta versão do SFScreen.');
     if (Date.parse(offer.expiresAt) <= this.now()) throw fault('session-expired', 'A oferta WebRTC já expirou.');
@@ -100,6 +107,7 @@ export class SessionServer {
       rateLimiter: new RateLimiter(this.now),
       expirationTimer,
       onAnswer,
+      room,
     };
     this.active = active;
     try {
@@ -121,6 +129,13 @@ export class SessionServer {
     return { code, expiresAt: new Date(expiresAt).toISOString() };
   }
 
+  async hostRoom(offer: SessionDescription, status: TailscaleStatus, onAnswer: (event: SessionAnswerEvent) => void): Promise<HostedRoom> {
+    const room = await this.getRoomConfig();
+    if (!room || !room.hasPassword) throw fault('invalid-request', 'Crie uma sala com senha antes de hospedá-la.');
+    const hosted = await this.host(offer, status, onAnswer, room);
+    return { room, expiresAt: hosted.expiresAt };
+  }
+
   async stop(): Promise<void> {
     const active = this.active;
     this.active = undefined;
@@ -139,6 +154,13 @@ export class SessionServer {
     const active = this.active;
     const ip = remoteIp(request);
     if (!active || !ip || !this.allowedIp(ip) || !await this.isAllowedPeer(ip)) return response(target, 404, { error: 'Not found' });
+    if (request.method === 'POST' && request.url === '/v1/room/info' && active.room) {
+      try {
+        const infoBody = envelope(await readJson(request));
+        if (infoBody?.protocolVersion !== sessionProtocolVersion) return response(target, 426, { error: 'Protocol version mismatch' });
+        return response(target, 200, { room: active.room });
+      } catch { return response(target, 400, { error: 'Invalid request' }); }
+    }
     if (!active.rateLimiter.allow(ip)) return response(target, 429, { error: 'Too many requests' });
     if (this.now() >= active.expiresAt) {
       await this.stop();
@@ -154,6 +176,15 @@ export class SessionServer {
     }
     if (!body) return response(target, 400, { error: 'Invalid request' });
     if (body.protocolVersion !== sessionProtocolVersion) return response(target, 426, { error: 'Protocol version mismatch' });
+    if ((request.url === '/v1/room/lookup' || request.url === '/v1/room/answer') && active.room) {
+      if (body.roomId !== active.room.id || typeof body.password !== 'string' || !await this.verifyRoomPassword(body.password)) return response(target, 403, { error: 'Invalid room password' });
+      if (request.url === '/v1/room/lookup') return response(target, 200, { offer: active.offer });
+      if (body.sessionId !== active.offer.sessionId || !isSessionDescription(body.answer, 'answer') || Date.parse(body.answer.expiresAt) <= this.now()) return response(target, 400, { error: 'Invalid request' });
+      active.onAnswer({ answer: body.answer, peerIp: ip });
+      response(target, 204);
+      await this.stop();
+      return;
+    }
     if (!isSessionCode(body.code) || !sameCode(body.code, active.code)) return response(target, 404, { error: 'Not found' });
     if (request.url === '/v1/session/lookup') return response(target, 200, { offer: active.offer });
     if (request.url !== '/v1/session/answer' || body.sessionId !== active.offer.sessionId || !isSessionDescription(body.answer, 'answer') || Date.parse(body.answer.expiresAt) <= this.now()) return response(target, 400, { error: 'Invalid request' });
@@ -161,6 +192,50 @@ export class SessionServer {
     active.onAnswer({ answer: body.answer, peerIp: ip });
     response(target, 204);
     await this.stop();
+  }
+
+  async discoverRooms(status: TailscaleStatus): Promise<RoomSummary[]> {
+    if (status.state !== 'ready') throw fault('tailscale-unavailable', status.message ?? 'Tailscale indisponível.', true);
+    const peers = status.peers.filter((peer) => peer.online).slice(0, 16);
+    const rooms = await Promise.all(peers.map(async (peer): Promise<RoomSummary | undefined> => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1_500);
+      try {
+        const result = await this.request(tailscaleHttpUrl(peer.ip, this.port, '/v1/room/info'), {
+          method: 'POST', body: JSON.stringify({ protocolVersion: sessionProtocolVersion }), headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+        });
+        if (!result.ok) return undefined;
+        const body = envelope(await result.json());
+        const room = body?.room;
+        if (!room || typeof room !== 'object') return undefined;
+        const value = room as Record<string, unknown>;
+        if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.hasPassword !== 'boolean') return undefined;
+        return { id: value.id, name: value.name, hasPassword: value.hasPassword, hostIp: peer.ip, hostName: peer.name };
+      } catch { return undefined; } finally { clearTimeout(timeout); }
+    }));
+    return rooms.filter((room): room is RoomSummary => room !== undefined);
+  }
+
+  async findRoom(roomId: string, password: string, status: TailscaleStatus): Promise<DiscoveredSession> {
+    const room = (await this.discoverRooms(status)).find((candidate) => candidate.id === roomId);
+    if (!room) throw fault('session-not-found', 'A sala não está mais disponível na tailnet.', true);
+    const result = await this.request(tailscaleHttpUrl(room.hostIp, this.port, '/v1/room/lookup'), {
+      method: 'POST', body: JSON.stringify({ protocolVersion: sessionProtocolVersion, roomId, password }), headers: { 'Content-Type': 'application/json' },
+    });
+    if (result.status === 403) throw fault('invalid-request', 'Senha incorreta.', true);
+    if (!result.ok) throw fault('invalid-response', 'A sala não respondeu ao pedido de entrada.', true);
+    const body = envelope(await result.json());
+    if (!body || !isSessionDescription(body.offer, 'offer')) throw fault('invalid-response', 'A oferta da sala é inválida.');
+    return { hostIp: room.hostIp, offer: body.offer };
+  }
+
+  async submitRoomAnswer(hostIp: string, roomId: string, password: string, answer: SessionDescription): Promise<void> {
+    if (!this.allowedIp(hostIp) || typeof roomId !== 'string' || !isSessionDescription(answer, 'answer')) throw fault('invalid-request', 'A resposta da sala é inválida.');
+    const result = await this.request(tailscaleHttpUrl(hostIp, this.port, '/v1/room/answer'), {
+      method: 'POST', body: JSON.stringify({ protocolVersion: sessionProtocolVersion, roomId, password, sessionId: answer.sessionId, answer }), headers: { 'Content-Type': 'application/json' },
+    });
+    if (result.status === 403) throw fault('invalid-request', 'Senha incorreta.', true);
+    if (!result.ok) throw fault('invalid-response', 'O host recusou a entrada na sala.', true);
   }
 
   async find(code: string, status: TailscaleStatus): Promise<DiscoveredSession> {

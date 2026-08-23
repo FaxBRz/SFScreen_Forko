@@ -29,6 +29,24 @@ describe('session server integration', () => {
     await expect(server.host({ ...offer, expiresAt: '2020-01-01T00:00:00.000Z' }, loopbackStatus, () => undefined)).rejects.toMatchObject({ sessionError: { code: 'session-expired' } });
   });
 
+  it('discovers and authenticates a password room over the tailnet transport', async () => {
+    let received: SessionDescription | undefined;
+    const room = { id: 'room-123', name: 'Sala Privada', hasPassword: true };
+    const server = new SessionServer(async () => loopbackStatus, {
+      port: 0,
+      isAllowedIp: (ip) => ip === '127.0.0.1',
+      getRoom: async () => room,
+      verifyRoomPassword: async (password) => password === 'segredo',
+    });
+    servers.push(server);
+    await server.hostRoom(offer, loopbackStatus, (event) => { received = event.answer; });
+    expect(await server.discoverRooms(loopbackStatus)).toEqual([{ ...room, hostIp: '127.0.0.1', hostName: 'viewer' }]);
+    await expect(server.findRoom(room.id, 'incorreta', loopbackStatus)).rejects.toMatchObject({ sessionError: { message: 'Senha incorreta.' } });
+    const found = await server.findRoom(room.id, 'segredo', loopbackStatus);
+    await server.submitRoomAnswer(found.hostIp, room.id, 'segredo', answer);
+    expect(received?.fingerprint).toBe('CC:DD');
+  });
+
   it('reports an incompatible protocol version clearly', async () => {
     const server = new SessionServer(async () => loopbackStatus, { fetch: async () => new Response(undefined, { status: 426 }), isAllowedIp: () => true });
     servers.push(server);

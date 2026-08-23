@@ -65,6 +65,21 @@ export const registerSessionIpc = ({ ipcMain, tailscale, sessionServer, stunServ
       if (!event.sender.isDestroyed()) event.sender.send(ipcChannels.sessionAnswer, answer);
     }));
   });
+  ipcMain.handle(ipcChannels.hostRoomSession, (event, offer: unknown) => {
+    if (!authorized(event.sender)) return unauthorized();
+    if (!isSessionDescription(offer, 'offer')) return invalid('A oferta WebRTC da sala é inválida.');
+    return toSessionResult(async () => sessionServer.hostRoom(offer as SessionDescription, await readyStatus(), (answer) => {
+      if (!event.sender.isDestroyed()) event.sender.send(ipcChannels.sessionAnswer, answer);
+    }));
+  });
+  ipcMain.handle(ipcChannels.discoverRooms, (event) => !authorized(event.sender) ? unauthorized() : toSessionResult(async () => sessionServer.discoverRooms(await tailscale.getStatus(true))));
+  ipcMain.handle(ipcChannels.findRoom, (event, roomId: unknown, password: unknown) => !authorized(event.sender) || typeof roomId !== 'string' || typeof password !== 'string'
+    ? invalid('Os dados para entrar na sala são inválidos.') : toSessionResult(async () => sessionServer.findRoom(roomId, password, await tailscale.getStatus(true))));
+  ipcMain.handle(ipcChannels.submitRoomAnswer, (event, hostIp: unknown, roomId: unknown, password: unknown, answer: unknown) => {
+    if (!authorized(event.sender)) return unauthorized();
+    if (typeof hostIp !== 'string' || typeof roomId !== 'string' || typeof password !== 'string' || !isSessionDescription(answer, 'answer')) return invalid('A resposta da sala é inválida.');
+    return toSessionResult(() => sessionServer.submitRoomAnswer(hostIp, roomId, password, answer));
+  });
   ipcMain.handle(ipcChannels.findSession, (_event, code: unknown) => {
     if (!authorized(_event.sender)) return unauthorized();
     if (!isSessionCode(code)) return invalid('Digite um código válido no formato XXX-XXX-X.');

@@ -9,6 +9,7 @@ import {
 
 import { formatSessionCode } from "../shared/session/code";
 import type { ScreenSource } from "../shared/screen-source";
+import type { LocalRoomConfig, RoomSummary } from "../shared/session/types";
 import { type SessionModel, type StreamFps, type StreamResolution, useSession } from "./session/use-session";
 import sfLogoPng from "./assets/icon.png";
 
@@ -795,9 +796,63 @@ const SourceModal = ({
 /* ─── Modal: Session & Invite ─── */
 const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: () => void }): ReactElement => {
   const { state } = session;
-  const [tab, setTab] = useState<"invite" | "join">("invite");
+  const [tab, setTab] = useState<"invite" | "join" | "create-room" | "join-room">("invite");
   const [copied, setCopied] = useState(false);
+  const [localRoom, setLocalRoom] = useState<LocalRoomConfig | undefined>(undefined);
+  const [roomName, setRoomName] = useState("Minha sala privada");
+  const [roomPassword, setRoomPassword] = useState("");
+  const [roomPasswordConfirm, setRoomPasswordConfirm] = useState("");
+  const [availableRooms, setAvailableRooms] = useState<RoomSummary[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<RoomSummary | undefined>(undefined);
+  const [roomBusy, setRoomBusy] = useState(false);
+  const [roomError, setRoomError] = useState("");
   const seconds = state.hosted ? Math.max(0, Math.ceil((Date.parse(state.hosted.expiresAt) - state.now) / 1_000)) : undefined;
+
+  useEffect(() => {
+    const roomRequest = window.sfscreen?.getLocalRoom?.();
+    if (!roomRequest) return;
+    void roomRequest.then((result) => {
+      if (result.ok && result.value) {
+        setLocalRoom(result.value);
+        setRoomName(result.value.name);
+      }
+    });
+  }, []);
+
+  const refreshRooms = async (): Promise<void> => {
+    setRoomBusy(true);
+    setRoomError("");
+    try { setAvailableRooms(await session.discoverRooms()); } catch (error) { setRoomError(error instanceof Error ? error.message : "Não foi possível procurar salas."); }
+    finally { setRoomBusy(false); }
+  };
+
+  const handleCreateRoom = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (roomPassword !== roomPasswordConfirm) return setRoomError("As senhas não coincidem.");
+    setRoomBusy(true);
+    setRoomError("");
+    try {
+      const saved = await window.sfscreen.createLocalRoom(roomName, roomPassword);
+      if (!saved.ok) throw new Error(saved.error.message);
+      setLocalRoom(saved.value);
+      await session.hostRoom();
+    } catch (error) { setRoomError(error instanceof Error ? error.message : "Não foi possível criar a sala."); }
+    finally { setRoomBusy(false); }
+  };
+
+  const handleOpenSavedRoom = async (): Promise<void> => {
+    setRoomBusy(true);
+    setRoomError("");
+    try { await session.hostRoom(); } finally { setRoomBusy(false); }
+  };
+
+  const handleJoinRoom = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (!selectedRoom) return;
+    setRoomBusy(true);
+    await session.joinRoom(selectedRoom.id, roomPassword);
+    setRoomBusy(false);
+  };
 
   const handleCopy = async (): Promise<void> => {
     if (!state.hosted) return;
@@ -885,9 +940,11 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
           </div>
         ) : (
           <>
-            <div className="tab-pill-group">
+            <div className="tab-pill-group session-entry-tabs">
               <button className={`tab-pill ${tab === "invite" ? "is-active" : ""}`} type="button" onClick={() => setTab("invite")}>Criar Convite</button>
               <button className={`tab-pill ${tab === "join" ? "is-active" : ""}`} type="button" onClick={() => setTab("join")}>Entrar com Código</button>
+              <button className={`tab-pill ${tab === "create-room" ? "is-active" : ""}`} type="button" onClick={() => setTab("create-room")}>Criar Sala</button>
+              <button className={`tab-pill ${tab === "join-room" ? "is-active" : ""}`} type="button" onClick={() => { setTab("join-room"); void refreshRooms(); }}>Entrar em Sala</button>
             </div>
 
             {tab === "invite" ? (
@@ -920,7 +977,7 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
                   </div>
                 )}
               </div>
-            ) : (
+            ) : tab === "join" ? (
               <form className="tab-content" onSubmit={handleJoin}>
                 <p className="tab-description">Digite o código temporário fornecido pelo apresentador.</p>
                 <label className="code-label" htmlFor="join-code-input">Código da Sessão</label>
@@ -936,6 +993,40 @@ const SessionModal = ({ session, onClose }: { session: SessionModel; onClose: ()
                 <button className="button primary full-width" type="submit" disabled={state.tailscale.state !== "ready" || session.joinCode.length !== 7}>
                   Conectar
                 </button>
+              </form>
+            ) : tab === "create-room" ? (
+              <div className="tab-content">
+                {session.activeRoom ? (
+                  <div className="room-active-card"><span className="session-modal-network-dot" /><div><strong>{session.activeRoom.room.name}</strong><span>Sala aberta na tailnet · chat efêmero</span></div></div>
+                ) : localRoom ? (
+                  <div className="room-saved-card">
+                    <div><strong>{localRoom.name}</strong><span>Senha persistente configurada neste computador</span></div>
+                    <button className="button primary full-width" type="button" disabled={roomBusy || state.tailscale.state !== "ready"} onClick={() => void handleOpenSavedRoom()}>{roomBusy ? "Abrindo…" : "Abrir sala"}</button>
+                    <button className="button ghost small" type="button" onClick={() => setLocalRoom(undefined)}>Editar configuração</button>
+                  </div>
+                ) : (
+                  <form className="room-create-form" onSubmit={(event) => void handleCreateRoom(event)}>
+                    <p className="tab-description">Crie uma sala protegida por senha. Somente a configuração da sala fica salva; o chat nunca é persistido.</p>
+                    <label className="code-label" htmlFor="room-name">Nome da sala</label>
+                    <input id="room-name" className="text-input" value={roomName} maxLength={48} onChange={(event) => setRoomName(event.target.value)} />
+                    <label className="code-label" htmlFor="room-password">Senha</label>
+                    <input id="room-password" className="text-input" type="password" value={roomPassword} minLength={4} onChange={(event) => setRoomPassword(event.target.value)} />
+                    <label className="code-label" htmlFor="room-password-confirm">Confirmar senha</label>
+                    <input id="room-password-confirm" className="text-input" type="password" value={roomPasswordConfirm} minLength={4} onChange={(event) => setRoomPasswordConfirm(event.target.value)} />
+                    <button className="button primary full-width" type="submit" disabled={roomBusy || roomName.trim().length === 0 || roomPassword.length < 4}>{roomBusy ? "Criando…" : "Criar sala"}</button>
+                  </form>
+                )}
+                {roomError && <p className="empty-warning" role="alert">{roomError}</p>}
+              </div>
+            ) : (
+              <form className="tab-content" onSubmit={(event) => void handleJoinRoom(event)}>
+                <div className="room-browser-header"><p className="tab-description">Salas abertas pelos seus peers Tailscale.</p><button className="button ghost small" type="button" onClick={() => void refreshRooms()}>{roomBusy ? "Buscando…" : "Atualizar"}</button></div>
+                <div className="room-list">
+                  {availableRooms.map((room) => <button key={room.id} className={`room-list-item ${selectedRoom?.id === room.id ? "is-selected" : ""}`} type="button" onClick={() => setSelectedRoom(room)}><span className="session-modal-network-dot" /><span><strong>{room.name}</strong><small>{room.hostName} · protegida por senha</small></span></button>)}
+                  {!roomBusy && availableRooms.length === 0 && <div className="chat-notice">Nenhuma sala disponível na sua tailnet.</div>}
+                </div>
+                {selectedRoom && <><label className="code-label" htmlFor="join-room-password">Senha da sala</label><input id="join-room-password" className="text-input" type="password" value={roomPassword} onChange={(event) => setRoomPassword(event.target.value)} autoFocus /><button className="button primary full-width" type="submit" disabled={roomBusy || roomPassword.length === 0}>{roomBusy ? "Conectando…" : "Entrar na sala"}</button></>}
+                {roomError && <p className="empty-warning" role="alert">{roomError}</p>}
               </form>
             )}
           </>

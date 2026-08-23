@@ -53,6 +53,16 @@ export interface LocalRoomConfig {
   hasPassword: boolean;
 }
 
+export interface RoomSummary extends LocalRoomConfig {
+  hostIp: string;
+  hostName: string;
+}
+
+export interface HostedRoom {
+  room: LocalRoomConfig;
+  expiresAt: string;
+}
+
 export interface DiscoveredSession {
   hostIp: string;
   offer: SessionDescription;
@@ -103,6 +113,10 @@ export interface SFScreenApi {
   getCaptureAuthorizationState: () => Promise<import('../screen-source').CaptureAuthorizationState>;
   exportDiagnostics: (report: import('../diagnostics').DiagnosticsReport) => Promise<SessionResult<boolean>>;
   hostSession: (offer: SessionDescription) => Promise<SessionResult<HostedSession>>;
+  hostRoomSession: (offer: SessionDescription) => Promise<SessionResult<HostedRoom>>;
+  discoverRooms: () => Promise<SessionResult<RoomSummary[]>>;
+  findRoom: (roomId: string, password: string) => Promise<SessionResult<DiscoveredSession>>;
+  submitRoomAnswer: (hostIp: string, roomId: string, password: string, answer: SessionDescription) => Promise<SessionResult<void>>;
   findSession: (code: string) => Promise<SessionResult<DiscoveredSession>>;
   submitAnswer: (hostIp: string, code: string, answer: SessionDescription) => Promise<SessionResult<void>>;
   stopHostedSession: () => Promise<SessionResult<void>>;

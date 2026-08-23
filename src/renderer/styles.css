@@ -3128,6 +3128,19 @@ button:disabled {
 .chat-upload-error { width:100%; color:#ff9195; font-size:.65rem; }
 .media-device-select { width:100%; margin-top:8px; appearance:auto; cursor:pointer; }
 .media-device-select option { background:#191b23; color:#f2f3f5; }
+.session-entry-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); height:auto; padding:4px; gap:3px; }
+.session-entry-tabs .tab-pill { min-height:34px; }
+.room-create-form,.room-saved-card { display:flex; flex-direction:column; gap:9px; }
+.room-active-card,.room-list-item { display:flex; align-items:center; gap:10px; }
+.room-active-card { padding:13px; border:1px solid rgba(87,242,135,.2); border-radius:10px; background:rgba(35,165,90,.08); }
+.room-active-card > div,.room-saved-card > div,.room-list-item > span:last-child { display:flex; flex-direction:column; gap:2px; }
+.room-active-card strong,.room-saved-card strong,.room-list-item strong { color:#ecf2ef; font-size:.76rem; }
+.room-active-card span,.room-saved-card span,.room-list-item small { color:#7f9187; font-size:.65rem; }
+.room-browser-header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.room-browser-header p { margin:0; }
+.room-list { display:flex; flex-direction:column; gap:5px; max-height:170px; overflow-y:auto; }
+.room-list-item { width:100%; padding:9px 10px; border:1px solid rgba(255,255,255,.055); border-radius:8px; background:#181a21; text-align:left; }
+.room-list-item:hover,.room-list-item.is-selected { border-color:rgba(87,242,135,.28); background:rgba(35,165,90,.1); }
 
 /* ─── Floating In-Stage Control Dock (Discord In-Stage Style) ─── */
 .stage-dock-trigger-zone {

@@ -3,7 +3,7 @@ import { formatSessionCode, normalizeSessionCode } from '../../shared/session/co
 import { diagnosticsFormatVersion, type DiagnosticEvent, type DiagnosticsReport, type WebRtcMetrics } from '../../shared/diagnostics';
 import type { ScreenSelection, ScreenSource } from '../../shared/screen-source';
 import type { ChatMessagePayload } from '../../shared/session/media-control';
-import type { SessionError, TailscaleStatus } from '../../shared/session/types';
+import type { HostedRoom, RoomSummary, SessionError, TailscaleStatus } from '../../shared/session/types';
 import { initialSessionState, normalizeUserName, sessionReducer, type AudioPhase, type MediaPhase, type SessionUiState } from './session-machine';
 import { WebRtcSession } from './webrtc-session';
 
@@ -421,6 +421,7 @@ export interface SessionModel {
   remoteMediaError?: string;
   remoteAudioPhase?: AudioPhase;
   remoteAudioError?: string;
+  activeRoom?: HostedRoom;
   isSimulatedPeer: boolean;
   remoteControlConfig: import('../../shared/session/media-control').RemoteControlConfig;
   remotePeerControlConfig: import('../../shared/session/media-control').RemoteControlConfig;
@@ -437,6 +438,9 @@ export interface SessionModel {
   selectSource: (source: ScreenSource, includeSystemAudio: boolean, remoteControl?: Partial<import('../../shared/session/media-control').RemoteControlConfig>, allowWithoutGesture?: boolean) => Promise<void>;
   host: () => Promise<void>;
   join: () => Promise<void>;
+  hostRoom: () => Promise<HostedRoom | undefined>;
+  discoverRooms: () => Promise<RoomSummary[]>;
+  joinRoom: (roomId: string, password: string) => Promise<void>;
   confirmSecurity: () => void;
   startSharing: () => Promise<void>;
   stopSharing: () => Promise<void>;
@@ -464,6 +468,7 @@ export const useSession = (): SessionModel => {
   const [joinCode, setJoinCodeState] = useState('');
   const [sources, setSources] = useState<ScreenSource[]>([]);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+  const [activeRoom, setActiveRoom] = useState<HostedRoom | undefined>(undefined);
   const [resolution, setResolutionState] = useState<StreamResolution>(getSavedStreamResolution);
   const [fps, setFpsState] = useState<StreamFps>(getSavedStreamFps);
   const resolutionRef = useRef<StreamResolution>(resolution);
@@ -598,6 +603,7 @@ export const useSession = (): SessionModel => {
     setRemoteMediaError(undefined);
     setRemoteAudioPhase('unavailable');
     setRemoteAudioError(undefined);
+    setActiveRoom(undefined);
     await window.sfscreen.stopHostedSession();
     recordDiagnostic('session-closed');
     dispatch({ type: 'closed' });
@@ -1087,6 +1093,58 @@ recordDiagnostic('audio-unavailable');
     }
   }, [joinCode, createController, recordDiagnostic, requireReady]);
 
+  const hostRoom = useCallback(async (): Promise<HostedRoom | undefined> => {
+    dispatch({ type: 'begin', role: 'host', phase: 'hosting', message: 'Abrindo a sala privada na tailnet…' });
+    sessionStartedAtRef.current = Date.now();
+    diagnosticEventsRef.current = [];
+    metricsRef.current = {};
+    recordDiagnostic('session-started');
+    try {
+      const status = await requireReady();
+      if (!status?.selfIp) return undefined;
+      const controller = createController();
+      const offer = await controller.createOffer(status.selfIps ?? [status.selfIp], status.selfIp, crypto.randomUUID(), crypto.randomUUID());
+      const result = await window.sfscreen.hostRoomSession(offer);
+      if (!result.ok) throw new Error(result.error.message);
+      setActiveRoom(result.value);
+      return result.value;
+    } catch (caught) {
+      controllerRef.current?.close();
+      dispatch({ type: 'failed', message: errorMessage(caught) });
+      return undefined;
+    }
+  }, [createController, recordDiagnostic, requireReady]);
+
+  const discoverRooms = useCallback(async (): Promise<RoomSummary[]> => {
+    const result = await window.sfscreen.discoverRooms();
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  }, []);
+
+  const joinRoom = useCallback(async (roomId: string, password: string): Promise<void> => {
+    dispatch({ type: 'begin', role: 'viewer', phase: 'searching', message: 'Entrando na sala privada pela tailnet…' });
+    sessionStartedAtRef.current = Date.now();
+    diagnosticEventsRef.current = [];
+    metricsRef.current = {};
+    recordDiagnostic('session-started');
+    try {
+      const status = await requireReady();
+      if (!status?.selfIp) return;
+      const found = await window.sfscreen.findRoom(roomId, password);
+      if (!found.ok) throw new Error(found.error.message);
+      remoteIpRef.current = found.value.hostIp;
+      dispatch({ type: 'begin', role: 'viewer', phase: 'negotiating', message: 'Sala encontrada. Criando conexão P2P segura…' });
+      const controller = createController();
+      const { answer, securityCode } = await controller.createAnswer(found.value.offer, status.selfIps ?? [status.selfIp], found.value.hostIp);
+      dispatch({ type: 'verifying', securityCode, message: 'Conexão com a sala criada. Compare o código de segurança.' });
+      const submitted = await window.sfscreen.submitRoomAnswer(found.value.hostIp, roomId, password, answer);
+      if (!submitted.ok) throw new Error(submitted.error.message);
+    } catch (caught) {
+      controllerRef.current?.close();
+      dispatch({ type: 'failed', message: errorMessage(caught) });
+    }
+  }, [createController, recordDiagnostic, requireReady]);
+
   const confirmSecurity = useCallback((): void => {
     localConfirmedRef.current = true;
     controllerRef.current?.confirmSecurity();
@@ -1483,6 +1541,7 @@ recordDiagnostic('audio-unavailable');
     remoteMediaError,
     remoteAudioPhase,
     remoteAudioError,
+    activeRoom,
     isSimulatedPeer,
     remoteControlConfig,
     remotePeerControlConfig,
@@ -1499,6 +1558,9 @@ recordDiagnostic('audio-unavailable');
     selectSource,
     host,
     join,
+    hostRoom,
+    discoverRooms,
+    joinRoom,
     confirmSecurity,
     startSharing,
     stopSharing,

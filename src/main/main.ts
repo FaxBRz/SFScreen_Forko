@@ -16,7 +16,11 @@ import { RoomConfigService } from './rooms/room-config-service';
 
 let mainWindow: BrowserWindow | null = null;
 const tailscale = new TailscaleService();
-const sessionServer = new SessionServer(() => tailscale.getStatus(true));
+let roomConfig: RoomConfigService | undefined;
+const sessionServer = new SessionServer(() => tailscale.getStatus(true), {
+  getRoom: () => roomConfig?.get() ?? Promise.resolve(undefined),
+  verifyRoomPassword: (password) => roomConfig?.verifyPassword(password) ?? Promise.resolve(false),
+});
 const stunServer = new TailscaleStunServer(() => tailscale.getStatus());
 const screenCapture = new ScreenCaptureService();
 const diagnostics = new DiagnosticsService();
@@ -98,6 +102,7 @@ const createWindow = (): void => {
 };
 
 app.whenReady().then(() => {
+  roomConfig = new RoomConfigService(path.join(app.getPath('userData'), 'rooms'));
   const isAuthorizedWebContents = (webContents: Electron.WebContents | null): boolean => mainWindow !== null
     && !mainWindow.isDestroyed()
     && webContents === mainWindow.webContents;
@@ -137,7 +142,7 @@ app.whenReady().then(() => {
     stunServer,
     screenCapture,
     diagnostics,
-    roomConfig: new RoomConfigService(path.join(app.getPath('userData'), 'rooms')),
+    roomConfig,
     isAuthorizedSender,
   });
   registerRuntimeIpc({ ipcMain, audioCapture, remoteInput, isAuthorizedSender });
