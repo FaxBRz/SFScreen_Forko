@@ -3332,6 +3332,17 @@ button:disabled {
 .chat-upload-error { width:100%; color:#ff9195; font-size:.65rem; }
 .media-device-select { width:100%; margin-top:8px; appearance:auto; cursor:pointer; }
 .media-device-select option { background:#191b23; color:#f2f3f5; }
+.media-device-card { min-width:0; }
+.microphone-test { margin-top:auto; padding-top:10px; display:flex; flex-direction:column; gap:8px; }
+.microphone-test-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.microphone-test-button { min-height:32px; padding:6px 10px; gap:7px; font-size:.72rem; }
+.microphone-test-button svg { width:15px; height:15px; }
+.microphone-test-button.is-testing { color:#fff; border-color:rgba(218,55,60,.45); background:rgba(218,55,60,.18); }
+.microphone-test-status { color:#7f8794; font-size:.68rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.microphone-test.is-active .microphone-test-status { color:#57f287; }
+.microphone-level-track { position:relative; width:100%; height:7px; overflow:hidden; border-radius:999px; background:#0d0f14; border:1px solid rgba(255,255,255,.06); }
+.microphone-level-fill { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#23a55a 0%,#57f287 72%,#f0c24b 90%,#da373c 100%); transition:width 80ms linear; }
+.microphone-test-error { margin:0; color:#ff9195; font-size:.68rem; line-height:1.35; }
 .session-entry-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); height:auto; padding:4px; gap:3px; }
 .session-entry-tabs .tab-pill { min-height:34px; }
 .room-create-form,.room-saved-card { display:flex; flex-direction:column; gap:9px; }

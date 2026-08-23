@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/renderer/app';
 import { initialSessionState, type SessionUiState } from '../../src/renderer/session/session-machine';
@@ -358,6 +358,61 @@ describe('SFScreen Discord layout', () => {
       expect(localStorage.getItem('sfscreen_preferred_audio_output')).toBe('headset-1');
     } finally {
       Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: originalMediaDevices });
+    }
+  });
+
+  it('tests the selected microphone and stops its capture', async () => {
+    const originalMediaDevices = navigator.mediaDevices;
+    const originalAudioContext = Object.getOwnPropertyDescriptor(globalThis, 'AudioContext');
+    const originalRequestAnimationFrame = window.requestAnimationFrame;
+    const originalCancelAnimationFrame = window.cancelAnimationFrame;
+    const stopTrack = vi.fn();
+    const testStream = { getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => testStream);
+    const close = vi.fn(async () => undefined);
+
+    class FakeAudioContext {
+      state: AudioContextState = 'running';
+      close = close;
+      resume = vi.fn(async () => undefined);
+      createAnalyser = vi.fn(() => ({
+        fftSize: 256,
+        smoothingTimeConstant: 0,
+        getByteTimeDomainData: vi.fn((samples: Uint8Array) => samples.fill(128)),
+      }));
+      createMediaStreamSource = vi.fn(() => ({ connect: vi.fn() }));
+    }
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { enumerateDevices: vi.fn(async () => []), getUserMedia, addEventListener: vi.fn(), removeEventListener: vi.fn() },
+    });
+    Object.defineProperty(globalThis, 'AudioContext', { configurable: true, value: FakeAudioContext });
+    Object.defineProperty(window, 'requestAnimationFrame', { configurable: true, value: vi.fn(() => 1) });
+    Object.defineProperty(window, 'cancelAnimationFrame', { configurable: true, value: vi.fn() });
+
+    try {
+      const current = model();
+      vi.mocked(useSession).mockReturnValue(current);
+      render(<App />);
+
+      fireEvent.click(screen.getAllByRole('button', { name: /configurações/i })[0]);
+      fireEvent.click(screen.getByRole('button', { name: /vídeo & áudio/i }));
+      fireEvent.click(screen.getByRole('button', { name: /testar microfone/i }));
+
+      await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: expect.any(Object), video: false })));
+      const stopButton = await screen.findByRole('button', { name: /parar teste/i });
+      expect(screen.getByRole('meter', { name: /nível do microfone/i })).toBeTruthy();
+
+      fireEvent.click(stopButton);
+      expect(stopTrack).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: originalMediaDevices });
+      if (originalAudioContext) Object.defineProperty(globalThis, 'AudioContext', originalAudioContext);
+      else Reflect.deleteProperty(globalThis, 'AudioContext');
+      Object.defineProperty(window, 'requestAnimationFrame', { configurable: true, value: originalRequestAnimationFrame });
+      Object.defineProperty(window, 'cancelAnimationFrame', { configurable: true, value: originalCancelAnimationFrame });
     }
   });
 

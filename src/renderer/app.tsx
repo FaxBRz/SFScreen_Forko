@@ -1162,12 +1162,109 @@ const SettingsModal = ({
     try { return localStorage.getItem("sfscreen_preferred_microphone") || "default"; } catch { return "default"; }
   });
   const preferredAudioOutput = usePreferredAudioOutput();
+  const [microphoneTestStatus, setMicrophoneTestStatus] = useState<"idle" | "starting" | "active" | "error">("idle");
+  const [microphoneLevel, setMicrophoneLevel] = useState(0);
+  const [microphoneTestError, setMicrophoneTestError] = useState<string>();
+  const microphoneTestStreamRef = useRef<MediaStream | null>(null);
+  const microphoneTestContextRef = useRef<AudioContext | null>(null);
+  const microphoneTestFrameRef = useRef<number | null>(null);
+  const microphoneTestRunRef = useRef(0);
+
+  const releaseMicrophoneTest = useCallback((): void => {
+    microphoneTestRunRef.current += 1;
+    if (microphoneTestFrameRef.current !== null) {
+      window.cancelAnimationFrame(microphoneTestFrameRef.current);
+      microphoneTestFrameRef.current = null;
+    }
+    microphoneTestStreamRef.current?.getTracks().forEach((track) => track.stop());
+    microphoneTestStreamRef.current = null;
+    const context = microphoneTestContextRef.current;
+    microphoneTestContextRef.current = null;
+    if (context && context.state !== "closed") {
+      void context.close().catch(() => undefined);
+    }
+  }, []);
+
+  const stopMicrophoneTest = useCallback((): void => {
+    releaseMicrophoneTest();
+    setMicrophoneLevel(0);
+    setMicrophoneTestError(undefined);
+    setMicrophoneTestStatus("idle");
+  }, [releaseMicrophoneTest]);
+
+  const startMicrophoneTest = useCallback(async (): Promise<void> => {
+    releaseMicrophoneTest();
+    setMicrophoneLevel(0);
+    setMicrophoneTestError(undefined);
+    setMicrophoneTestStatus("starting");
+    const runId = microphoneTestRunRef.current;
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("media-unavailable");
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: preferredMicrophone === "default" ? "default" : { exact: preferredMicrophone },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      });
+      if (runId !== microphoneTestRunRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      const context = new AudioContext();
+      microphoneTestStreamRef.current = stream;
+      microphoneTestContextRef.current = context;
+      if (context.state === "suspended") await context.resume();
+
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.72;
+      context.createMediaStreamSource(stream).connect(analyser);
+      const samples = new Uint8Array(analyser.fftSize);
+
+      const updateLevel = (): void => {
+        if (runId !== microphoneTestRunRef.current) return;
+        analyser.getByteTimeDomainData(samples);
+        let energy = 0;
+        for (const sample of samples) {
+          const normalized = (sample - 128) / 128;
+          energy += normalized * normalized;
+        }
+        const rms = Math.sqrt(energy / samples.length);
+        setMicrophoneLevel(Math.min(100, Math.round(rms * 360)));
+        microphoneTestFrameRef.current = window.requestAnimationFrame(updateLevel);
+      };
+
+      setMicrophoneTestStatus("active");
+      updateLevel();
+    } catch (error) {
+      if (runId !== microphoneTestRunRef.current) return;
+      releaseMicrophoneTest();
+      const errorName = error instanceof DOMException ? error.name : "";
+      setMicrophoneTestError(
+        errorName === "NotAllowedError"
+          ? "Permissão de microfone negada. Autorize o SFScreen nas configurações do Windows."
+          : errorName === "NotFoundError" || errorName === "OverconstrainedError"
+            ? "O microfone selecionado não está disponível. Escolha outro dispositivo."
+            : "Não foi possível iniciar o teste de microfone."
+      );
+      setMicrophoneTestStatus("error");
+    }
+  }, [preferredMicrophone, releaseMicrophoneTest]);
+
+  useEffect(() => () => releaseMicrophoneTest(), [releaseMicrophoneTest]);
 
   useEffect(() => {
     const refreshDevices = async (): Promise<void> => {
       try {
         const devices = await navigator.mediaDevices?.enumerateDevices?.();
-        setMicrophones((devices ?? []).filter((device) => device.kind === "audioinput"));
+        setMicrophones((devices ?? []).filter((device) => device.kind === "audioinput" && device.deviceId !== "default"));
         const outputs = (devices ?? []).filter((device) => device.kind === "audiooutput" && device.deviceId !== "default");
         setAudioOutputs(outputs);
         const current = readPreferredAudioOutput();
@@ -1185,6 +1282,7 @@ const SettingsModal = ({
   }, []);
 
   const savePreferredMicrophone = (deviceId: string): void => {
+    stopMicrophoneTest();
     setPreferredMicrophone(deviceId);
     try { localStorage.setItem("sfscreen_preferred_microphone", deviceId); } catch { /* Ignored */ }
   };
@@ -1572,15 +1670,42 @@ const SettingsModal = ({
 
           {activeTab === "media" && (
             <div className="settings-info-grid">
-              <div className="setting-card full-span">
+              <div className="setting-card media-device-card">
                 <span className="card-key">Microfone para o modo voz</span>
                 <select aria-label="Microfone" className="text-input media-device-select" value={preferredMicrophone} onChange={(event) => savePreferredMicrophone(event.target.value)}>
                   <option value="default">Padrão do sistema (detecção automática)</option>
                   {microphones.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Microfone ${index + 1}`}</option>)}
                 </select>
                 <p className="setting-field-hint">A escolha será usada ao entrar na voz. O modo padrão acompanha o dispositivo definido no Windows.</p>
+                <div className={`microphone-test ${microphoneTestStatus === "active" ? "is-active" : ""}`}>
+                  <div className="microphone-test-header">
+                    <button
+                      className={`button microphone-test-button ${microphoneTestStatus === "active" ? "is-testing" : ""}`}
+                      type="button"
+                      disabled={microphoneTestStatus === "starting"}
+                      onClick={() => microphoneTestStatus === "active" ? stopMicrophoneTest() : void startMicrophoneTest()}
+                    >
+                      {microphoneTestStatus === "active" ? <MicrophoneOffIcon /> : <MicrophoneIcon />}
+                      {microphoneTestStatus === "starting" ? "Iniciando…" : microphoneTestStatus === "active" ? "Parar teste" : "Testar microfone"}
+                    </button>
+                    <span className="microphone-test-status" aria-live="polite">
+                      {microphoneTestStatus === "active" ? `${microphoneLevel}%` : microphoneTestStatus === "error" ? "Falhou" : "Aguardando"}
+                    </span>
+                  </div>
+                  <div
+                    className="microphone-level-track"
+                    role="meter"
+                    aria-label="Nível do microfone"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={microphoneLevel}
+                  >
+                    <span className="microphone-level-fill" style={{ width: `${microphoneLevel}%` }} />
+                  </div>
+                  {microphoneTestError && <p className="microphone-test-error" role="alert">{microphoneTestError}</p>}
+                </div>
               </div>
-              <div className="setting-card full-span">
+              <div className="setting-card media-device-card">
                 <span className="card-key">Fone de ouvido ou alto-falante</span>
                 <select aria-label="Saída de áudio" className="text-input media-device-select" value={preferredAudioOutput} onChange={(event) => savePreferredAudioOutput(event.target.value)}>
                   <option value="default">Padrão do sistema (detecção automática)</option>
