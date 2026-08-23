@@ -3103,22 +3103,29 @@ export const App = (): ReactElement => {
   };
 
   const renderChatText = (text: string): ReactElement[] => {
-    const mentionNames = [state.localUserName, state.remoteUserName].filter(Boolean).map((name) => name.toLocaleLowerCase());
-    return text.split(/(@[\p{L}\p{N}_-]+)/gu).map((part, index) => {
-      const isMention = part.startsWith("@") && mentionNames.includes(part.slice(1).toLocaleLowerCase());
+    const mentionNames = [state.localUserName, state.remoteUserName].filter(Boolean);
+    const escapedNames = mentionNames.sort((left, right) => right.length - left.length).map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const mentionPattern = escapedNames.length ? new RegExp(`(@(?:${escapedNames.join("|")}))(?=$|[^\\p{L}\\p{N}_-])`, "giu") : /$^/u;
+    return text.split(mentionPattern).map((part, index) => {
+      const isMention = mentionNames.some((name) => part.toLocaleLowerCase() === `@${name}`.toLocaleLowerCase());
       return isMention
         ? <button key={`${part}-${index}`} className="chat-mention" type="button" onClick={() => setChatText(`${part} `)}>{part}</button>
         : <span key={`${part}-${index}`}>{part}</span>;
     });
   };
 
-  const mentionMatch = chatText.match(/(^|\s)@([^\s@]*)$/u);
+  const mentionMatch = chatText.match(/(^|\s)@([^@]*)$/u);
   const mentionQuery = mentionMatch?.[2]?.toLocaleLowerCase();
-  const mentionCandidates = (isConnected ? [state.remoteUserName, state.localUserName] : [state.localUserName])
+  const sessionMentionMembers = (isConnected ? [state.remoteUserName, state.localUserName] : [state.localUserName])
     .filter((name, index, names) => name && names.indexOf(name) === index)
+  const mentionCandidates = sessionMentionMembers
     .filter((name) => mentionQuery !== undefined && name.toLocaleLowerCase().includes(mentionQuery));
+  const mentionAlreadyCompleted = mentionQuery !== undefined && sessionMentionMembers.some((name) => {
+    const normalized = mentionQuery.trimStart().toLocaleLowerCase();
+    return normalized === name.toLocaleLowerCase() || normalized.startsWith(`${name.toLocaleLowerCase()} `);
+  });
   const insertMention = (name: string): void => {
-    setChatText((current) => current.replace(/(^|\s)@([^\s@]*)$/u, `$1@${name} `));
+    setChatText((current) => current.replace(/(^|\s)@([^@]*)$/u, `$1@${name} `));
   };
 
   const participantsCount = isConnected ? 2 : 1;
@@ -4468,7 +4475,7 @@ export const App = (): ReactElement => {
                 placeholder="Conversar no canal…"
                 title={`Use @${isConnected ? state.remoteUserName : "Usuario"} para mencionar`}
               />
-              {mentionQuery !== undefined && (
+              {mentionQuery !== undefined && !mentionAlreadyCompleted && (
                 <div className="chat-mention-menu" role="listbox" aria-label="Mencionar participante">
                   <div className="chat-mention-menu-label">Membros da sessão</div>
                   {mentionCandidates.length > 0 ? mentionCandidates.map((name) => {
