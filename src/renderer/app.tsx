@@ -1849,6 +1849,44 @@ const playCameraOffSound = (): void => {
   });
 };
 
+/* 8. 🔒 AnyDesk Lock Mode: High-tech lock chime */
+const playLockModeSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gainNode = ctx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(440, now);
+  osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+  gainNode.gain.setValueAtTime(0, now);
+  gainNode.gain.linearRampToValueAtTime(0.16, now + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+  osc.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.15);
+};
+
+/* 9. 🔓 AnyDesk Unlock Mode: Descending release chime */
+const playUnlockModeSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gainNode = ctx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(880, now);
+  osc.frequency.exponentialRampToValueAtTime(440, now + 0.15);
+  gainNode.gain.setValueAtTime(0, now);
+  gainNode.gain.linearRampToValueAtTime(0.16, now + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+  osc.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.18);
+};
+
 /* ─── Main Application Component ─── */
 export const App = (): ReactElement => {
   const session = useSession();
@@ -2363,17 +2401,46 @@ export const App = (): ReactElement => {
 
   /* Remote Control / AnyDesk State */
   const [remoteControlPausedByViewer, setRemoteControlPausedByViewer] = useState(false);
+  const [isAnyDeskLocked, setIsAnyDeskLocked] = useState(false);
+  const [scrollHoldProgress, setScrollHoldProgress] = useState(0);
+  const scrollHoldStartRef = useRef<number>(0);
+  const scrollHoldIntervalRef = useRef<number | null>(null);
+
   const isControllingRemote = session.remotePeerControlConfig.enabled && !remoteControlPausedByViewer;
   const [clipboardToast, setClipboardToast] = useState(false);
   const videoViewportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (focusedIsLocal || !session.remotePeerControlConfig.enabled || !isControllingRemote) return;
+    if (focusedIsLocal || !session.remotePeerControlConfig.enabled) return;
 
     const handleGlobalRemoteKey = (e: KeyboardEvent): void => {
+      // Toggle Lock Mode shortcut: Ctrl+Alt+A or Ctrl+Shift+A or Ctrl+A+B
+      const isToggleShortcut = (e.ctrlKey || e.metaKey) && (e.altKey || e.shiftKey) && (e.key === "a" || e.key === "A" || e.code === "KeyA");
+      if (isToggleShortcut && e.type === "keydown") {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsAnyDeskLocked((prev) => {
+          const next = !prev;
+          if (next) playLockModeSound();
+          else playUnlockModeSound();
+          return next;
+        });
+        return;
+      }
+
+      if (!isControllingRemote) return;
+
       const activeTag = (document.activeElement?.tagName || "").toLowerCase();
       if (activeTag === "input" || activeTag === "textarea") return;
-      if (e.key === "F11" || e.key === "Escape") return;
+
+      // In locked mode, capture everything (including Ctrl+W, Tab, Escape, etc.)
+      if (isAnyDeskLocked) {
+        if (e.key === "F11") return; // Allow F11 for fullscreen
+        e.preventDefault();
+        e.stopPropagation();
+      } else {
+        if (e.key === "F11" || e.key === "Escape") return;
+      }
 
       const kind = e.type === "keydown" ? "key-down" : "key-up";
       session.sendRemoteInput({
@@ -2387,13 +2454,13 @@ export const App = (): ReactElement => {
       });
     };
 
-    window.addEventListener("keydown", handleGlobalRemoteKey);
-    window.addEventListener("keyup", handleGlobalRemoteKey);
+    window.addEventListener("keydown", handleGlobalRemoteKey, { capture: isAnyDeskLocked });
+    window.addEventListener("keyup", handleGlobalRemoteKey, { capture: isAnyDeskLocked });
     return () => {
-      window.removeEventListener("keydown", handleGlobalRemoteKey);
-      window.removeEventListener("keyup", handleGlobalRemoteKey);
+      window.removeEventListener("keydown", handleGlobalRemoteKey, { capture: isAnyDeskLocked });
+      window.removeEventListener("keyup", handleGlobalRemoteKey, { capture: isAnyDeskLocked });
     };
-  }, [focusedIsLocal, session, isControllingRemote]);
+  }, [focusedIsLocal, session, isControllingRemote, isAnyDeskLocked]);
 
   const pendingRemoteMoveRef = useRef<{ x: number; y: number } | null>(null);
   const remoteMoveRafRef = useRef<number | null>(null);
@@ -2438,7 +2505,27 @@ export const App = (): ReactElement => {
     mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
     didPanOrDragRef.current = false;
 
-    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
+    // Emergency Scroll Hold Detector: middle click (button === 1)
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && e.button === 1) {
+      scrollHoldStartRef.current = Date.now();
+      if (scrollHoldIntervalRef.current) clearInterval(scrollHoldIntervalRef.current);
+      scrollHoldIntervalRef.current = window.setInterval(() => {
+        const elapsed = Date.now() - scrollHoldStartRef.current;
+        const pct = Math.min(100, Math.round((elapsed / 3000) * 100));
+        setScrollHoldProgress(pct);
+        if (elapsed >= 3000) {
+          if (scrollHoldIntervalRef.current) {
+            clearInterval(scrollHoldIntervalRef.current);
+            scrollHoldIntervalRef.current = null;
+          }
+          setIsAnyDeskLocked(false);
+          setScrollHoldProgress(0);
+          playUnlockModeSound();
+        }
+      }, 50);
+    }
+
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && (isAnyDeskLocked || zoomLevel <= 1)) {
       const pt = getNormalizedPoint(e);
       if (pt) {
         const button = e.button === 2 ? "right" : e.button === 1 ? "middle" : "left";
@@ -2447,7 +2534,7 @@ export const App = (): ReactElement => {
       return;
     }
 
-    if (zoomLevel <= 1) return;
+    if (zoomLevel <= 1 || isAnyDeskLocked) return;
     if (e.button !== 0) return;
     setIsPanning(true);
     panStartRef.current = {
@@ -2466,7 +2553,7 @@ export const App = (): ReactElement => {
       }
     }
 
-    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && (isAnyDeskLocked || zoomLevel <= 1)) {
       const pt = getNormalizedPoint(e);
       if (pt) {
         pendingRemoteMoveRef.current = { x: pt.normX, y: pt.normY };
@@ -2497,7 +2584,15 @@ export const App = (): ReactElement => {
     if (Date.now() - mouseDownTimeRef.current > 200) {
       didPanOrDragRef.current = true;
     }
-    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && zoomLevel <= 1) {
+
+    // Clear emergency scroll hold interval on release
+    if (e.button === 1 && scrollHoldIntervalRef.current) {
+      clearInterval(scrollHoldIntervalRef.current);
+      scrollHoldIntervalRef.current = null;
+      setScrollHoldProgress(0);
+    }
+
+    if (!focusedIsLocal && session.remotePeerControlConfig.enabled && isControllingRemote && (isAnyDeskLocked || zoomLevel <= 1)) {
       const pt = getNormalizedPoint(e);
       if (pt) {
         const button = e.button === 2 ? "right" : e.button === 1 ? "middle" : "left";
@@ -3279,7 +3374,7 @@ export const App = (): ReactElement => {
               >
                 {/* AnyDesk Interactive Remote Control Floating Action Bar */}
                 {!focusedIsLocal && session.remotePeerControlConfig.enabled && (
-                  <div className={`remote-control-viewer-bar stage-fade-element ${controlsVisible || streamMenuOpen || isControllingRemote ? "is-visible" : ""}`}>
+                  <div className={`remote-control-viewer-bar stage-fade-element ${controlsVisible || streamMenuOpen || isControllingRemote || isAnyDeskLocked ? "is-visible" : ""}`}>
                     <button
                       className={`remote-ctrl-toggle-btn ${isControllingRemote ? "is-active" : ""}`}
                       type="button"
@@ -3292,6 +3387,25 @@ export const App = (): ReactElement => {
                       <GamepadIcon />
                       <span>{isControllingRemote ? "Controle Ativo (AnyDesk)" : "Só Assistindo"}</span>
                     </button>
+
+                    {isControllingRemote && (
+                      <button
+                        className={`remote-ctrl-lock-btn ${isAnyDeskLocked ? "is-locked" : ""}`}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsAnyDeskLocked((prev) => {
+                            const next = !prev;
+                            if (next) playLockModeSound();
+                            else playUnlockModeSound();
+                            return next;
+                          });
+                        }}
+                        title={isAnyDeskLocked ? "Destravar atalhos locais (Atalho: Ctrl+Alt+A)" : "Travar todos os atalhos (Ctrl+W, etc.) para o PC remoto (Atalho: Ctrl+Alt+A)"}
+                      >
+                        <span>{isAnyDeskLocked ? "🔒 Lock Ativo (Ctrl+Alt+A)" : "🔓 Travar Atalhos"}</span>
+                      </button>
+                    )}
 
                     {session.remoteControlStatus === "paused-by-host" && (
                       <div className="remote-ctrl-paused-pill" title="O anfitrião mexeu no mouse físico. O controle retornará automaticamente em 5s.">
@@ -3342,6 +3456,46 @@ export const App = (): ReactElement => {
                         </button>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Prominent Floating Banner when in Locked AnyDesk Mode */}
+                {!focusedIsLocal && session.remotePeerControlConfig.enabled && isAnyDeskLocked && (
+                  <div className="anydesk-locked-banner">
+                    <div className="locked-banner-left">
+                      <span className="locked-badge">🔒 MODO BLOQUEADO</span>
+                      <span className="locked-desc">Todos os atalhos (Ctrl+W, Alt+Tab, etc.) vão direto para o PC do seu amigo.</span>
+                    </div>
+                    <div className="locked-banner-right">
+                      <span className="locked-hint">Atalho: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd> ou <strong>segure o Scroll (3s)</strong></span>
+                      <button
+                        className="locked-unlock-action-btn"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsAnyDeskLocked(false);
+                          playUnlockModeSound();
+                        }}
+                      >
+                        🔓 Destravar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Emergency Scroll Hold Visual Progress Indicator */}
+                {scrollHoldProgress > 0 && (
+                  <div className="scroll-hold-overlay">
+                    <div className="scroll-hold-card">
+                      <div className="scroll-hold-icon">🖱️</div>
+                      <div className="scroll-hold-info">
+                        <span className="scroll-hold-title">Soltando controle de emergência...</span>
+                        <span className="scroll-hold-sub">Mantenha o Scroll pressionado ({Math.max(1, Math.ceil(3 - (scrollHoldProgress * 3) / 100))}s)</span>
+                        <div className="scroll-hold-bar-track">
+                          <div className="scroll-hold-bar-fill" style={{ width: `${scrollHoldProgress}%` }} />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 

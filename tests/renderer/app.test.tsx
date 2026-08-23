@@ -904,6 +904,36 @@ describe('SFScreen Discord layout', () => {
     fireEvent.click(screen.getByRole('button', { name: /win/i }));
     expect(current.sendRemoteInput).toHaveBeenCalledWith({ kind: 'special', action: 'win' });
   });
+
+  it('toggles AnyDesk Lock Mode with Ctrl+Alt+A shortcut and captures shortcuts like Ctrl+W', () => {
+    const fakeStream = { getTracks: () => [], getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
+    const current = model(readyState({
+      phase: 'connected',
+      remoteUserName: 'Alex',
+    }));
+    current.remoteStream = fakeStream;
+    current.remoteMediaPhase = 'sharing';
+    current.remotePeerControlConfig = { enabled: true, allowMouse: true, allowKeyboard: true, allowClipboard: true };
+    vi.mocked(useSession).mockReturnValue(current);
+    render(<App />);
+
+    // Press Ctrl+Alt+A to lock
+    fireEvent.keyDown(window, { key: 'a', code: 'KeyA', ctrlKey: true, altKey: true });
+
+    // Should show locked mode banner
+    expect(screen.getByText(/MODO BLOQUEADO/i)).toBeTruthy();
+    expect(screen.getByText(/Todos os atalhos \(Ctrl\+W, Alt\+Tab, etc\.\) vão direto para o PC do seu amigo/i)).toBeTruthy();
+
+    // Now press Ctrl+W — should be sent to remote instead of closing local window
+    fireEvent.keyDown(window, { key: 'w', code: 'KeyW', ctrlKey: true });
+    expect(current.sendRemoteInput).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'key-down', code: 'KeyW', key: 'w', ctrlKey: true })
+    );
+
+    // Press Ctrl+Alt+A again to unlock
+    fireEvent.keyDown(window, { key: 'a', code: 'KeyA', ctrlKey: true, altKey: true });
+    expect(screen.queryByText(/MODO BLOQUEADO/i)).toBeNull();
+  });
 });
 
 

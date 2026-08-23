@@ -4748,4 +4748,182 @@ button:disabled {
   height: 13px;
 }
 
+.remote-ctrl-lock-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #1a1d27;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 5px 10px;
+  color: #949ba4;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.remote-ctrl-lock-btn:hover {
+  background: #252936;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.remote-ctrl-lock-btn.is-locked {
+  background: rgba(235, 71, 38, 0.22);
+  color: #ff7d63;
+  border-color: #eb4726;
+  box-shadow: 0 0 12px rgba(235, 71, 38, 0.4);
+}
+
+/* ─── Prominent Locked AnyDesk Mode Top Banner ─── */
+.anydesk-locked-banner {
+  position: absolute;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(18, 20, 29, 0.94);
+  backdrop-filter: blur(16px);
+  border: 1.5px solid #eb4726;
+  border-radius: 12px;
+  padding: 8px 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(235, 71, 38, 0.25);
+  z-index: 50;
+  max-width: 90%;
+  animation: fadeIn 0.2s ease;
+}
+
+.locked-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.locked-badge {
+  background: #eb4726;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.locked-desc {
+  font-size: 0.76rem;
+  color: #dbdee1;
+  font-weight: 600;
+}
+
+.locked-banner-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.locked-hint {
+  font-size: 0.72rem;
+  color: #949ba4;
+}
+
+.locked-hint kbd {
+  background: #252836;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 0.68rem;
+  color: #fff;
+  font-weight: 700;
+  font-family: inherit;
+}
+
+.locked-unlock-action-btn {
+  background: #2b2f3d;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.locked-unlock-action-btn:hover {
+  background: #3b4052;
+  border-color: #fff;
+}
+
+/* ─── Emergency Scroll Hold Progress Overlay ─── */
+.scroll-hold-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  z-index: 60;
+  pointer-events: none;
+  animation: fadeIn 0.15s ease;
+}
+
+.scroll-hold-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #161822;
+  border: 2px solid #f0b232;
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7), 0 0 24px rgba(240, 178, 50, 0.35);
+  max-width: 380px;
+}
+
+.scroll-hold-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.scroll-hold-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.scroll-hold-title {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.scroll-hold-sub {
+  font-size: 0.74rem;
+  color: #f0b232;
+  font-weight: 600;
+}
+
+.scroll-hold-bar-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.scroll-hold-bar-fill {
+  height: 100%;
+  background: #f0b232;
+  border-radius: 999px;
+  transition: width 0.05s linear;
+  box-shadow: 0 0 10px #f0b232;
+}
+
 
