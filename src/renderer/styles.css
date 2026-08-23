@@ -386,6 +386,95 @@ button:disabled {
   padding: 0 4px;
 }
 
+.sidebar-room-card {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid rgba(35, 165, 90, 0.2);
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, rgba(35, 165, 90, 0.1), rgba(88, 101, 242, 0.045)),
+    #16181f;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 8px 20px rgba(0, 0, 0, 0.16);
+}
+
+.sidebar-room-heading,
+.sidebar-room-status,
+.sidebar-room-meta,
+.sidebar-room-meta span,
+.sidebar-invite-action {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-room-heading {
+  justify-content: space-between;
+  color: #23a55a;
+}
+
+.sidebar-room-heading > svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.8;
+}
+
+.sidebar-room-status {
+  gap: 6px;
+  color: #d9f8e5;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sidebar-room-status > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #23a55a;
+  box-shadow: 0 0 10px rgba(35, 165, 90, 0.8);
+}
+
+.sidebar-room-card p {
+  margin: 0;
+  color: #9aa3af;
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.sidebar-room-meta {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sidebar-room-meta span {
+  gap: 4px;
+  color: #aeb6c1;
+  font-size: 0.65rem;
+}
+
+.sidebar-room-meta svg {
+  width: 12px;
+  height: 12px;
+  color: #57f287;
+}
+
+.sidebar-invite-action {
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  border-radius: 8px;
+  box-shadow: 0 7px 18px rgba(35, 165, 90, 0.2);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.sidebar-invite-action svg {
+  width: 15px;
+  height: 15px;
+}
+
 .participant-list {
   display: flex;
   flex-direction: column;
@@ -405,6 +494,11 @@ button:disabled {
 
 .participant-item:hover {
   background: rgba(255, 255, 255, 0.04);
+}
+
+.participant-item.is-self {
+  background: linear-gradient(90deg, rgba(35, 165, 90, 0.09), rgba(35, 165, 90, 0.018));
+  border-color: rgba(35, 165, 90, 0.14);
 }
 
 .user-avatar-small {

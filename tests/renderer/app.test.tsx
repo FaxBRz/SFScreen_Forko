@@ -79,8 +79,8 @@ describe('SFScreen Discord layout', () => {
 
     expect(screen.getByText('SFScreen')).toBeTruthy();
     expect(screen.getByText('Sua Sala Privada')).toBeTruthy();
-    expect(screen.getByText(/Participantes \(1\)/)).toBeTruthy();
-    expect(screen.getByText('+ Convidar pessoa')).toBeTruthy();
+    expect(screen.getByText(/Pessoas na sala \(1\)/)).toBeTruthy();
+    expect(screen.getByText('Convidar pessoa')).toBeTruthy();
   });
 
   it('collapses and expands the sidebar with toggle button', () => {
@@ -88,19 +88,19 @@ describe('SFScreen Discord layout', () => {
     vi.mocked(useSession).mockReturnValue(current);
     render(<App />);
 
-    expect(screen.getByText(/Participantes \(1\)/)).toBeTruthy();
+    expect(screen.getByText(/Pessoas na sala \(1\)/)).toBeTruthy();
 
     // Click toggle button to collapse
     const toggleBtns = screen.getAllByRole('button', { name: /recolher barra lateral/i });
     fireEvent.click(toggleBtns[0]);
 
-    expect(screen.queryByText(/Participantes \(1\)/)).toBeNull();
+    expect(screen.queryByText(/Pessoas na sala \(1\)/)).toBeNull();
 
     // Click toggle button again to expand
     const expandBtn = screen.getByRole('button', { name: /expandir barra lateral/i });
     fireEvent.click(expandBtn);
 
-    expect(screen.getByText(/Participantes \(1\)/)).toBeTruthy();
+    expect(screen.getByText(/Pessoas na sala \(1\)/)).toBeTruthy();
   });
 
 

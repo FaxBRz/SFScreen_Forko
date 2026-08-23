@@ -3157,7 +3157,7 @@ export const App = (): ReactElement => {
         {sidebarOpen && (
           <aside className="discord-sidebar" style={{ width: `${sidebarWidth}px` }}>
             <div className="sidebar-header-row">
-              <div className="section-title">Participantes ({participantsCount})</div>
+              <div className="section-title">Pessoas na sala ({participantsCount})</div>
               <button
                 className="icon-action-button sidebar-collapse-btn"
                 type="button"
@@ -3168,6 +3168,22 @@ export const App = (): ReactElement => {
                 <XCloseIcon />
               </button>
             </div>
+            {!isConnected && (
+              <section className="sidebar-room-card" aria-label="Resumo da sala privada">
+                <div className="sidebar-room-heading">
+                  <span className="sidebar-room-status"><span />Sala privada</span>
+                  <LockShieldIcon />
+                </div>
+                <p>Sua sala está pronta. Envie um convite para começar uma chamada segura.</p>
+                <div className="sidebar-room-meta">
+                  <span><UsersIcon /> 1 pessoa</span>
+                  <span><LockShieldIcon /> Protegida</span>
+                </div>
+                <button className="button primary sidebar-invite-action" type="button" onClick={() => session.toggleSessionModal(true)}>
+                  <UsersIcon /> Convidar pessoa
+                </button>
+              </section>
+            )}
             <div className="participant-list">
               {isConnected && (
                 <div className="participant-item">
@@ -3202,7 +3218,7 @@ export const App = (): ReactElement => {
                 </div>
               )}
 
-              <div className="participant-item">
+              <div className="participant-item is-self">
                 <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="user-avatar-small is-self" />
                 <div className="participant-info">
                   <span className="name-row">
@@ -3253,9 +3269,6 @@ export const App = (): ReactElement => {
                   </div>
                 </div>
               )}
-              <button className="button primary invite-btn" type="button" onClick={() => session.toggleSessionModal(true)}>
-                + Convidar pessoa
-              </button>
             </div>
 
 
@@ -3856,15 +3869,7 @@ export const App = (): ReactElement => {
                     <UserAvatar name={state.localUserName} avatar={state.localUserAvatar} isSelf className="welcome-avatar" />
                   </div>
                   <h2>Pronto para conectar</h2>
-                  <p>Convide uma pessoa para sua sala ou comece a compartilhar a tela quando estiver pronto.</p>
-                  <div className="welcome-actions">
-                    <button className="button primary welcome-primary-action" type="button" onClick={() => session.toggleSessionModal(true)}>
-                      <UsersIcon /> Convidar pessoa
-                    </button>
-                    <button className="button ghost welcome-secondary-action" type="button" onClick={() => void session.openSourcePicker()}>
-                      <ScreenCastIcon /> Compartilhar tela
-                    </button>
-                  </div>
+                  <p>Sua sala está pronta. Use os controles da lateral ou o dock inferior quando quiser começar.</p>
                   <div className="welcome-security-note"><LockShieldIcon /> Conexão protegida por DTLS-SRTP</div>
                 </div>
               </div>
